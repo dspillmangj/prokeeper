@@ -1,205 +1,25 @@
-<div class="h-full max-h-full flex flex-col justify-between overflow-hidden select-none" x-data="{
-    // Client-side instant state
-    selectedPlayer: null, // { side: 'home'|'away', jersey: '23', name: 'Michael Jordan', lineupId: 1 }
-    showSubSheet: false,
-    subTeamSide: 'home',
-    subOutJersey: '',
-    subInJersey: '',
-    jerseyBuffer: '',
-    bufferTimeout: null,
-
-    // Optimistic local scores for 0ms visual feedback
-    localHomeScore: {{ $game->home_score }},
-    localAwayScore: {{ $game->away_score }},
-    localHomeFouls: {{ $game->home_fouls_current_period }},
-    localAwayFouls: {{ $game->away_fouls_current_period }},
-    localPossession: '{{ $game->possession_arrow ?? 'home' }}',
-
-    init() {
-        // Keyboard listeners for rapid operator flow
-        window.addEventListener('keydown', (e) => {
-            // Ignore if typing in an input or modal is open
-            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
-                if (e.key === 'Escape') document.activeElement.blur();
-                return;
-            }
-
-            @if ($showRosterModal)
-                if (e.key === 'Escape') {
-                    @this.closeRosterModal();
-                }
-                return;
-            @endif
-
-            // If action overlay is active, action keys trigger immediately
-            if (this.selectedPlayer) {
-                const k = e.key.toUpperCase();
-                const actionMap = {
-                    '2': 'X', 'X': 'X', // 2pt make
-                    '3': 'M', 'M': 'M', // 3pt make
-                    '1': 'B', 'B': 'B', // 1pt FT make
-                    'Z': 'Z', // 2pt miss
-                    'N': 'N', // 3pt miss
-                    'V': 'V', // FT miss
-                    'D': 'D', 'R': 'D', // Def Reb
-                    'O': 'O', // Off Reb
-                    'A': 'A', // Assist
-                    'S': 'S', // Steal
-                    'K': 'K', // Block
-                    'P': 'P', // Turnover
-                    'F': 'F', // Personal Foul
-                };
-                if (actionMap[k]) {
-                    e.preventDefault();
-                    this.executeAction(actionMap[k]);
-                    return;
-                }
-                if (e.key === 'Escape') {
-                    e.preventDefault();
-                    this.selectedPlayer = null;
-                    return;
-                }
-            }
-
-            // Numeric keys buffer jersey number to match player
-            if (e.key >= '0' && e.key <= '9') {
-                e.preventDefault();
-                this.jerseyBuffer += e.key;
-                clearTimeout(this.bufferTimeout);
-                
-                // Try matching on-court jersey
-                const matchedHome = this.homePlayers.find(p => p.jersey_number == this.jerseyBuffer);
-                const matchedAway = this.awayPlayers.find(p => p.jersey_number == this.jerseyBuffer);
-
-                if (matchedHome) {
-                    this.openActionPad('home', matchedHome.jersey_number, matchedHome.player_name, matchedHome.id);
-                    this.jerseyBuffer = '';
-                } else if (matchedAway) {
-                    this.openActionPad('away', matchedAway.jersey_number, matchedAway.player_name, matchedAway.id);
-                    this.jerseyBuffer = '';
-                } else {
-                    this.bufferTimeout = setTimeout(() => { this.jerseyBuffer = ''; }, 1200);
-                }
-                return;
-            }
-
-            // Hotkey 1-5 for Home court players
-            if (['1','2','3','4','5'].includes(e.key) && !this.jerseyBuffer) {
-                e.preventDefault();
-                const idx = parseInt(e.key) - 1;
-                const p = this.homePlayers[idx];
-                if (p) this.openActionPad('home', p.jersey_number, p.player_name, p.id);
-                return;
-            }
-
-            // Global Spacebar: Toggle Possession Arrow
-            if (e.code === 'Space') {
-                e.preventDefault();
-                this.localPossession = (this.localPossession === 'home') ? 'away' : 'home';
-                this.$dispatch('play-sound', 'tap');
-                @this.togglePossession();
-                return;
-            }
-
-            // Undo hotkey: U or Ctrl+Z
-            if ((e.key.toLowerCase() === 'u' && !e.metaKey && !e.ctrlKey) || (e.key.toLowerCase() === 'z' && (e.metaKey || e.ctrlKey))) {
-                e.preventDefault();
-                this.$dispatch('play-sound', 'tap');
-                @this.undo();
-                return;
-            }
-
-            // Escape clears everything
-            if (e.key === 'Escape') {
-                this.selectedPlayer = null;
-                this.showSubSheet = false;
-                this.jerseyBuffer = '';
-            }
-        });
-    },
-
-    openActionPad(side, jersey, name, lineupId) {
-        this.selectedPlayer = { side, jersey, name, lineupId };
-        this.$dispatch('play-sound', 'tap');
-    },
-
-    executeAction(actionCode) {
-        if (!this.selectedPlayer) return;
-        const side = this.selectedPlayer.side;
-        const jersey = this.selectedPlayer.jersey;
-
-        // Optimistic Score & Foul Calculation (0ms latency visual update)
-        if (actionCode === 'X') {
-            if (side === 'home') this.localHomeScore += 2;
-            else this.localAwayScore += 2;
-            this.$dispatch('play-sound', 'score');
-        } else if (actionCode === 'M') {
-            if (side === 'home') this.localHomeScore += 3;
-            else this.localAwayScore += 3;
-            this.$dispatch('play-sound', 'score');
-        } else if (actionCode === 'B') {
-            if (side === 'home') this.localHomeScore += 1;
-            else this.localAwayScore += 1;
-            this.$dispatch('play-sound', 'score');
-        } else if (actionCode === 'F') {
-            if (side === 'home') this.localHomeFouls += 1;
-            else this.localAwayFouls += 1;
-            this.$dispatch('play-sound', 'tap');
-        } else {
-            this.$dispatch('play-sound', 'tap');
-        }
-
-        // Close action pad instantly
-        this.selectedPlayer = null;
-
-        // Background server sync without blocking
-        @this.recordQuickStat(side, jersey, actionCode);
-    },
-
-    adjustScoreFast(side, delta) {
-        if (side === 'home') this.localHomeScore = Math.max(0, this.localHomeScore + delta);
-        else this.localAwayScore = Math.max(0, this.localAwayScore + delta);
-        this.$dispatch('play-sound', delta > 0 ? 'score' : 'tap');
-        @this.adjustScore(side, delta);
-    },
-
-    openSubSheet(side, jersey = '') {
-        this.subTeamSide = side;
-        this.subOutJersey = jersey;
-        this.subInJersey = '';
-        this.showSubSheet = true;
-        this.selectedPlayer = null;
-        this.$dispatch('play-sound', 'tap');
-    },
-
-    confirmSubFast() {
-        if (!this.subOutJersey || !this.subInJersey) return;
-        this.$dispatch('play-sound', 'tap');
-        @this.set('subTeamSide', this.subTeamSide);
-        @this.set('subOutJersey', this.subOutJersey);
-        @this.set('subInJersey', this.subInJersey);
-        @this.executeSub();
-        this.showSubSheet = false;
-        this.subOutJersey = '';
-        this.subInJersey = '';
-    },
-
-    homePlayers: @js($homeLineupOnCourt),
-    awayPlayers: @js($awayLineupOnCourt),
-    homeBenchList: @js($homeBench),
-    awayBenchList: @js($awayBench),
-}" 
-x-effect="
-    localHomeScore = {{ $game->home_score }};
-    localAwayScore = {{ $game->away_score }};
-    localHomeFouls = {{ $game->home_fouls_current_period }};
-    localAwayFouls = {{ $game->away_fouls_current_period }};
-    localPossession = '{{ $game->possession_arrow ?? 'home' }}';
-    homePlayers = @js($homeLineupOnCourt);
-    awayPlayers = @js($awayLineupOnCourt);
-    homeBenchList = @js($homeBench);
-    awayBenchList = @js($awayBench);
-">
+<div class="h-full max-h-full flex flex-col justify-between overflow-hidden select-none" 
+     x-data="ProKeeperEngine.createOperator('basketball', {
+         gameId: {{ $game->id }},
+         homeTeamName: '{{ addslashes($game->home_display_name) }}',
+         awayTeamName: '{{ addslashes($game->away_display_name) }}',
+         homeScore: {{ (int)$game->home_score }},
+         awayScore: {{ (int)$game->away_score }},
+         homePeriodScores: @js($game->home_period_scores ?? [0, 0, 0, 0]),
+         awayPeriodScores: @js($game->away_period_scores ?? [0, 0, 0, 0]),
+         currentPeriod: {{ (int)$game->current_period }},
+         periodName: '{{ $game->period_name }}',
+         possession: '{{ $game->possession_arrow ?? 'home' }}',
+         homeFouls: {{ (int)$game->home_fouls_current_period }},
+         awayFouls: {{ (int)$game->away_fouls_current_period }},
+         homeTimeouts: {{ (int)$game->home_timeouts_remaining }},
+         awayTimeouts: {{ (int)$game->away_timeouts_remaining }},
+         homeCourt: @js($homeLineupOnCourt),
+         awayCourt: @js($awayLineupOnCourt),
+         homeBench: @js($homeBench),
+         awayBench: @js($awayBench),
+         recentEvents: @js($recentEvents),
+     })">
 
     <!-- 1. TOP SCOREBOARD BAR (Compact, Zero-Waste Height) -->
     <div class="bg-slate-900 border-b border-slate-800 p-2 sm:p-3 shrink-0 shadow-lg rounded-2xl mb-1">
@@ -207,20 +27,20 @@ x-effect="
 
             <!-- HOME SCORE BLOCK -->
             <div class="col-span-5 flex items-center justify-between p-2 sm:p-2.5 rounded-xl border transition-all"
-                 :class="localPossession === 'home' ? 'bg-blue-950/60 border-blue-500/80 shadow-md shadow-blue-500/20' : 'bg-slate-950 border-slate-800'">
+                 :class="possession === 'home' ? 'bg-blue-950/60 border-blue-500/80 shadow-md shadow-blue-500/20' : 'bg-slate-950 border-slate-800'">
                 <div class="space-y-0.5 truncate mr-2">
                     <div class="flex items-center space-x-1.5">
                         <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
                         <span class="text-[10px] font-black uppercase tracking-wider text-blue-400">HOME</span>
-                        <template x-if="localPossession === 'home'">
+                        <template x-if="possession === 'home'">
                             <span class="px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 text-[9px] font-black tracking-wider uppercase">POSS</span>
                         </template>
                     </div>
                     <h2 class="text-sm sm:text-base font-black text-white truncate leading-tight">{{ $game->home_display_name }}</h2>
                     <div class="flex items-center space-x-2 text-[10px] text-slate-400 font-mono">
-                        <span>FOULS: <strong class="text-white" x-text="localHomeFouls"></strong></span>
-                        <span x-show="localHomeFouls >= 5" class="px-1 rounded bg-rose-950 text-rose-300 font-bold border border-rose-800 text-[9px] animate-pulse">BONUS</span>
-                        <span>TO: <strong class="text-white">{{ $game->home_timeouts_remaining }}</strong></span>
+                        <span>FOULS: <strong class="text-white" x-text="homeFouls"></strong></span>
+                        <span x-show="homeFouls >= 5" class="px-1 rounded bg-rose-950 text-rose-300 font-bold border border-rose-800 text-[9px] animate-pulse">BONUS</span>
+                        <span>TO: <strong class="text-white" x-text="homeTimeouts"></strong></span>
                     </div>
                 </div>
 
@@ -245,41 +65,43 @@ x-effect="
                         </div>
                     </div>
                     <div class="min-w-[45px] sm:min-w-[55px] text-right">
-                        <span class="font-mono text-3xl sm:text-4xl font-black text-white tracking-tighter leading-none scoreboard-glow" x-text="localHomeScore"></span>
+                        <span class="font-mono text-3xl sm:text-4xl font-black text-white tracking-tighter leading-none scoreboard-glow" x-text="homeScore"></span>
                     </div>
                 </div>
             </div>
 
             <!-- CENTER PERIOD SUMMARY & STATUS -->
             <div class="col-span-2 flex flex-col items-center justify-center text-center space-y-1">
-                <span class="px-2.5 py-0.5 rounded-full bg-slate-800 text-blue-300 text-[10px] font-black uppercase tracking-widest border border-slate-700">
+                <span class="px-2.5 py-0.5 rounded-full bg-slate-800 text-blue-300 text-[10px] font-black uppercase tracking-widest border border-slate-700" x-text="periodName">
                     {{ $game->period_name }}
                 </span>
 
                 <!-- Period Score History Pills -->
                 <div class="flex items-center flex-wrap justify-center gap-1 text-[9px] font-mono text-slate-400">
-                    @if (!empty($game->home_period_scores))
-                        @foreach ($game->home_period_scores as $idx => $s)
-                            <span class="px-1.5 py-0.5 rounded {{ ($idx + 1) === $game->current_period ? 'bg-blue-600 text-white font-bold' : 'bg-slate-950 text-slate-400 border border-slate-800' }}">
-                                Q{{ $idx + 1 }}: {{ $s }}-{{ $game->away_period_scores[$idx] ?? 0 }}
-                            </span>
-                        @endforeach
-                    @endif
+                    <template x-for="(s, idx) in homePeriodScores" :key="idx">
+                        <span class="px-1.5 py-0.5 rounded"
+                              :class="(idx + 1) === currentPeriod ? 'bg-blue-600 text-white font-bold' : 'bg-slate-950 text-slate-400 border border-slate-800'"
+                              x-text="'Q' + (idx + 1) + ': ' + s + '-' + (awayPeriodScores[idx] || 0)">
+                        </span>
+                    </template>
                 </div>
 
-                <!-- Real-time Feedback status -->
-                <div class="text-[9px] font-semibold text-slate-400 truncate max-w-full px-1">
-                    {{ $feedbackMessage ?: 'Ready' }}
+                <!-- Real-time 0ms Local Status Indicator -->
+                <div class="flex items-center justify-center space-x-1 text-[9px] font-semibold text-slate-300 truncate max-w-full px-1">
+                    <span class="w-1.5 h-1.5 rounded-full"
+                          :class="syncStatus === 'synced' ? 'bg-emerald-400' : (syncStatus === 'syncing' ? 'bg-amber-400 animate-pulse' : 'bg-rose-400')">
+                    </span>
+                    <span x-text="feedbackMessage" class="truncate"></span>
                 </div>
             </div>
 
             <!-- AWAY SCORE BLOCK -->
             <div class="col-span-5 flex items-center justify-between p-2 sm:p-2.5 rounded-xl border transition-all"
-                 :class="localPossession === 'away' ? 'bg-rose-950/60 border-rose-500/80 shadow-md shadow-rose-500/20' : 'bg-slate-950 border-slate-800'">
+                 :class="possession === 'away' ? 'bg-rose-950/60 border-rose-500/80 shadow-md shadow-rose-500/20' : 'bg-slate-950 border-slate-800'">
                 <!-- Score Counter & Direct Touch +/- -->
                 <div class="flex items-center space-x-1.5 shrink-0">
                     <div class="min-w-[45px] sm:min-w-[55px] text-left">
-                        <span class="font-mono text-3xl sm:text-4xl font-black text-white tracking-tighter leading-none scoreboard-glow" x-text="localAwayScore"></span>
+                        <span class="font-mono text-3xl sm:text-4xl font-black text-white tracking-tighter leading-none scoreboard-glow" x-text="awayScore"></span>
                     </div>
                     <div class="flex flex-col space-y-1">
                         <div class="flex space-x-1">
@@ -303,7 +125,7 @@ x-effect="
 
                 <div class="space-y-0.5 truncate text-right ml-2">
                     <div class="flex items-center justify-end space-x-1.5">
-                        <template x-if="localPossession === 'away'">
+                        <template x-if="possession === 'away'">
                             <span class="px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 text-[9px] font-black tracking-wider uppercase">POSS</span>
                         </template>
                         <span class="text-[10px] font-black uppercase tracking-wider text-rose-400">AWAY</span>
@@ -311,9 +133,9 @@ x-effect="
                     </div>
                     <h2 class="text-sm sm:text-base font-black text-white truncate leading-tight">{{ $game->away_display_name }}</h2>
                     <div class="flex items-center justify-end space-x-2 text-[10px] text-slate-400 font-mono">
-                        <span>TO: <strong class="text-white">{{ $game->away_timeouts_remaining }}</strong></span>
-                        <span x-show="localAwayFouls >= 5" class="px-1 rounded bg-rose-950 text-rose-300 font-bold border border-rose-800 text-[9px] animate-pulse">BONUS</span>
-                        <span>FOULS: <strong class="text-white" x-text="localAwayFouls"></strong></span>
+                        <span>TO: <strong class="text-white" x-text="awayTimeouts"></strong></span>
+                        <span x-show="awayFouls >= 5" class="px-1 rounded bg-rose-950 text-rose-300 font-bold border border-rose-800 text-[9px] animate-pulse">BONUS</span>
+                        <span>FOULS: <strong class="text-white" x-text="awayFouls"></strong></span>
                     </div>
                 </div>
             </div>
@@ -330,7 +152,7 @@ x-effect="
                 <span class="uppercase tracking-wider truncate">{{ $game->home_display_name }} (Court)</span>
                 
                 <div class="flex items-center space-x-1.5">
-                    <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">5 Starters</span>
+                    <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">5 On Court</span>
                     <button type="button" @click="@this.openRosterModal('home')" class="px-2 py-0.5 rounded-lg bg-blue-950/90 hover:bg-blue-900 border border-blue-800 text-blue-300 hover:text-white text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                         <span>Edit Roster</span>
@@ -340,29 +162,30 @@ x-effect="
 
             <!-- 5 Large Touch Buttons Grid (2 cols x 3 rows with 5th player) -->
             <div class="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-1.5">
-                @foreach ($homeLineupOnCourt as $idx => $player)
-                    <button @click="openActionPad('home', '{{ $player->jersey_number }}', '{{ addslashes($player->player_name) }}', {{ $player->id }})"
+                <template x-for="(player, idx) in homeCourt" :key="player.id || idx">
+                    <button @click="openActionPad('home', player.jersey_number, player.player_name, player.id)"
                             type="button"
-                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group {{ $idx === 4 ? 'col-span-2' : '' }}"
-                            :class="selectedPlayer && selectedPlayer.side === 'home' && selectedPlayer.jersey == '{{ $player->jersey_number }}' 
-                                ? 'bg-blue-600 border-white shadow-lg shadow-blue-500/40 ring-2 ring-blue-300' 
-                                : 'bg-slate-950/90 hover:bg-blue-950/50 border-slate-800/90 hover:border-blue-500/60'">
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :class="[
+                                idx === 4 ? 'col-span-2' : '',
+                                selectedPlayer && selectedPlayer.side === 'home' && selectedPlayer.jersey == player.jersey_number
+                                    ? 'bg-blue-600 border-white shadow-lg shadow-blue-500/40 ring-2 ring-blue-300' 
+                                    : 'bg-slate-950/90 hover:bg-blue-950/50 border-slate-800/90 hover:border-blue-500/60'
+                            ]">
                         
                         <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400 group-hover:text-blue-300">
-                            <span class="font-bold">#{{ $idx + 1 }}</span>
-                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold">{{ $player->position ?: 'G/F' }}</span>
+                            <span class="font-bold" x-text="'#' + (idx + 1)"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="player.position || 'G/F'"></span>
                         </div>
 
                         <!-- Massive Jersey Number -->
-                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight">
-                            #{{ $player->jersey_number }}
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="'#' + player.jersey_number">
                         </div>
 
-                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none">
-                            {{ $player->player_name }}
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="player.player_name">
                         </div>
                     </button>
-                @endforeach
+                </template>
             </div>
         </div>
 
@@ -372,7 +195,7 @@ x-effect="
                 <span class="uppercase tracking-wider truncate">{{ $game->away_display_name }} (Court)</span>
 
                 <div class="flex items-center space-x-1.5">
-                    <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">5 Starters</span>
+                    <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">5 On Court</span>
                     <button type="button" @click="@this.openRosterModal('away')" class="px-2 py-0.5 rounded-lg bg-rose-950/90 hover:bg-rose-900 border border-rose-800 text-rose-300 hover:text-white text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                         <span>Edit Roster</span>
@@ -382,29 +205,30 @@ x-effect="
 
             <!-- 5 Large Touch Buttons Grid (2 cols x 3 rows with 5th player) -->
             <div class="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-1.5">
-                @foreach ($awayLineupOnCourt as $idx => $player)
-                    <button @click="openActionPad('away', '{{ $player->jersey_number }}', '{{ addslashes($player->player_name) }}', {{ $player->id }})"
+                <template x-for="(player, idx) in awayCourt" :key="player.id || idx">
+                    <button @click="openActionPad('away', player.jersey_number, player.player_name, player.id)"
                             type="button"
-                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group {{ $idx === 4 ? 'col-span-2' : '' }}"
-                            :class="selectedPlayer && selectedPlayer.side === 'away' && selectedPlayer.jersey == '{{ $player->jersey_number }}' 
-                                ? 'bg-rose-600 border-white shadow-lg shadow-rose-500/40 ring-2 ring-rose-300' 
-                                : 'bg-slate-950/90 hover:bg-rose-950/50 border-slate-800/90 hover:border-rose-500/60'">
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :class="[
+                                idx === 4 ? 'col-span-2' : '',
+                                selectedPlayer && selectedPlayer.side === 'away' && selectedPlayer.jersey == player.jersey_number
+                                    ? 'bg-rose-600 border-white shadow-lg shadow-rose-500/40 ring-2 ring-rose-300' 
+                                    : 'bg-slate-950/90 hover:bg-rose-950/50 border-slate-800/90 hover:border-rose-500/60'
+                            ]">
                         
                         <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400 group-hover:text-rose-300">
-                            <span class="font-bold">#{{ $idx + 1 }}</span>
-                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold">{{ $player->position ?: 'G/F' }}</span>
+                            <span class="font-bold" x-text="'#' + (idx + 1)"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="player.position || 'G/F'"></span>
                         </div>
 
                         <!-- Massive Jersey Number -->
-                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight">
-                            #{{ $player->jersey_number }}
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="'#' + player.jersey_number">
                         </div>
 
-                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none">
-                            {{ $player->player_name }}
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="player.player_name">
                         </div>
                     </button>
-                @endforeach
+                </template>
             </div>
         </div>
 
@@ -415,24 +239,24 @@ x-effect="
         <div class="grid grid-cols-4 sm:grid-cols-7 gap-1.5 text-xs font-bold">
             
             <!-- HOME TIMEOUT -->
-            <button @click="@this.callTimeout('home'); $dispatch('play-sound', 'tap')" 
+            <button @click="callTimeoutFast('home')" 
                     class="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 touch-active border border-blue-800/60 text-blue-300 flex flex-col items-center justify-center">
                 <span class="text-[10px] font-black uppercase">HOME TO</span>
-                <span class="text-[9px] text-slate-400 font-mono">{{ $game->home_timeouts_remaining }} Left</span>
+                <span class="text-[9px] text-slate-400 font-mono" x-text="homeTimeouts + ' Left'"></span>
             </button>
 
             <!-- TOGGLE POSSESSION ARROW -->
-            <button @click="localPossession = (localPossession === 'home') ? 'away' : 'home'; @this.togglePossession(); $dispatch('play-sound', 'tap')" 
+            <button @click="togglePossession()" 
                     class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 touch-active border border-slate-700 text-amber-300 flex flex-col items-center justify-center shadow">
                 <span class="text-[10px] font-black uppercase">FLIP POSS</span>
-                <span class="text-[9px] font-mono text-white" x-text="localPossession.toUpperCase() + ' ARROW'"></span>
+                <span class="text-[9px] font-mono text-white" x-text="possession.toUpperCase() + ' ARROW'"></span>
             </button>
 
             <!-- ADVANCE PERIOD -->
-            <button @click="@this.nextPeriod(); $dispatch('play-sound', 'tap')" 
+            <button @click="nextPeriodFast()" 
                     class="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 touch-active text-white flex flex-col items-center justify-center shadow-lg shadow-emerald-600/30">
                 <span class="text-[10px] font-black uppercase">+ NEXT PERIOD</span>
-                <span class="text-[9px] text-emerald-100 font-mono">Period {{ $game->current_period + 1 }}</span>
+                <span class="text-[9px] text-emerald-100 font-mono" x-text="'Period ' + (currentPeriod + 1)"></span>
             </button>
 
             <!-- SUBSTITUTION SHEET TRIGGER -->
@@ -443,24 +267,24 @@ x-effect="
             </button>
 
             <!-- MANAGE ROSTERS ON THE FLY -->
-            <button @click="@this.openRosterModal('home'); $dispatch('play-sound', 'tap')" 
+            <button @click="@this.openRosterModal('home'); playSound('tap')" 
                     class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 touch-active border border-slate-600 text-cyan-300 flex flex-col items-center justify-center shadow">
                 <span class="text-[10px] font-black uppercase">ROSTERS</span>
                 <span class="text-[9px] text-slate-300 font-mono">Add / Edit</span>
             </button>
 
             <!-- AWAY TIMEOUT -->
-            <button @click="@this.callTimeout('away'); $dispatch('play-sound', 'tap')" 
+            <button @click="callTimeoutFast('away')" 
                     class="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 touch-active border border-rose-800/60 text-rose-300 flex flex-col items-center justify-center">
                 <span class="text-[10px] font-black uppercase">AWAY TO</span>
-                <span class="text-[9px] text-slate-400 font-mono">{{ $game->away_timeouts_remaining }} Left</span>
+                <span class="text-[9px] text-slate-400 font-mono" x-text="awayTimeouts + ' Left'"></span>
             </button>
 
             <!-- UNDO LAST PLAY -->
-            <button @click="@this.undo(); $dispatch('play-sound', 'tap')" 
+            <button @click="undo()" 
                     class="p-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 touch-active border border-rose-800 text-rose-300 flex flex-col items-center justify-center shadow">
                 <span class="text-[10px] font-black uppercase">UNDO LAST</span>
-                <span class="text-[9px] text-rose-400 font-mono">Revert</span>
+                <span class="text-[9px] text-rose-400 font-mono">0ms Revert</span>
             </button>
 
         </div>
@@ -619,7 +443,7 @@ x-effect="
                 <div class="space-y-1.5">
                     <div class="text-[10px] font-black uppercase text-slate-400 tracking-wider">1. Tap Player OUT</div>
                     <div class="space-y-1 max-h-48 overflow-y-auto pr-1">
-                        <template x-for="p in (subTeamSide === 'home' ? homePlayers : awayPlayers)" :key="p.id">
+                        <template x-for="p in (subTeamSide === 'home' ? homeCourt : awayCourt)" :key="p.id || p.jersey_number">
                             <button @click="subOutJersey = p.jersey_number" 
                                     class="w-full p-2 rounded-xl border text-left flex items-center justify-between transition touch-active"
                                     :class="subOutJersey == p.jersey_number ? 'bg-rose-600 text-white border-white shadow' : 'bg-slate-950 text-slate-200 border-slate-800 hover:border-slate-700'">
@@ -634,7 +458,7 @@ x-effect="
                 <div class="space-y-1.5">
                     <div class="text-[10px] font-black uppercase text-slate-400 tracking-wider">2. Tap Player IN</div>
                     <div class="space-y-1 max-h-48 overflow-y-auto pr-1">
-                        <template x-for="p in (subTeamSide === 'home' ? homeBenchList : awayBenchList)" :key="p.id">
+                        <template x-for="p in (subTeamSide === 'home' ? homeBench : awayBench)" :key="p.id || p.jersey_number">
                             <button @click="subInJersey = p.jersey_number; if(subOutJersey) confirmSubFast();" 
                                     class="w-full p-2 rounded-xl border text-left flex items-center justify-between transition touch-active"
                                     :class="subInJersey == p.jersey_number ? 'bg-emerald-600 text-white border-white shadow' : 'bg-slate-950 text-slate-200 border-slate-800 hover:border-slate-700'">
@@ -642,7 +466,7 @@ x-effect="
                                 <span class="truncate text-[11px] font-semibold" x-text="p.player_name"></span>
                             </button>
                         </template>
-                        <div x-show="(subTeamSide === 'home' ? homeBenchList : awayBenchList).length === 0" class="text-[10px] text-slate-500 text-center py-4">
+                        <div x-show="(subTeamSide === 'home' ? homeBench : awayBench).length === 0" class="text-[10px] text-slate-500 text-center py-4">
                             No bench players registered.
                         </div>
                     </div>
@@ -687,15 +511,13 @@ x-effect="
                 <div class="grid grid-cols-2 gap-2 shrink-0">
                     <button wire:click="setRosterModalTeam('home')"
                             type="button"
-                            class="py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition border flex items-center justify-center gap-2"
-                            class="{{ $rosterModalTeam === 'home' ? 'bg-blue-600 text-white border-blue-400 shadow-lg shadow-blue-600/30' : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700' }}">
+                            class="py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition border flex items-center justify-center gap-2 {{ $rosterModalTeam === 'home' ? 'bg-blue-600 text-white border-blue-400 shadow-lg shadow-blue-600/30' : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700' }}">
                         <span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
                         <span class="truncate">{{ $game->home_display_name }} (Home)</span>
                     </button>
                     <button wire:click="setRosterModalTeam('away')"
                             type="button"
-                            class="py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition border flex items-center justify-center gap-2"
-                            class="{{ $rosterModalTeam === 'away' ? 'bg-rose-600 text-white border-rose-400 shadow-lg shadow-rose-600/30' : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700' }}">
+                            class="py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition border flex items-center justify-center gap-2 {{ $rosterModalTeam === 'away' ? 'bg-rose-600 text-white border-rose-400 shadow-lg shadow-rose-600/30' : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700' }}">
                         <span class="w-2.5 h-2.5 rounded-full bg-rose-400"></span>
                         <span class="truncate">{{ $game->away_display_name }} (Away)</span>
                     </button>
@@ -784,8 +606,7 @@ x-effect="
                                                     <td class="px-3 py-2.5 text-center">
                                                         <button wire:click="toggleLineupCourtStatus({{ $player->id }})"
                                                                 type="button"
-                                                                class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase transition border"
-                                                                class="{{ $player->is_on_court ? 'bg-emerald-950 border-emerald-700 text-emerald-300 hover:bg-emerald-900' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white' }}">
+                                                                class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase transition border {{ $player->is_on_court ? 'bg-emerald-950 border-emerald-700 text-emerald-300 hover:bg-emerald-900' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white' }}">
                                                             {{ $player->is_on_court ? 'On Court' : 'Bench' }}
                                                         </button>
                                                     </td>

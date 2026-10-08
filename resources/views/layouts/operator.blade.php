@@ -138,9 +138,9 @@
 
             <div class="flex items-center space-x-2 border-l border-slate-800 pl-2.5">
                 <span class="text-xs font-black tracking-wider uppercase text-white">PROKEEPER</span>
-                <span class="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[9px] font-black border border-emerald-500/40 flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                    SYNC
+                <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-black border border-emerald-500/40 flex items-center gap-1.5 shadow-sm" title="Zero-latency client-side execution active">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    ⚡ 0ms LOCAL
                 </span>
                 <span class="hidden md:inline text-[10px] text-slate-400 font-mono">
                     {{ strtoupper($game->sport ?? 'Sport') }} &bull; CODE: {{ $game->access_code ?? '------' }}
