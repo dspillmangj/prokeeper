@@ -1,0 +1,707 @@
+<?php
+
+namespace App\Livewire;
+
+use App\Models\Game;
+use App\Models\GameEvent;
+use App\Models\GameLineup;
+use App\Models\VolleyballStat;
+use App\Services\VolleyballStatService;
+use Exception;
+use Livewire\Component;
+
+class VolleyballOperator extends Component
+{
+    public int $gameId;
+
+    public string $statInput = '';
+
+    public string $feedbackMessage = '';
+
+    public string $feedbackType = 'info';
+
+    // Sub & Rotation adjustments
+    public bool $showSubModal = false;
+
+    public string $subTeamSide = 'home';
+
+    public string $subOutJersey = '';
+
+    public string $subInJersey = '';
+
+    // On-The-Fly Roster Modal & Editing State
+    public bool $showRosterModal = false;
+
+    public string $rosterModalTeam = 'home';
+
+    public string $rosterModalTab = 'list'; // 'list', 'create', 'paste'
+
+    public string $newJersey = '';
+
+    public string $newName = '';
+
+    public string $newPosition = '';
+
+    public bool $newIsStarter = false;
+
+    public bool $newIsOnCourt = false;
+
+    public bool $newIsLibero = false;
+
+    public bool $syncWithTeamRoster = true;
+
+    public string $bulkRosterInput = '';
+
+    public string $bulkRosterMode = 'append';
+
+    public ?int $editingLineupId = null;
+
+    public string $editJersey = '';
+
+    public string $editName = '';
+
+    public string $editPosition = '';
+
+    public bool $editIsOnCourt = false;
+
+    public bool $editIsStarter = false;
+
+    public bool $editIsLibero = false;
+
+    protected VolleyballStatService $statService;
+
+    public function boot(VolleyballStatService $statService)
+    {
+        $this->statService = $statService;
+    }
+
+    public function mount(int $gameId)
+    {
+        $this->gameId = $gameId;
+    }
+
+    public function getGameProperty(): Game
+    {
+        return Game::with(['homeTeam', 'awayTeam'])->findOrFail($this->gameId);
+    }
+
+    public function openRosterModal(string $team = 'home', string $tab = 'list')
+    {
+        $this->rosterModalTeam = $team;
+        $this->rosterModalTab = $tab;
+        $this->showRosterModal = true;
+        $this->editingLineupId = null;
+        $this->resetNewPlayerFields();
+    }
+
+    public function closeRosterModal()
+    {
+        $this->showRosterModal = false;
+        $this->editingLineupId = null;
+    }
+
+    public function setRosterModalTeam(string $team)
+    {
+        $this->rosterModalTeam = $team;
+        $this->editingLineupId = null;
+    }
+
+    public function setRosterModalTab(string $tab)
+    {
+        $this->rosterModalTab = $tab;
+    }
+
+    public function resetNewPlayerFields()
+    {
+        $this->newJersey = '';
+        $this->newName = '';
+        $this->newPosition = '';
+        $this->newIsStarter = false;
+        $this->newIsOnCourt = false;
+        $this->newIsLibero = false;
+    }
+
+    public function quickAddLineupPlayer()
+    {
+        $jersey = trim($this->newJersey);
+        $name = trim($this->newName);
+        $pos = !empty($this->newPosition) ? strtoupper(trim($this->newPosition)) : null;
+
+        if (empty($jersey) || empty($name)) {
+            $this->feedbackMessage = 'Jersey number and player name are required.';
+            $this->feedbackType = 'error';
+            return;
+        }
+
+        $game = $this->game;
+
+        $existing = GameLineup::where('game_id', $game->id)
+            ->where('team_side', $this->rosterModalTeam)
+            ->where('jersey_number', $jersey)
+            ->first();
+
+        if ($existing) {
+            $this->feedbackMessage = "Player with Jersey #{$jersey} already exists in this lineup.";
+            $this->feedbackType = 'error';
+            return;
+        }
+
+        $courtCount = GameLineup::where('game_id', $game->id)
+            ->where('team_side', $this->rosterModalTeam)
+            ->where('is_on_court', true)
+            ->count();
+
+        $isOnCourt = $this->newIsOnCourt;
+        if (!$isOnCourt && $courtCount < 6) {
+            $isOnCourt = true;
+        }
+
+        $teamId = ($this->rosterModalTeam === 'home') ? $game->home_team_id : $game->away_team_id;
+        $playerId = null;
+
+        if ($teamId && $this->syncWithTeamRoster) {
+            $nameParts = explode(' ', $name, 2);
+            $firstName = $nameParts[0];
+            $lastName = $nameParts[1] ?? $firstName;
+
+            $player = \App\Models\Player::create([
+                'organization_id' => $game->organization_id,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'default_jersey_number' => $jersey,
+                'position' => $pos,
+            ]);
+
+            \App\Models\RosterPlayer::create([
+                'team_id' => $teamId,
+                'player_id' => $player->id,
+                'jersey_number' => $jersey,
+                'position' => $pos,
+                'is_starter' => $this->newIsStarter,
+                'is_libero' => $this->newIsLibero,
+            ]);
+
+            $playerId = $player->id;
+        }
+
+        GameLineup::create([
+            'game_id' => $game->id,
+            'team_side' => $this->rosterModalTeam,
+            'player_id' => $playerId,
+            'jersey_number' => $jersey,
+            'player_name' => $name,
+            'position' => $pos,
+            'is_starter' => $this->newIsStarter,
+            'is_on_court' => $isOnCourt,
+            'court_position' => $isOnCourt ? ($courtCount + 1) : null,
+            'is_libero' => $this->newIsLibero,
+        ]);
+
+        $this->resetNewPlayerFields();
+        $this->feedbackMessage = "Added #{$jersey} {$name} to ".strtoupper($this->rosterModalTeam)." roster!";
+        $this->feedbackType = 'success';
+        $this->rosterModalTab = 'list';
+    }
+
+    public function startEditingLineup(int $id)
+    {
+        $lineup = GameLineup::where('game_id', $this->gameId)->findOrFail($id);
+        $this->editingLineupId = $lineup->id;
+        $this->editJersey = (string)$lineup->jersey_number;
+        $this->editName = $lineup->player_name;
+        $this->editPosition = (string)$lineup->position;
+        $this->editIsOnCourt = (bool)$lineup->is_on_court;
+        $this->editIsStarter = (bool)$lineup->is_starter;
+        $this->editIsLibero = (bool)$lineup->is_libero;
+    }
+
+    public function cancelEditingLineup()
+    {
+        $this->editingLineupId = null;
+    }
+
+    public function saveEditedLineup()
+    {
+        if (!$this->editingLineupId) return;
+
+        $lineup = GameLineup::where('game_id', $this->gameId)->findOrFail($this->editingLineupId);
+        $newJersey = trim($this->editJersey);
+        $newName = trim($this->editName);
+        $newPos = !empty($this->editPosition) ? strtoupper(trim($this->editPosition)) : null;
+
+        if (empty($newJersey) || empty($newName)) {
+            $this->feedbackMessage = 'Jersey number and player name cannot be blank.';
+            $this->feedbackType = 'error';
+            return;
+        }
+
+        $oldJersey = $lineup->jersey_number;
+
+        $lineup->jersey_number = $newJersey;
+        $lineup->player_name = $newName;
+        $lineup->position = $newPos;
+        $lineup->is_on_court = $this->editIsOnCourt;
+        $lineup->is_starter = $this->editIsStarter;
+        $lineup->is_libero = $this->editIsLibero;
+        $lineup->save();
+
+        if ($oldJersey !== $newJersey || $lineup->player_name !== $newName) {
+            VolleyballStat::where('game_id', $this->gameId)
+                ->where('team_side', $lineup->team_side)
+                ->where('jersey_number', $oldJersey)
+                ->update([
+                    'jersey_number' => $newJersey,
+                    'player_name' => $newName,
+                ]);
+
+            GameEvent::where('game_id', $this->gameId)
+                ->where('team_side', $lineup->team_side)
+                ->where('jersey_number', $oldJersey)
+                ->update([
+                    'jersey_number' => $newJersey,
+                    'player_name' => $newName,
+                ]);
+        }
+
+        if ($lineup->player) {
+            $nameParts = explode(' ', $newName, 2);
+            $lineup->player->update([
+                'first_name' => $nameParts[0],
+                'last_name' => $nameParts[1] ?? $nameParts[0],
+                'default_jersey_number' => $newJersey,
+                'position' => $newPos,
+            ]);
+        }
+
+        $this->editingLineupId = null;
+        $this->feedbackMessage = "Updated player #{$newJersey} {$newName} successfully.";
+        $this->feedbackType = 'success';
+    }
+
+    public function toggleLineupCourtStatus(int $id)
+    {
+        $lineup = GameLineup::where('game_id', $this->gameId)->findOrFail($id);
+        $lineup->is_on_court = !$lineup->is_on_court;
+        if ($lineup->is_on_court && !$lineup->court_position) {
+            $courtCount = GameLineup::where('game_id', $this->gameId)
+                ->where('team_side', $lineup->team_side)
+                ->where('is_on_court', true)
+                ->count();
+            $lineup->court_position = min(6, $courtCount);
+        }
+        $lineup->save();
+
+        $this->feedbackMessage = "Player #{$lineup->jersey_number} moved to ".($lineup->is_on_court ? 'Court' : 'Bench').'.';
+        $this->feedbackType = 'info';
+    }
+
+    public function deleteLineupPlayer(int $id)
+    {
+        $lineup = GameLineup::where('game_id', $this->gameId)->findOrFail($id);
+        $jersey = $lineup->jersey_number;
+        $name = $lineup->player_name;
+        $lineup->delete();
+
+        $this->feedbackMessage = "Removed #{$jersey} {$name} from game lineup.";
+        $this->feedbackType = 'info';
+    }
+
+    public function importBulkRosterToGame()
+    {
+        $text = trim($this->bulkRosterInput);
+        if (empty($text)) return;
+
+        $game = $this->game;
+        $teamSide = $this->rosterModalTeam;
+        $teamId = ($teamSide === 'home') ? $game->home_team_id : $game->away_team_id;
+
+        if ($this->bulkRosterMode === 'replace') {
+            GameLineup::where('game_id', $game->id)
+                ->where('team_side', $teamSide)
+                ->delete();
+        }
+
+        $lines = preg_split('/\r\n|\r|\n/', $text);
+        $importedCount = 0;
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (empty($line)) continue;
+
+            if (str_contains($line, "\t")) {
+                $parts = array_map('trim', explode("\t", $line));
+            } elseif (str_contains($line, ",") && !preg_match('/^[0-9]+$/', $line)) {
+                $parts = array_map('trim', explode(",", $line));
+            } else {
+                $parts = array_values(array_filter(preg_split('/\s+/', $line)));
+            }
+
+            if (empty($parts)) continue;
+
+            $jersey = '';
+            $name = '';
+            $pos = null;
+            $isStarter = false;
+            $isLibero = false;
+
+            $p0 = ltrim($parts[0], '#');
+            if (is_numeric($p0)) {
+                $jersey = $p0;
+                array_shift($parts);
+            }
+
+            if (count($parts) >= 2) {
+                $firstName = array_shift($parts);
+                $lastName = array_shift($parts);
+                $name = "{$firstName} {$lastName}";
+            } elseif (count($parts) === 1) {
+                $name = array_shift($parts);
+            }
+
+            while (!empty($parts)) {
+                $p = array_shift($parts);
+                $pLower = strtolower($p);
+                if (in_array($pLower, ['starter', 'start'])) {
+                    $isStarter = true;
+                } elseif (in_array($pLower, ['libero', 'lib'])) {
+                    $isLibero = true;
+                } elseif (!$pos && strlen($p) <= 5) {
+                    $pos = strtoupper($p);
+                }
+            }
+
+            if (empty($jersey) || empty($name)) continue;
+
+            $existing = GameLineup::where('game_id', $game->id)
+                ->where('team_side', $teamSide)
+                ->where('jersey_number', $jersey)
+                ->first();
+
+            if ($existing) {
+                $existing->update([
+                    'player_name' => $name,
+                    'position' => $pos,
+                    'is_starter' => $isStarter,
+                    'is_libero' => $isLibero,
+                ]);
+            } else {
+                $courtCount = GameLineup::where('game_id', $game->id)
+                    ->where('team_side', $teamSide)
+                    ->where('is_on_court', true)
+                    ->count();
+
+                $isOnCourt = ($courtCount < 6) || $isStarter;
+
+                $playerId = null;
+                if ($teamId && $this->syncWithTeamRoster) {
+                    $nameParts = explode(' ', $name, 2);
+                    $p = \App\Models\Player::create([
+                        'organization_id' => $game->organization_id,
+                        'first_name' => $nameParts[0],
+                        'last_name' => $nameParts[1] ?? $nameParts[0],
+                        'default_jersey_number' => $jersey,
+                        'position' => $pos,
+                    ]);
+                    \App\Models\RosterPlayer::create([
+                        'team_id' => $teamId,
+                        'player_id' => $p->id,
+                        'jersey_number' => $jersey,
+                        'position' => $pos,
+                        'is_starter' => $isStarter,
+                        'is_libero' => $isLibero,
+                    ]);
+                    $playerId = $p->id;
+                }
+
+                GameLineup::create([
+                    'game_id' => $game->id,
+                    'team_side' => $teamSide,
+                    'player_id' => $playerId,
+                    'jersey_number' => $jersey,
+                    'player_name' => $name,
+                    'position' => $pos,
+                    'is_starter' => $isStarter,
+                    'is_on_court' => $isOnCourt,
+                    'court_position' => $isOnCourt ? ($courtCount + 1) : null,
+                    'is_libero' => $isLibero,
+                ]);
+            }
+
+            $importedCount++;
+        }
+
+        $this->bulkRosterInput = '';
+        $this->feedbackMessage = "Imported {$importedCount} players into ".strtoupper($teamSide)." roster.";
+        $this->feedbackType = 'success';
+        $this->rosterModalTab = 'list';
+    }
+
+    public function processInput()
+    {
+        $input = trim($this->statInput);
+        if (empty($input)) {
+            return;
+        }
+
+        try {
+            $game = $this->game;
+            $result = $this->statService->processKeyboardInput($game, $input);
+            $this->feedbackMessage = $result['message'];
+            $this->feedbackType = 'success';
+            $this->statInput = '';
+
+            if (! empty($result['set_won'])) {
+                $winnerName = ($result['set_winner'] === 'home') ? $game->home_display_name : $game->away_display_name;
+                $this->feedbackMessage .= " - SET WON by {$winnerName}!";
+            }
+        } catch (Exception $e) {
+            $this->feedbackMessage = $e->getMessage();
+            $this->feedbackType = 'error';
+        }
+    }
+
+    public function recordQuickStat(string $teamSide, string $jersey, string $actionCode)
+    {
+        try {
+            $game = $this->game;
+            $result = $this->statService->recordStat($game, $teamSide, $jersey, $actionCode);
+            $this->feedbackMessage = $result['message'];
+            $this->feedbackType = 'success';
+        } catch (Exception $e) {
+            $this->feedbackMessage = $e->getMessage();
+            $this->feedbackType = 'error';
+        }
+    }
+
+    public function adjustScore(string $teamSide, int $delta)
+    {
+        $game = $this->game;
+        if ($teamSide === 'home') {
+            $game->home_score = max(0, $game->home_score + $delta);
+            $scores = $game->home_period_scores ?? [0, 0, 0, 0, 0];
+            $cur = $game->current_period;
+            while (count($scores) < $cur) {
+                $scores[] = 0;
+            }
+            $scores[$cur - 1] = max(0, $scores[$cur - 1] + $delta);
+            $game->home_period_scores = $scores;
+        } else {
+            $game->away_score = max(0, $game->away_score + $delta);
+            $scores = $game->away_period_scores ?? [0, 0, 0, 0, 0];
+            $cur = $game->current_period;
+            while (count($scores) < $cur) {
+                $scores[] = 0;
+            }
+            $scores[$cur - 1] = max(0, $scores[$cur - 1] + $delta);
+            $game->away_period_scores = $scores;
+        }
+        $game->save();
+        $this->feedbackMessage = "Adjusted ".strtoupper($teamSide)." score (".($delta > 0 ? "+{$delta}" : "{$delta}").")";
+        $this->feedbackType = 'info';
+    }
+
+    public function setSet(int $set)
+    {
+        if ($set < 1) return;
+        $game = $this->game;
+        $game->current_period = $set;
+        $game->save();
+        $this->feedbackMessage = "Switched to Set {$set}.";
+        $this->feedbackType = 'info';
+    }
+
+    public function executeSub()
+    {
+        if (empty($this->subOutJersey) || empty($this->subInJersey)) {
+            $this->feedbackMessage = 'Please select both player leaving and player entering.';
+            $this->feedbackType = 'error';
+            return;
+        }
+
+        $out = GameLineup::where('game_id', $this->game->id)
+            ->where('team_side', $this->subTeamSide)
+            ->where('jersey_number', $this->subOutJersey)
+            ->first();
+
+        $in = GameLineup::where('game_id', $this->game->id)
+            ->where('team_side', $this->subTeamSide)
+            ->where('jersey_number', $this->subInJersey)
+            ->first();
+
+        if ($out && $in) {
+            $pos = $out->court_position;
+            $out->is_on_court = false;
+            $out->court_position = null;
+            $out->save();
+
+            $in->is_on_court = true;
+            $in->court_position = $pos;
+            $in->save();
+
+            $lastSeq = GameEvent::where('game_id', $this->game->id)->max('sequence') ?? 0;
+            GameEvent::create([
+                'game_id' => $this->game->id,
+                'sequence' => $lastSeq + 1,
+                'period' => $this->game->current_period,
+                'clock_seconds_remaining' => 0,
+                'team_side' => $this->subTeamSide,
+                'jersey_number' => $this->subInJersey,
+                'player_name' => $in->player_name ?? "#{$this->subInJersey}",
+                'sport' => 'volleyball',
+                'action_code' => 'SUB',
+                'action_type' => 'substitution',
+                'action_name' => 'Substitution',
+                'raw_input' => "SUB {$this->subTeamSide} {$this->subOutJersey}->{$this->subInJersey}",
+                'points' => 0,
+                'home_score_after' => $this->game->home_score,
+                'away_score_after' => $this->game->away_score,
+                'description' => strtoupper($this->subTeamSide)." Sub: OUT #{$this->subOutJersey}, IN #{$this->subInJersey} (Pos {$pos})",
+            ]);
+
+            $this->feedbackMessage = "Subbed OUT #{$this->subOutJersey} -> IN #{$this->subInJersey} (".strtoupper($this->subTeamSide).')';
+            $this->feedbackType = 'success';
+            $this->showSubModal = false;
+            $this->subOutJersey = '';
+            $this->subInJersey = '';
+        }
+    }
+
+    public function rotateTeam(string $teamSide)
+    {
+        $game = $this->game;
+        if ($teamSide === 'home') {
+            $game->home_rotation = ($game->home_rotation % 6) + 1;
+        } else {
+            $game->away_rotation = ($game->away_rotation % 6) + 1;
+        }
+        $game->save();
+
+        // Update on-court position numbers in game_lineups
+        $courtPlayers = GameLineup::where('game_id', $game->id)
+            ->where('team_side', $teamSide)
+            ->where('is_on_court', true)
+            ->get();
+
+        foreach ($courtPlayers as $p) {
+            if ($p->court_position) {
+                // In volleyball rotation: 1->6, 6->5, 5->4, 4->3, 3->2, 2->1 (clockwise)
+                $nextPos = ($p->court_position === 1) ? 6 : ($p->court_position - 1);
+                $p->court_position = $nextPos;
+                $p->save();
+            }
+        }
+
+        $this->feedbackMessage = 'Rotated '.strtoupper($teamSide)." to Position {$game->{$teamSide.'_rotation' }}.";
+        $this->feedbackType = 'info';
+    }
+
+    public function toggleServer()
+    {
+        $game = $this->game;
+        $game->current_server = ($game->current_server === 'home') ? 'away' : 'home';
+        $game->save();
+    }
+
+    public function nextSet()
+    {
+        $this->statService->advanceSet($this->game);
+        $this->feedbackMessage = "Started Set {$this->game->current_period}.";
+        $this->feedbackType = 'info';
+    }
+
+    public function callTimeout(string $teamSide)
+    {
+        $game = $this->game;
+        if ($teamSide === 'home' && $game->home_timeouts_remaining > 0) {
+            $game->home_timeouts_remaining -= 1;
+            $this->feedbackMessage = "Timeout charged to HOME. Remaining: {$game->home_timeouts_remaining}";
+        } elseif ($teamSide === 'away' && $game->away_timeouts_remaining > 0) {
+            $game->away_timeouts_remaining -= 1;
+            $this->feedbackMessage = "Timeout charged to AWAY. Remaining: {$game->away_timeouts_remaining}";
+        }
+        $game->save();
+        $this->feedbackType = 'info';
+    }
+
+    public function undo()
+    {
+        $event = GameEvent::where('game_id', $this->game->id)
+            ->where('is_undone', false)
+            ->orderBy('sequence', 'desc')
+            ->first();
+
+        if ($event) {
+            $event->is_undone = true;
+            $event->save();
+            $this->feedbackMessage = "Undone: {$event->description}";
+            $this->feedbackType = 'info';
+        } else {
+            $this->feedbackMessage = 'No active plays to undo.';
+            $this->feedbackType = 'error';
+        }
+    }
+
+    public function render()
+    {
+        $game = $this->game;
+
+        $homeCourt = GameLineup::where('game_id', $game->id)
+            ->where('team_side', 'home')
+            ->where('is_on_court', true)
+            ->orderBy('court_position', 'asc')
+            ->get();
+
+        $homeBench = GameLineup::where('game_id', $game->id)
+            ->where('team_side', 'home')
+            ->where('is_on_court', false)
+            ->orderBy('jersey_number', 'asc')
+            ->get();
+
+        $awayCourt = GameLineup::where('game_id', $game->id)
+            ->where('team_side', 'away')
+            ->where('is_on_court', true)
+            ->orderBy('court_position', 'asc')
+            ->get();
+
+        $awayBench = GameLineup::where('game_id', $game->id)
+            ->where('team_side', 'away')
+            ->where('is_on_court', false)
+            ->orderBy('jersey_number', 'asc')
+            ->get();
+
+        $homeStats = VolleyballStat::where('game_id', $game->id)
+            ->where('team_side', 'home')
+            ->orderBy('jersey_number', 'asc')
+            ->get();
+
+        $awayStats = VolleyballStat::where('game_id', $game->id)
+            ->where('team_side', 'away')
+            ->orderBy('jersey_number', 'asc')
+            ->get();
+
+        $recentEvents = GameEvent::where('game_id', $game->id)
+            ->where('is_undone', false)
+            ->orderBy('sequence', 'desc')
+            ->take(15)
+            ->get();
+
+        $rosterModalLineups = GameLineup::where('game_id', $game->id)
+            ->where('team_side', $this->rosterModalTeam)
+            ->orderBy('is_on_court', 'desc')
+            ->orderBy('jersey_number', 'asc')
+            ->get();
+
+        return view('livewire.volleyball-operator', [
+            'game' => $game,
+            'homeCourt' => $homeCourt,
+            'homeBench' => $homeBench,
+            'awayCourt' => $awayCourt,
+            'awayBench' => $awayBench,
+            'rosterModalLineups' => $rosterModalLineups,
+            'homeStats' => $homeStats,
+            'awayStats' => $awayStats,
+            'recentEvents' => $recentEvents,
+            'actionDefinitions' => VolleyballStatService::ACTIONS,
+        ]);
+    }
+}
