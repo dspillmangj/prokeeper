@@ -5,15 +5,28 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\TeamController;
 use App\Livewire\NcaaScorebook;
-use App\Livewire\PublicScoreboard;
+use App\Livewire\PureScoreboard;
+use App\Livewire\WatchGame;
 use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Public Live Spectator & Scorebook Routes (Accessible via Code / Slug)
+| Public Live Spectator & Scoreboard Routes (Accessible via Code / Prompt)
 |--------------------------------------------------------------------------
 */
-Route::get('/live/{code}', PublicScoreboard::class)->name('public.live');
+// 1. Pure Stadium Scoreboard (scores, team fouls, period, timeouts, possession arrow)
+Route::get('/scoreboard', PureScoreboard::class)->name('public.scoreboard.prompt');
+Route::get('/scoreboard/{code}', PureScoreboard::class)->name('public.scoreboard');
+
+// 2. Watch Game Fan Experience (tabs: scoreboard, play-by-play, box score, match summary)
+Route::get('/watch', WatchGame::class)->name('public.watch.prompt');
+Route::get('/watch/{code}', WatchGame::class)->name('public.watch');
+
+// Spectator live aliases
+Route::get('/live', WatchGame::class)->name('public.live.prompt');
+Route::get('/live/{code}', WatchGame::class)->name('public.live');
+
+// 3. Official NCAA Scorebook & PDF Export
 Route::get('/scorebook/{code}', NcaaScorebook::class)->name('public.scorebook');
 Route::get('/export/ncaa/{code}.pdf', [GameController::class, 'exportNcaaPdf'])->name('games.pdf');
 

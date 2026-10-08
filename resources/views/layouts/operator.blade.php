@@ -123,7 +123,7 @@
             this.isFullscreen = false;
         }
     }
-}" @play-sound.window="playSound($event.detail)">
+}" @play-sound.window="playSound($event.detail)" @close-all-modals.window="showHelpModal = false">
 
     <!-- Ultra-Compact Stadium App Header Bar -->
     <header class="bg-slate-900/95 border-b border-slate-800/90 px-3 py-1.5 sm:px-4 flex items-center justify-between shrink-0 h-11 select-none z-30">
@@ -138,9 +138,9 @@
 
             <div class="flex items-center space-x-2 border-l border-slate-800 pl-2.5">
                 <span class="text-xs font-black tracking-wider uppercase text-white">PROKEEPER</span>
-                <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-black border border-emerald-500/40 flex items-center gap-1.5 shadow-sm" title="Zero-latency client-side execution active">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    ⚡ 0ms LOCAL
+                <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-black border border-emerald-500/40 flex items-center gap-1.5 shadow-sm" title="Operator live and synchronized">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    LIVE
                 </span>
                 <span class="hidden md:inline text-[10px] text-slate-400 font-mono">
                     {{ strtoupper($game->sport ?? 'Sport') }} &bull; CODE: {{ $game->access_code ?? '------' }}
@@ -169,11 +169,24 @@
                 </svg>
             </button>
 
-            <button type="button" @click="showHelpModal = true" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition" title="Shortcut Guide">
+            <button type="button" @click="showHelpModal = true" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1" title="Shortcut Guide (?)">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
+                <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-700 text-[8px] font-mono text-amber-300">?</span>
             </button>
+
+            <button type="button" @click="$dispatch('open-game-details')" class="inline-flex items-center px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-[11px] font-black transition gap-1.5 shadow-sm" title="Edit Game Setup, Schedule, Venue, Officials & Clock">
+                <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span>Game Setup</span>
+            </button>
+
+            @if (($game->sport ?? 'basketball') === 'basketball')
+                <a href="{{ route('public.scorebook', $game->access_code ?? '') }}" target="_blank" class="inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-black transition gap-1.5 shadow-sm" title="Official NCAA Men's Basketball Scorebook (Printable)">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                    <span>NCAA Scorebook</span>
+                </a>
+            @endif
 
             <a href="{{ route('public.live', $game->access_code ?? '') }}" target="_blank" class="hidden sm:inline-flex items-center px-2 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-[11px] font-bold transition">
                 <span>Fan Live</span>
@@ -191,8 +204,8 @@
         <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-5 shadow-2xl space-y-4" @click.outside="showHelpModal = false">
             <div class="flex items-center justify-between pb-2.5 border-b border-slate-800">
                 <h3 class="text-sm font-black uppercase tracking-wider text-white">Operator Flow & Hotkeys</h3>
-                <button @click="showHelpModal = false" class="p-1 rounded bg-slate-800 text-slate-400 hover:text-white">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                <button @click="showHelpModal = false" class="p-1 rounded bg-slate-800 text-slate-400 hover:text-white" title="Close (Esc)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
 
@@ -200,26 +213,31 @@
                 <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
                     <h4 class="font-bold text-blue-400 uppercase text-[10px]">Touch / iPad / Mouse Flow</h4>
                     <p class="text-slate-300 text-[11px] leading-relaxed">
-                        1. Tap any large on-court player tile.<br>
-                        2. Tap the stat action on the instant overlay.<br>
-                        3. Recorded in 0ms with instant score update!
+                        1. Tap any on-court player tile.<br>
+                        2. Tap the stat action on the action pad.<br>
+                        3. Stat is recorded with immediate score update.
                     </p>
                 </div>
 
                 <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
                     <h4 class="font-bold text-emerald-400 uppercase text-[10px]">Keyboard Hotkeys</h4>
                     <p class="text-slate-300 font-mono text-[11px] leading-relaxed">
-                        &bull; Type Jersey # -> Opens stat pad<br>
-                        &bull; Hotkey: K (Kill), A (Ace), D (Dig)<br>
-                        &bull; Hotkey: 2 (2pt), 3 (3pt), 1 (FT)<br>
-                        &bull; Space : Toggle Server / Clock<br>
-                        &bull; U / Ctrl+Z : Undo Last Play
+                        &bull; Type Jersey # + <strong class="text-amber-300">-</strong> (HOME) or <strong class="text-amber-300">=</strong> (AWAY)<br>
+                        &bull; Badges on buttons show their direct hotkey<br>
+                        &bull; <strong class="text-amber-300">[</strong> / <strong class="text-amber-300">{</strong> : Home Score +1 / -1<br>
+                        &bull; <strong class="text-amber-300">]</strong> / <strong class="text-amber-300">}</strong> : Away Score +1 / -1<br>
+                        &bull; <strong class="text-amber-300">U</strong> or <strong class="text-amber-300">Ctrl+Z</strong> : Instant Undo<br>
+                        &bull; <strong class="text-amber-300">H</strong> / <strong class="text-amber-300">A</strong> : Home / Away Timeouts<br>
+                        &bull; <strong class="text-amber-300">Esc</strong> : Instant Reset / Close Any Modal
                     </p>
                 </div>
             </div>
 
             <div class="flex justify-end pt-1">
-                <button @click="showHelpModal = false" class="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs">Close</button>
+                <button @click="showHelpModal = false" class="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5">
+                    <span>Close</span>
+                    <span class="px-1 py-0.2 rounded bg-blue-950 text-[9px] font-mono text-blue-200">Esc</span>
+                </button>
             </div>
         </div>
     </div>

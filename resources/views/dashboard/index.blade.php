@@ -82,20 +82,23 @@
                         </div>
 
                         <!-- Action Buttons -->
-                        <div class="pt-4 border-t border-slate-800 grid grid-cols-3 gap-2 text-center text-xs">
-                            <a href="{{ route('games.operator', $game->uuid) }}" class="py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 font-semibold text-white transition shadow-sm">
+                        <div class="pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                            <a href="{{ route('games.operator', $game->uuid) }}" class="py-2 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold text-white transition shadow-md shadow-blue-600/30 flex items-center justify-center">
                                 Stat Operator
                             </a>
-                            <a href="{{ route('public.live', $game->access_code) }}" target="_blank" class="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-medium text-slate-200 transition border border-slate-700">
-                                Live Scoreboard
+                            <a href="{{ route('public.scoreboard', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
+                                Scoreboard
+                            </a>
+                            <a href="{{ route('public.watch', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
+                                Watch Live
                             </a>
                             @if ($game->sport === 'basketball')
-                                <a href="{{ route('public.scorebook', $game->access_code) }}" target="_blank" class="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-medium text-slate-200 transition border border-slate-700">
-                                    NCAA Scorebook
+                                <a href="{{ route('public.scorebook', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
+                                    NCAA Book
                                 </a>
                             @else
-                                <a href="{{ route('public.live', $game->access_code) }}" target="_blank" class="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-medium text-slate-200 transition border border-slate-700">
-                                    Match Stats
+                                <a href="{{ route('public.watch', $game->access_code) }}?tab=boxscore" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
+                                    Box Score
                                 </a>
                             @endif
                         </div>

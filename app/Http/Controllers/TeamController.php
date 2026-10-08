@@ -104,8 +104,9 @@ class TeamController extends Controller
             'players' => ['present', 'array'],
             'players.*.id' => ['nullable'],
             'players.*.player_id' => ['nullable'],
-            'players.*.first_name' => ['required', 'string', 'max:255'],
-            'players.*.last_name' => ['required', 'string', 'max:255'],
+            'players.*.name' => ['nullable', 'string', 'max:255'],
+            'players.*.first_name' => ['nullable', 'string', 'max:255'],
+            'players.*.last_name' => ['nullable', 'string', 'max:255'],
             'players.*.jersey_number' => ['required', 'string', 'max:5'],
             'players.*.position' => ['nullable', 'string', 'max:10'],
             'players.*.is_starter' => ['nullable'],
@@ -116,16 +117,25 @@ class TeamController extends Controller
             $submittedRosterPlayerIds = [];
 
             foreach ($validated['players'] as $row) {
-                $firstName = trim($row['first_name'] ?? '');
-                $lastName = trim($row['last_name'] ?? '');
                 $jerseyNumber = trim((string)($row['jersey_number'] ?? ''));
+                $fullName = trim($row['name'] ?? '');
+
+                if ($fullName === '') {
+                    $fn = trim($row['first_name'] ?? '');
+                    $ln = trim($row['last_name'] ?? '');
+                    $fullName = trim("{$fn} {$ln}");
+                }
+
+                if ($jerseyNumber === '' || $fullName === '') {
+                    continue;
+                }
+
+                $nameParts = preg_split('/\s+/', $fullName, 2);
+                $firstName = $nameParts[0] ?? '';
+                $lastName = $nameParts[1] ?? '';
                 $position = !empty($row['position']) ? strtoupper(trim($row['position'])) : null;
                 $isStarter = filter_var($row['is_starter'] ?? false, FILTER_VALIDATE_BOOLEAN);
                 $isLibero = filter_var($row['is_libero'] ?? false, FILTER_VALIDATE_BOOLEAN);
-
-                if ($firstName === '' || $lastName === '' || $jerseyNumber === '') {
-                    continue;
-                }
 
                 $rosterPlayerId = !empty($row['id']) ? (int)$row['id'] : null;
 

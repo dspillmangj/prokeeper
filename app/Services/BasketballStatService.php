@@ -389,4 +389,68 @@ class BasketballStatService
             ]);
         });
     }
+
+    /**
+     * Delete a specific event by ID and recompute game state.
+     */
+    public function deleteEvent(Game $game, int $eventId): ?GameEvent
+    {
+        return DB::transaction(function () use ($game, $eventId) {
+            $event = GameEvent::where('game_id', $game->id)->where('id', $eventId)->first();
+            if (! $event) {
+                return null;
+            }
+
+            $event->is_undone = true;
+            $event->save();
+
+            $this->rebuildGameFromEvents($game);
+
+            return $event;
+        });
+    }
+
+    /**
+     * Update an event by ID and recompute game state.
+     */
+    public function updateEvent(Game $game, int $eventId, array $data): ?GameEvent
+    {
+        return DB::transaction(function () use ($game, $eventId, $data) {
+            $event = GameEvent::where('game_id', $game->id)->where('id', $eventId)->first();
+            if (! $event) {
+                return null;
+            }
+
+            if (isset($data['jersey_number'])) {
+                $event->jersey_number = $data['jersey_number'];
+                $lineup = GameLineup::where('game_id', $game->id)
+                    ->where('team_side', $event->team_side)
+                    ->where('jersey_number', $data['jersey_number'])
+                    ->first();
+                if ($lineup) {
+                    $event->player_name = $lineup->player_name;
+                    $event->player_id = $lineup->player_id;
+                }
+            }
+
+            if (isset($data['action_code']) && isset(self::ACTIONS[$data['action_code']])) {
+                $actionDef = self::ACTIONS[$data['action_code']];
+                $event->action_code = $data['action_code'];
+                $event->action_name = $actionDef['name'];
+                $event->action_type = $actionDef['type'];
+                $event->points = $actionDef['points'];
+            }
+
+            if (isset($data['period'])) {
+                $event->period = (int) $data['period'];
+            }
+
+            $event->description = strtoupper($event->team_side)." #{$event->jersey_number} {$event->player_name}: {$event->action_name}";
+            $event->save();
+
+            $this->rebuildGameFromEvents($game);
+
+            return $event;
+        });
+    }
 }

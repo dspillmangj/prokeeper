@@ -227,4 +227,210 @@ class VolleyballStatService
             $game->save();
         });
     }
+
+    /**
+     * Rebuild volleyball stats and scores from active events.
+     */
+    public function rebuildGameFromEvents(Game $game): void
+    {
+        $events = GameEvent::where('game_id', $game->id)
+            ->where('is_undone', false)
+            ->orderBy('sequence', 'asc')
+            ->get();
+
+        $homeScore = 0;
+        $awayScore = 0;
+        $homePeriodScores = [0, 0, 0, 0, 0];
+        $awayPeriodScores = [0, 0, 0, 0, 0];
+
+        VolleyballStat::where('game_id', $game->id)->update([
+            'kills' => 0,
+            'attack_errors' => 0,
+            'attack_attempts' => 0,
+            'service_aces' => 0,
+            'service_errors' => 0,
+            'service_attempts' => 0,
+            'digs' => 0,
+            'block_solos' => 0,
+            'block_assists' => 0,
+            'total_blocks' => 0,
+            'ball_handling_errors' => 0,
+            'reception_errors' => 0,
+            'assists' => 0,
+            'total_points' => 0,
+            'hitting_percentage' => 0,
+        ]);
+
+        foreach ($events as $event) {
+            $period = $event->period;
+            while (count($homePeriodScores) < $period) {
+                $homePeriodScores[] = 0;
+            }
+            while (count($awayPeriodScores) < $period) {
+                $awayPeriodScores[] = 0;
+            }
+
+            if ($event->points > 0) {
+                if ($event->team_side === 'home') {
+                    $homeScore += $event->points;
+                    $homePeriodScores[$period - 1] += $event->points;
+                } else {
+                    $awayScore += $event->points;
+                    $awayPeriodScores[$period - 1] += $event->points;
+                }
+            }
+
+            if (isset(self::ACTIONS[$event->action_code])) {
+                $this->applyStatToPlayer(
+                    $game->id,
+                    $event->team_side,
+                    $event->jersey_number,
+                    $event->player_name ?? "Player #{$event->jersey_number}",
+                    $event->player_id,
+                    self::ACTIONS[$event->action_code]
+                );
+            }
+        }
+
+        $game->home_score = $homeScore;
+        $game->away_score = $awayScore;
+        $game->home_period_scores = $homePeriodScores;
+        $game->away_period_scores = $awayPeriodScores;
+        $game->save();
+    }
+
+    /**
+     * Undo the last active game event.
+     */
+    public function undoLastEvent(Game $game): ?GameEvent
+    {
+        return DB::transaction(function () use ($game) {
+            $event = GameEvent::where('game_id', $game->id)
+                ->where('is_undone', false)
+                ->orderBy('sequence', 'desc')
+                ->first();
+
+            if (! $event) {
+                return null;
+            }
+
+            $event->is_undone = true;
+            $event->save();
+
+            $this->rebuildGameFromEvents($game);
+
+            return $event;
+        });
+    }
+
+    /**
+     * Delete a specific event by ID.
+     */
+    public function deleteEvent(Game $game, int $eventId): ?GameEvent
+    {
+        return DB::transaction(function () use ($game, $eventId) {
+            $event = GameEvent::where('game_id', $game->id)->where('id', $eventId)->first();
+            if (! $event) {
+                return null;
+            }
+
+            $event->is_undone = true;
+            $event->save();
+
+            $this->rebuildGameFromEvents($game);
+
+            return $event;
+        });
+    }
+
+    /**
+     * Update an event by ID and recompute game state.
+     */
+    public function updateEvent(Game $game, int $eventId, array $data): ?GameEvent
+    {
+        return DB::transaction(function () use ($game, $eventId, $data) {
+            $event = GameEvent::where('game_id', $game->id)->where('id', $eventId)->first();
+            if (! $event) {
+                return null;
+            }
+
+            if (isset($data['jersey_number'])) {
+                $event->jersey_number = $data['jersey_number'];
+                $lineup = GameLineup::where('game_id', $game->id)
+                    ->where('team_side', $event->team_side)
+                    ->where('jersey_number', $data['jersey_number'])
+                    ->first();
+                if ($lineup) {
+                    $event->player_name = $lineup->player_name;
+                    $event->player_id = $lineup->player_id;
+                }
+            }
+
+            if (isset($data['action_code']) && isset(self::ACTIONS[$data['action_code']])) {
+                $actionDef = self::ACTIONS[$data['action_code']];
+                $event->action_code = $data['action_code'];
+                $event->action_name = $actionDef['name'];
+                $event->action_type = $actionDef['type'];
+                $event->points = ($actionDef['point_team'] !== null) ? 1 : 0;
+            }
+
+            if (isset($data['period'])) {
+                $event->period = (int) $data['period'];
+            }
+
+            $event->description = strtoupper($event->team_side)." #{$event->jersey_number} {$event->player_name}: {$event->action_name}";
+            $event->save();
+
+            $this->rebuildGameFromEvents($game);
+
+            return $event;
+        });
+    }
+
+    /**
+     * Substitution
+     */
+    public function substitute(Game $game, string $teamSide, string $subOutJersey, string $subInJersey): void
+    {
+        DB::transaction(function () use ($game, $teamSide, $subOutJersey, $subInJersey) {
+            $subOut = GameLineup::where('game_id', $game->id)
+                ->where('team_side', $teamSide)
+                ->where('jersey_number', $subOutJersey)
+                ->first();
+
+            $subIn = GameLineup::where('game_id', $game->id)
+                ->where('team_side', $teamSide)
+                ->where('jersey_number', $subInJersey)
+                ->first();
+
+            if ($subOut) {
+                $subOut->is_on_court = false;
+                $subOut->save();
+            }
+
+            if ($subIn) {
+                $subIn->is_on_court = true;
+                $subIn->save();
+            }
+
+            $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
+            GameEvent::create([
+                'game_id' => $game->id,
+                'sequence' => $lastSequence + 1,
+                'period' => $game->current_period,
+                'team_side' => $teamSide,
+                'jersey_number' => $subInJersey,
+                'player_name' => $subIn?->player_name ?? "#{$subInJersey}",
+                'sport' => 'volleyball',
+                'action_code' => 'SUB',
+                'action_type' => 'substitution',
+                'action_name' => 'Substitution',
+                'raw_input' => "SUB {$teamSide} {$subOutJersey}->{$subInJersey}",
+                'points' => 0,
+                'home_score_after' => $game->home_score,
+                'away_score_after' => $game->away_score,
+                'description' => strtoupper($teamSide)." Sub: OUT #{$subOutJersey}, IN #{$subInJersey}",
+            ]);
+        });
+    }
 }

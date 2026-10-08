@@ -39,8 +39,10 @@ test('public live scoreboard renders successfully', function () {
 test('public NCAA scorebook renders successfully', function () {
     $response = $this->get(route('public.scorebook', 'EAG999'));
     $response->assertStatus(200);
-    $response->assertSee('Official Basketball Scorebook');
+    $response->assertSee('OFFICIAL MEN\'S BASKETBALL SCOREBOOK', false);
     $response->assertSee('Running Score Progression');
+    $response->assertSee('HOME TEAM SCOREBOOK PAGE');
+    $response->assertSee('VISITING TEAM SCOREBOOK PAGE');
 });
 
 test('NCAA PDF download route generates PDF stream', function () {

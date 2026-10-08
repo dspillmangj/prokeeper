@@ -32,11 +32,13 @@ class NcaaScorebook extends Component
 
         $homeLineup = GameLineup::where('game_id', $game->id)
             ->where('team_side', 'home')
+            ->orderBy('is_starter', 'desc')
             ->orderBy('jersey_number', 'asc')
             ->get();
 
         $awayLineup = GameLineup::where('game_id', $game->id)
             ->where('team_side', 'away')
+            ->orderBy('is_starter', 'desc')
             ->orderBy('jersey_number', 'asc')
             ->get();
 
@@ -50,70 +52,123 @@ class NcaaScorebook extends Component
             ->get()
             ->keyBy('jersey_number');
 
-        // Extract running score points mapping: point index => ['jersey' => '23', 'team' => 'home', 'period' => 1]
-        $scoringEvents = GameEvent::where('game_id', $game->id)
+        // All non-undone game events sorted chronologically
+        $events = GameEvent::where('game_id', $game->id)
             ->where('is_undone', false)
-            ->where('points', '>', 0)
             ->orderBy('sequence', 'asc')
             ->get();
 
-        $homeRunningScore = [];
-        $awayRunningScore = [];
-        $currentHome = 0;
-        $currentAway = 0;
+        // 1. Build Detailed Half-by-Half and Running Score breakdown for Home
+        $homeData = $this->compileTeamNcaaData('home', $homeLineup, $homeStats, $events, $game);
 
-        foreach ($scoringEvents as $ev) {
-            $pts = $ev->points;
-            if ($ev->team_side === 'home') {
-                for ($p = 1; $p <= $pts; $p++) {
-                    $currentHome++;
-                    $homeRunningScore[$currentHome] = [
-                        'jersey' => $ev->jersey_number,
-                        'period' => $ev->period,
-                        'is_made_basket' => ($p === $pts),
-                    ];
-                }
-            } else {
-                for ($p = 1; $p <= $pts; $p++) {
-                    $currentAway++;
-                    $awayRunningScore[$currentAway] = [
-                        'jersey' => $ev->jersey_number,
-                        'period' => $ev->period,
-                        'is_made_basket' => ($p === $pts),
-                    ];
-                }
-            }
-        }
-
-        // Foul breakdown per player
-        $foulEvents = GameEvent::where('game_id', $game->id)
-            ->where('is_undone', false)
-            ->whereIn('action_code', ['F', 'R', 'T'])
-            ->orderBy('sequence', 'asc')
-            ->get();
-
-        $playerFouls = [];
-        foreach ($foulEvents as $fe) {
-            $key = "{$fe->team_side}_{$fe->jersey_number}";
-            if (! isset($playerFouls[$key])) {
-                $playerFouls[$key] = [];
-            }
-            $playerFouls[$key][] = [
-                'type' => $fe->action_code,
-                'period' => $fe->period,
-                'clock' => $fe->formatted_clock,
-            ];
-        }
+        // 2. Build Detailed Half-by-Half and Running Score breakdown for Away
+        $awayData = $this->compileTeamNcaaData('away', $awayLineup, $awayStats, $events, $game);
 
         return view('livewire.ncaa-scorebook', [
             'game' => $game,
-            'homeLineup' => $homeLineup,
-            'awayLineup' => $awayLineup,
-            'homeStats' => $homeStats,
-            'awayStats' => $awayStats,
-            'homeRunningScore' => $homeRunningScore,
-            'awayRunningScore' => $awayRunningScore,
-            'playerFouls' => $playerFouls,
+            'home' => $homeData,
+            'away' => $awayData,
         ])->layout('layouts.public');
+    }
+
+    protected function compileTeamNcaaData(string $teamSide, $lineup, $stats, $events, Game $game): array
+    {
+        $teamEvents = $events->where('team_side', $teamSide);
+        $oppSide = ($teamSide === 'home') ? 'away' : 'home';
+
+        // Half 1 = Period 1 & 2; Half 2 = Period 3 & 4; OT = Period 5+
+        $playerBreakdown = [];
+
+        foreach ($lineup as $lp) {
+            $j = (string)$lp->jersey_number;
+            $pEvents = $teamEvents->where('jersey_number', $j);
+            $st = $stats[$j] ?? null;
+
+            $h1_2pt = $pEvents->whereIn('period', [1, 2])->whereIn('action_code', ['2P', '2P_FAST', '2P_SECOND'])->count();
+            $h1_3pt = $pEvents->whereIn('period', [1, 2])->where('action_code', '3P')->count();
+            $h1_ft_events = $pEvents->whereIn('period', [1, 2])->whereIn('action_code', ['FT_MADE', 'FT_MISSED']);
+            $h1_ft_str = $h1_ft_events->map(fn($e) => $e->action_code === 'FT_MADE' ? 'O' : 'X')->implode(' ');
+            $h1_pts = $pEvents->whereIn('period', [1, 2])->sum('points');
+
+            $h2_2pt = $pEvents->whereIn('period', [3, 4])->whereIn('action_code', ['2P', '2P_FAST', '2P_SECOND'])->count();
+            $h2_3pt = $pEvents->whereIn('period', [3, 4])->where('action_code', '3P')->count();
+            $h2_ft_events = $pEvents->whereIn('period', [3, 4])->whereIn('action_code', ['FT_MADE', 'FT_MISSED']);
+            $h2_ft_str = $h2_ft_events->map(fn($e) => $e->action_code === 'FT_MADE' ? 'O' : 'X')->implode(' ');
+            $h2_pts = $pEvents->whereIn('period', [3, 4])->sum('points');
+
+            $ot_pts = $pEvents->where('period', '>=', 5)->sum('points');
+
+            $fouls = $pEvents->whereIn('action_code', ['F', 'R', 'T'])->values();
+            $pfCount = $fouls->where('action_code', '!=', 'T')->count();
+            $tfCount = $fouls->where('action_code', 'T')->count();
+
+            $playerBreakdown[] = [
+                'lineup_id' => $lp->id,
+                'jersey' => $j,
+                'name' => $lp->player_name,
+                'position' => $lp->position ?: '—',
+                'is_starter' => $lp->is_starter,
+                'h1_2pt' => $h1_2pt,
+                'h1_3pt' => $h1_3pt,
+                'h1_ft_str' => $h1_ft_str ?: '—',
+                'h1_pts' => $h1_pts,
+                'h2_2pt' => $h2_2pt,
+                'h2_3pt' => $h2_3pt,
+                'h2_ft_str' => $h2_ft_str ?: '—',
+                'h2_pts' => $h2_pts,
+                'ot_pts' => $ot_pts,
+                'total_pts' => $st?->points ?? ($h1_pts + $h2_pts + $ot_pts),
+                'pf_count' => $pfCount,
+                'tf_count' => $tfCount,
+                'fouls_list' => $fouls,
+            ];
+        }
+
+        // Running score progression for this team: index 1..160
+        $runningScore = [];
+        $currentPts = 0;
+        $scoringEvents = $teamEvents->where('points', '>', 0);
+
+        foreach ($scoringEvents as $sev) {
+            $pts = $sev->points;
+            for ($p = 1; $p <= $pts; $p++) {
+                $currentPts++;
+                $runningScore[$currentPts] = [
+                    'jersey' => $sev->jersey_number,
+                    'period' => $sev->period,
+                    'is_scoring_point' => ($p === $pts),
+                    'action' => $sev->action_code,
+                ];
+            }
+        }
+
+        // Team Fouls per Half (1st Half: P1 & P2; 2nd Half: P3 & P4)
+        $h1_team_fouls = $teamEvents->whereIn('period', [1, 2])->whereIn('action_code', ['F', 'R', 'T'])->count();
+        $h2_team_fouls = $teamEvents->whereIn('period', [3, 4])->whereIn('action_code', ['F', 'R', 'T'])->count();
+        $ot_team_fouls = $teamEvents->where('period', '>=', 5)->whereIn('action_code', ['F', 'R', 'T'])->count();
+
+        // Team Timeouts
+        $timeouts_taken = $teamEvents->where('action_code', 'TO')->values();
+
+        // Half scoring sums
+        $h1_total_pts = collect($playerBreakdown)->sum('h1_pts');
+        $h2_total_pts = collect($playerBreakdown)->sum('h2_pts');
+        $ot_total_pts = collect($playerBreakdown)->sum('ot_pts');
+
+        return [
+            'side' => $teamSide,
+            'name' => ($teamSide === 'home') ? $game->home_display_name : $game->away_display_name,
+            'score' => ($teamSide === 'home') ? $game->home_score : $game->away_score,
+            'players' => $playerBreakdown,
+            'running_score' => $runningScore,
+            'h1_team_fouls' => $h1_team_fouls,
+            'h2_team_fouls' => $h2_team_fouls,
+            'ot_team_fouls' => $ot_team_fouls,
+            'h1_total_pts' => $h1_total_pts,
+            'h2_total_pts' => $h2_total_pts,
+            'ot_total_pts' => $ot_total_pts,
+            'timeouts_taken' => $timeouts_taken,
+            'timeouts_remaining' => ($teamSide === 'home') ? $game->home_timeouts_remaining : $game->away_timeouts_remaining,
+        ];
     }
 }
