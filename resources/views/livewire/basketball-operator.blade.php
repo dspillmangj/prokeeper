@@ -180,199 +180,352 @@
     <!-- 2. CENTER TIER: ACTIVE PLAYERS GRID OR FULL-TIER ACTION PAD (Adaptive Left-to-Right Top-to-Bottom) -->
     <div class="flex-1 min-h-0 relative my-1 overflow-hidden">
         
-        <!-- DEFAULT: 2-COLUMN ACTIVE PLAYERS GRID (When no player is selected) -->
+        <!-- DEFAULT: 2-TEAM 2x3 GRIDS WITH CENTER-ANCHORED ACTION BOXES (When no player is selected) -->
         <div x-show="!selectedPlayer" class="w-full h-full grid grid-cols-2 gap-2 overflow-hidden">
         
-        <!-- HOME ACTIVE PLAYERS (5 BUTTONS + 1 TEAM ACTIONS SLOT) -->
-        <div class="flex flex-col h-full bg-slate-900/90 border border-slate-800 rounded-2xl p-2 overflow-hidden shadow-inner transition-all"
-             :class="isFlipped ? 'order-2' : 'order-1'">
-            <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-800 text-[11px] font-bold">
-                <span class="uppercase tracking-wider truncate flex items-center gap-1.5" :style="{ color: homeTeamColor }">
-                    <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: homeTeamColor }"></span>
-                    <span>{{ $game->home_display_name }} (Court)</span>
-                </span>
-                
-                <div class="flex items-center space-x-1.5">
-                    <span class="text-[10px] text-slate-400 font-mono">5 On Court</span>
+            <!-- LEFT TEAM BOX (Container 1) -->
+            <div class="h-full bg-slate-900/40 border border-slate-800/80 rounded-2xl p-2 flex flex-col min-h-0 shadow-inner">
+                <!-- LH Team Header -->
+                <div class="flex items-center justify-between pb-1 border-b border-slate-800 text-[11px] font-bold shrink-0">
+                    <span class="uppercase tracking-wider truncate flex items-center gap-1.5" :style="{ color: isFlipped ? awayTeamColor : homeTeamColor }">
+                        <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: isFlipped ? awayTeamColor : homeTeamColor }"></span>
+                        <span x-text="(isFlipped ? awayTeamName : homeTeamName) + ' (Court)'"></span>
+                    </span>
+                    <div class="flex items-center space-x-1.5">
+                        <span class="text-[10px] text-slate-400 font-mono">5 On Court</span>
+                    </div>
                 </div>
-            </div>
 
-            <!-- 5 Touch Buttons Grid + Team Controls (2 cols x 3 rows) -->
-            <div class="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-1.5">
-                <template x-for="(player, idx) in homeCourt" :key="player.id || idx">
-                    <button @click="openActionPad('home', player.jersey_number, player.player_name, player.id)"
+                <!-- LH 2x3 Grid -->
+                <div class="flex-1 grid grid-cols-2 grid-rows-3 gap-1.5 sm:gap-2 min-h-0 mt-1.5">
+                    <!-- Slot 1: LH Player 1 -->
+                    <button @click="(isFlipped ? awayCourt : homeCourt)[0] && openActionPad(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[0].jersey_number, (isFlipped ? awayCourt : homeCourt)[0].player_name, (isFlipped ? awayCourt : homeCourt)[0].id)"
                             type="button"
-                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
                             :class="[
-                                selectedPlayer && selectedPlayer.side === 'home' && selectedPlayer.jersey == player.jersey_number
+                                !(isFlipped ? awayCourt : homeCourt)[0] ? 'invisible pointer-events-none' : '',
+                                selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[0]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : 'bg-slate-950/90 hover:bg-slate-900'
                             ]"
-                            :style="selectedPlayer && selectedPlayer.side === 'home' && selectedPlayer.jersey == player.jersey_number 
-                                ? { backgroundColor: homeTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + homeTeamColor + '99' } 
-                                : { borderColor: homeTeamColor + '40' }">
-                        
-                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
-                            <span class="font-bold text-amber-300" x-text="'#' + player.jersey_number"></span>
-                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="player.position || 'G/F'"></span>
-                        </div>
-
-                        <!-- Massive Jersey Number -->
-                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="'#' + player.jersey_number">
-                        </div>
-
-                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="player.player_name">
-                        </div>
-                    </button>
-                </template>
-
-                <!-- HOME TEAM ACTIONS (Slot 6: Row 3, Col 2 - Inner 3 Equal Buttons) -->
-                <div class="h-full w-full grid grid-rows-3 gap-1.5">
-                    <!-- 1. Full Timeout -->
-                    <button type="button" 
-                            @click="callTimeoutFast('home', 'full')" 
-                            class="h-full w-full rounded-xl border-2 bg-slate-950/90 hover:bg-slate-900 p-1.5 sm:p-2 flex items-center justify-between touch-active transition-all group"
-                            :style="{ borderColor: homeTeamColor + '40' }"
-                            title="Home Full Timeout (Hotkey: H)">
-                        <div class="flex items-center gap-1.5 min-w-0">
-                            <svg class="w-3.5 h-3.5 shrink-0" :style="{ color: homeTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                            <span class="text-xs font-black uppercase text-white tracking-tight truncate">Full TO</span>
-                        </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white" :style="{ backgroundColor: homeTeamColor + '40', border: '1px solid ' + homeTeamColor }" x-text="homeFullTimeouts + ' left'"></span>
-                            <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">H</span>
-                        </div>
-                    </button>
-
-                    <!-- 2. 30s Short Timeout -->
-                    <button type="button" 
-                            @click="callTimeoutFast('home', '30s')" 
-                            class="h-full w-full rounded-xl border-2 bg-slate-950/90 hover:bg-slate-900 p-1.5 sm:p-2 flex items-center justify-between touch-active transition-all group"
-                            :style="{ borderColor: homeTeamColor + '40' }"
-                            title="Home 30-Second Timeout (Hotkey: Shift+H)">
-                        <div class="flex items-center gap-1.5 min-w-0">
-                            <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                            <span class="text-xs font-black uppercase text-white tracking-tight truncate">30s TO</span>
-                        </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                            <span class="px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/80 text-[9px] font-mono font-bold" x-text="home30sTimeouts + ' left'"></span>
-                            <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">⇧H</span>
-                        </div>
-                    </button>
-
-                    <!-- 3. Edit Roster -->
-                    <button type="button" 
-                            @click="@this.openRosterModal('home'); playSound('tap')" 
-                            class="h-full w-full rounded-xl border-2 bg-slate-950/90 hover:bg-slate-900 p-1.5 sm:p-2 flex items-center justify-between touch-active transition-all group"
-                            :style="{ borderColor: homeTeamColor + '40' }"
-                            title="Manage Home Team Roster (Hotkey: R)">
-                        <div class="flex items-center gap-1.5 min-w-0">
-                            <svg class="w-3.5 h-3.5 shrink-0" :style="{ color: homeTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                            <span class="text-xs font-black uppercase text-white tracking-tight truncate">Roster</span>
-                        </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                            <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">R</span>
-                        </div>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- AWAY ACTIVE PLAYERS (5 BUTTONS + 1 TEAM ACTIONS SLOT) -->
-        <div class="flex flex-col h-full bg-slate-900/90 border border-slate-800 rounded-2xl p-2 overflow-hidden shadow-inner transition-all"
-             :class="isFlipped ? 'order-1' : 'order-2'">
-            <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-800 text-[11px] font-bold">
-                <span class="uppercase tracking-wider truncate flex items-center gap-1.5" :style="{ color: awayTeamColor }">
-                    <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: awayTeamColor }"></span>
-                    <span>{{ $game->away_display_name }} (Court)</span>
-                </span>
-
-                <div class="flex items-center space-x-1.5">
-                    <span class="text-[10px] text-slate-400 font-mono">5 On Court</span>
-                </div>
-            </div>
-
-            <!-- 5 Touch Buttons Grid + Team Controls (2 cols x 3 rows) -->
-            <div class="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-1.5">
-                <template x-for="(player, idx) in awayCourt" :key="player.id || idx">
-                    <button @click="openActionPad('away', player.jersey_number, player.player_name, player.id)"
-                            type="button"
                             class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :style="selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[0]?.jersey_number 
+                                ? { backgroundColor: isFlipped ? awayTeamColor : homeTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + (isFlipped ? awayTeamColor : homeTeamColor) + '99' } 
+                                : { borderColor: (isFlipped ? awayTeamColor : homeTeamColor) + '40' }">
+                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                            <span class="font-bold text-amber-300" x-text="(isFlipped ? awayCourt : homeCourt)[0] ? '#' + (isFlipped ? awayCourt : homeCourt)[0].jersey_number : ''"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="(isFlipped ? awayCourt : homeCourt)[0]?.position || 'G/F'"></span>
+                        </div>
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="(isFlipped ? awayCourt : homeCourt)[0] ? '#' + (isFlipped ? awayCourt : homeCourt)[0].jersey_number : ''"></div>
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="(isFlipped ? awayCourt : homeCourt)[0]?.player_name || ''"></div>
+                    </button>
+
+                    <!-- Slot 2: LH Player 2 -->
+                    <button @click="(isFlipped ? awayCourt : homeCourt)[1] && openActionPad(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[1].jersey_number, (isFlipped ? awayCourt : homeCourt)[1].player_name, (isFlipped ? awayCourt : homeCourt)[1].id)"
+                            type="button"
                             :class="[
-                                idx === 4 ? 'col-start-2' : '',
-                                selectedPlayer && selectedPlayer.side === 'away' && selectedPlayer.jersey == player.jersey_number
+                                !(isFlipped ? awayCourt : homeCourt)[1] ? 'invisible pointer-events-none' : '',
+                                selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[1]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : 'bg-slate-950/90 hover:bg-slate-900'
                             ]"
-                            :style="selectedPlayer && selectedPlayer.side === 'away' && selectedPlayer.jersey == player.jersey_number 
-                                ? { backgroundColor: awayTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + awayTeamColor + '99' } 
-                                : { borderColor: awayTeamColor + '40' }">
-                        
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :style="selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[1]?.jersey_number 
+                                ? { backgroundColor: isFlipped ? awayTeamColor : homeTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + (isFlipped ? awayTeamColor : homeTeamColor) + '99' } 
+                                : { borderColor: (isFlipped ? awayTeamColor : homeTeamColor) + '40' }">
                         <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
-                            <span class="font-bold text-amber-300" x-text="'#' + player.jersey_number"></span>
-                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="player.position || 'G/F'"></span>
+                            <span class="font-bold text-amber-300" x-text="(isFlipped ? awayCourt : homeCourt)[1] ? '#' + (isFlipped ? awayCourt : homeCourt)[1].jersey_number : ''"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="(isFlipped ? awayCourt : homeCourt)[1]?.position || 'G/F'"></span>
                         </div>
-
-                        <!-- Massive Jersey Number -->
-                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="'#' + player.jersey_number">
-                        </div>
-
-                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="player.player_name">
-                        </div>
-                    </button>
-                </template>
-
-                <!-- AWAY TEAM ACTIONS (Slot 5: Row 3, Col 1 - Inner 3 Equal Buttons) -->
-                <div class="col-start-1 row-start-3 h-full w-full grid grid-rows-3 gap-1.5">
-                    <!-- 1. Full Timeout -->
-                    <button type="button" 
-                            @click="callTimeoutFast('away', 'full')" 
-                            class="h-full w-full rounded-xl border-2 bg-slate-950/90 hover:bg-slate-900 p-1.5 sm:p-2 flex items-center justify-between touch-active transition-all group"
-                            :style="{ borderColor: awayTeamColor + '40' }"
-                            title="Away Full Timeout (Hotkey: A)">
-                        <div class="flex items-center gap-1.5 min-w-0">
-                            <svg class="w-3.5 h-3.5 shrink-0" :style="{ color: awayTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                            <span class="text-xs font-black uppercase text-white tracking-tight truncate">Full TO</span>
-                        </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white" :style="{ backgroundColor: awayTeamColor + '40', border: '1px solid ' + awayTeamColor }" x-text="awayFullTimeouts + ' left'"></span>
-                            <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">A</span>
-                        </div>
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="(isFlipped ? awayCourt : homeCourt)[1] ? '#' + (isFlipped ? awayCourt : homeCourt)[1].jersey_number : ''"></div>
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="(isFlipped ? awayCourt : homeCourt)[1]?.player_name || ''"></div>
                     </button>
 
-                    <!-- 2. 30s Short Timeout -->
-                    <button type="button" 
-                            @click="callTimeoutFast('away', '30s')" 
-                            class="h-full w-full rounded-xl border-2 bg-slate-950/90 hover:bg-slate-900 p-1.5 sm:p-2 flex items-center justify-between touch-active transition-all group"
-                            :style="{ borderColor: awayTeamColor + '40' }"
-                            title="Away 30-Second Timeout (Hotkey: Shift+A)">
-                        <div class="flex items-center gap-1.5 min-w-0">
-                            <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                            <span class="text-xs font-black uppercase text-white tracking-tight truncate">30s TO</span>
+                    <!-- Slot 3: LH Player 3 -->
+                    <button @click="(isFlipped ? awayCourt : homeCourt)[2] && openActionPad(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[2].jersey_number, (isFlipped ? awayCourt : homeCourt)[2].player_name, (isFlipped ? awayCourt : homeCourt)[2].id)"
+                            type="button"
+                            :class="[
+                                !(isFlipped ? awayCourt : homeCourt)[2] ? 'invisible pointer-events-none' : '',
+                                selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[2]?.jersey_number
+                                    ? 'text-white border-white ring-2 ring-white/50' 
+                                    : 'bg-slate-950/90 hover:bg-slate-900'
+                            ]"
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :style="selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[2]?.jersey_number 
+                                ? { backgroundColor: isFlipped ? awayTeamColor : homeTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + (isFlipped ? awayTeamColor : homeTeamColor) + '99' } 
+                                : { borderColor: (isFlipped ? awayTeamColor : homeTeamColor) + '40' }">
+                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                            <span class="font-bold text-amber-300" x-text="(isFlipped ? awayCourt : homeCourt)[2] ? '#' + (isFlipped ? awayCourt : homeCourt)[2].jersey_number : ''"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="(isFlipped ? awayCourt : homeCourt)[2]?.position || 'G/F'"></span>
                         </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                            <span class="px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/80 text-[9px] font-mono font-bold" x-text="away30sTimeouts + ' left'"></span>
-                            <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">⇧A</span>
-                        </div>
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="(isFlipped ? awayCourt : homeCourt)[2] ? '#' + (isFlipped ? awayCourt : homeCourt)[2].jersey_number : ''"></div>
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="(isFlipped ? awayCourt : homeCourt)[2]?.player_name || ''"></div>
                     </button>
 
-                    <!-- 3. Edit Roster -->
-                    <button type="button" 
-                            @click="@this.openRosterModal('away'); playSound('tap')" 
-                            class="h-full w-full rounded-xl border-2 bg-slate-950/90 hover:bg-slate-900 p-1.5 sm:p-2 flex items-center justify-between touch-active transition-all group"
-                            :style="{ borderColor: awayTeamColor + '40' }"
-                            title="Manage Away Team Roster (Hotkey: Shift+R)">
-                        <div class="flex items-center gap-1.5 min-w-0">
-                            <svg class="w-3.5 h-3.5 shrink-0" :style="{ color: awayTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                            <span class="text-xs font-black uppercase text-white tracking-tight truncate">Roster</span>
+                    <!-- Slot 4: LH Player 4 -->
+                    <button @click="(isFlipped ? awayCourt : homeCourt)[3] && openActionPad(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[3].jersey_number, (isFlipped ? awayCourt : homeCourt)[3].player_name, (isFlipped ? awayCourt : homeCourt)[3].id)"
+                            type="button"
+                            :class="[
+                                !(isFlipped ? awayCourt : homeCourt)[3] ? 'invisible pointer-events-none' : '',
+                                selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[3]?.jersey_number
+                                    ? 'text-white border-white ring-2 ring-white/50' 
+                                    : 'bg-slate-950/90 hover:bg-slate-900'
+                            ]"
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :style="selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[3]?.jersey_number 
+                                ? { backgroundColor: isFlipped ? awayTeamColor : homeTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + (isFlipped ? awayTeamColor : homeTeamColor) + '99' } 
+                                : { borderColor: (isFlipped ? awayTeamColor : homeTeamColor) + '40' }">
+                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                            <span class="font-bold text-amber-300" x-text="(isFlipped ? awayCourt : homeCourt)[3] ? '#' + (isFlipped ? awayCourt : homeCourt)[3].jersey_number : ''"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="(isFlipped ? awayCourt : homeCourt)[3]?.position || 'G/F'"></span>
                         </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                            <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">⇧R</span>
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="(isFlipped ? awayCourt : homeCourt)[3] ? '#' + (isFlipped ? awayCourt : homeCourt)[3].jersey_number : ''"></div>
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="(isFlipped ? awayCourt : homeCourt)[3]?.player_name || ''"></div>
+                    </button>
+
+                    <!-- Slot 5: LH Player 5 -->
+                    <button @click="(isFlipped ? awayCourt : homeCourt)[4] && openActionPad(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[4].jersey_number, (isFlipped ? awayCourt : homeCourt)[4].player_name, (isFlipped ? awayCourt : homeCourt)[4].id)"
+                            type="button"
+                            :class="[
+                                !(isFlipped ? awayCourt : homeCourt)[4] ? 'invisible pointer-events-none' : '',
+                                selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[4]?.jersey_number
+                                    ? 'text-white border-white ring-2 ring-white/50' 
+                                    : 'bg-slate-950/90 hover:bg-slate-900'
+                            ]"
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :style="selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[4]?.jersey_number 
+                                ? { backgroundColor: isFlipped ? awayTeamColor : homeTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + (isFlipped ? awayTeamColor : homeTeamColor) + '99' } 
+                                : { borderColor: (isFlipped ? awayTeamColor : homeTeamColor) + '40' }">
+                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                            <span class="font-bold text-amber-300" x-text="(isFlipped ? awayCourt : homeCourt)[4] ? '#' + (isFlipped ? awayCourt : homeCourt)[4].jersey_number : ''"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="(isFlipped ? awayCourt : homeCourt)[4]?.position || 'G/F'"></span>
                         </div>
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="(isFlipped ? awayCourt : homeCourt)[4] ? '#' + (isFlipped ? awayCourt : homeCourt)[4].jersey_number : ''"></div>
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="(isFlipped ? awayCourt : homeCourt)[4]?.player_name || ''"></div>
+                    </button>
+
+                    <!-- Slot 6: LH TEAM ACTIONS (Anchored permanently on inside bottom-right) -->
+                    <div class="h-full w-full rounded-2xl bg-slate-950/95 border-2 border-slate-700/90 p-1.5 shadow-2xl grid grid-rows-3 gap-1 overflow-hidden">
+                        <!-- 1. Full Timeout -->
+                        <button type="button" 
+                                @click="callTimeoutFast(isFlipped ? 'away' : 'home', 'full')" 
+                                class="h-full w-full rounded-xl border bg-slate-900/90 hover:bg-slate-800 p-1 sm:p-1.5 flex items-center justify-between touch-active transition-all group"
+                                :style="{ borderColor: (isFlipped ? awayTeamColor : homeTeamColor) + '60' }"
+                                :title="(isFlipped ? 'Away' : 'Home') + ' Full Timeout (Hotkey: F)'">
+                            <div class="flex items-center gap-1 min-w-0">
+                                <svg class="w-3.5 h-3.5 shrink-0" :style="{ color: isFlipped ? awayTeamColor : homeTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <span class="text-[11px] sm:text-xs font-black uppercase text-white tracking-tight truncate">Full TO</span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <span class="px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-mono font-bold text-white" :style="{ backgroundColor: (isFlipped ? awayTeamColor : homeTeamColor) + '40', border: '1px solid ' + (isFlipped ? awayTeamColor : homeTeamColor) }" x-text="(isFlipped ? awayFullTimeouts : homeFullTimeouts) + ' left'"></span>
+                                <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">F</span>
+                            </div>
+                        </button>
+
+                        <!-- 2. 30s Short Timeout -->
+                        <button type="button" 
+                                @click="callTimeoutFast(isFlipped ? 'away' : 'home', '30s')" 
+                                class="h-full w-full rounded-xl border bg-slate-900/90 hover:bg-slate-800 p-1 sm:p-1.5 flex items-center justify-between touch-active transition-all group"
+                                :style="{ borderColor: (isFlipped ? awayTeamColor : homeTeamColor) + '60' }"
+                                :title="(isFlipped ? 'Away' : 'Home') + ' 30-Second Timeout (Hotkey: H)'">
+                            <div class="flex items-center gap-1 min-w-0">
+                                <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                <span class="text-[11px] sm:text-xs font-black uppercase text-white tracking-tight truncate">30s TO</span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <span class="px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/80 text-[8px] sm:text-[9px] font-mono font-bold" x-text="(isFlipped ? away30sTimeouts : home30sTimeouts) + ' left'"></span>
+                                <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">H</span>
+                            </div>
+                        </button>
+
+                        <!-- 3. Edit Roster -->
+                        <button type="button" 
+                                @click="@this.openRosterModal(isFlipped ? 'away' : 'home'); playSound('tap')" 
+                                class="h-full w-full rounded-xl border bg-slate-900/90 hover:bg-slate-800 p-1 sm:p-1.5 flex items-center justify-between touch-active transition-all group"
+                                :style="{ borderColor: (isFlipped ? awayTeamColor : homeTeamColor) + '60' }"
+                                :title="'Manage ' + (isFlipped ? 'Away' : 'Home') + ' Team Roster (Hotkey: R)'">
+                            <div class="flex items-center gap-1 min-w-0">
+                                <svg class="w-3.5 h-3.5 shrink-0" :style="{ color: isFlipped ? awayTeamColor : homeTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                <span class="text-[11px] sm:text-xs font-black uppercase text-white tracking-tight truncate">Roster</span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">R</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT TEAM BOX (Container 2) -->
+            <div class="h-full bg-slate-900/40 border border-slate-800/80 rounded-2xl p-2 flex flex-col min-h-0 shadow-inner">
+                <!-- RH Team Header -->
+                <div class="flex items-center justify-between pb-1 border-b border-slate-800 text-[11px] font-bold shrink-0">
+                    <span class="uppercase tracking-wider truncate flex items-center gap-1.5" :style="{ color: isFlipped ? homeTeamColor : awayTeamColor }">
+                        <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: isFlipped ? homeTeamColor : awayTeamColor }"></span>
+                        <span x-text="(isFlipped ? homeTeamName : awayTeamName) + ' (Court)'"></span>
+                    </span>
+                    <div class="flex items-center space-x-1.5">
+                        <span class="text-[10px] text-slate-400 font-mono">5 On Court</span>
+                    </div>
+                </div>
+
+                <!-- RH 2x3 Grid -->
+                <div class="flex-1 grid grid-cols-2 grid-rows-3 gap-1.5 sm:gap-2 min-h-0 mt-1.5">
+                    <!-- Slot 1: RH Player 1 -->
+                    <button @click="(isFlipped ? homeCourt : awayCourt)[0] && openActionPad(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[0].jersey_number, (isFlipped ? homeCourt : awayCourt)[0].player_name, (isFlipped ? homeCourt : awayCourt)[0].id)"
+                            type="button"
+                            :class="[
+                                !(isFlipped ? homeCourt : awayCourt)[0] ? 'invisible pointer-events-none' : '',
+                                selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[0]?.jersey_number
+                                    ? 'text-white border-white ring-2 ring-white/50' 
+                                    : 'bg-slate-950/90 hover:bg-slate-900'
+                            ]"
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :style="selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[0]?.jersey_number 
+                                ? { backgroundColor: isFlipped ? homeTeamColor : awayTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + (isFlipped ? homeTeamColor : awayTeamColor) + '99' } 
+                                : { borderColor: (isFlipped ? homeTeamColor : awayTeamColor) + '40' }">
+                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                            <span class="font-bold text-amber-300" x-text="(isFlipped ? homeCourt : awayCourt)[0] ? '#' + (isFlipped ? homeCourt : awayCourt)[0].jersey_number : ''"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="(isFlipped ? homeCourt : awayCourt)[0]?.position || 'G/F'"></span>
+                        </div>
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="(isFlipped ? homeCourt : awayCourt)[0] ? '#' + (isFlipped ? homeCourt : awayCourt)[0].jersey_number : ''"></div>
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="(isFlipped ? homeCourt : awayCourt)[0]?.player_name || ''"></div>
+                    </button>
+
+                    <!-- Slot 2: RH Player 2 -->
+                    <button @click="(isFlipped ? homeCourt : awayCourt)[1] && openActionPad(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[1].jersey_number, (isFlipped ? homeCourt : awayCourt)[1].player_name, (isFlipped ? homeCourt : awayCourt)[1].id)"
+                            type="button"
+                            :class="[
+                                !(isFlipped ? homeCourt : awayCourt)[1] ? 'invisible pointer-events-none' : '',
+                                selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[1]?.jersey_number
+                                    ? 'text-white border-white ring-2 ring-white/50' 
+                                    : 'bg-slate-950/90 hover:bg-slate-900'
+                            ]"
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :style="selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[1]?.jersey_number 
+                                ? { backgroundColor: isFlipped ? homeTeamColor : awayTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + (isFlipped ? homeTeamColor : awayTeamColor) + '99' } 
+                                : { borderColor: (isFlipped ? homeTeamColor : awayTeamColor) + '40' }">
+                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                            <span class="font-bold text-amber-300" x-text="(isFlipped ? homeCourt : awayCourt)[1] ? '#' + (isFlipped ? homeCourt : awayCourt)[1].jersey_number : ''"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="(isFlipped ? homeCourt : awayCourt)[1]?.position || 'G/F'"></span>
+                        </div>
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="(isFlipped ? homeCourt : awayCourt)[1] ? '#' + (isFlipped ? homeCourt : awayCourt)[1].jersey_number : ''"></div>
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="(isFlipped ? homeCourt : awayCourt)[1]?.player_name || ''"></div>
+                    </button>
+
+                    <!-- Slot 3: RH Player 3 -->
+                    <button @click="(isFlipped ? homeCourt : awayCourt)[2] && openActionPad(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[2].jersey_number, (isFlipped ? homeCourt : awayCourt)[2].player_name, (isFlipped ? homeCourt : awayCourt)[2].id)"
+                            type="button"
+                            :class="[
+                                !(isFlipped ? homeCourt : awayCourt)[2] ? 'invisible pointer-events-none' : '',
+                                selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[2]?.jersey_number
+                                    ? 'text-white border-white ring-2 ring-white/50' 
+                                    : 'bg-slate-950/90 hover:bg-slate-900'
+                            ]"
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :style="selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[2]?.jersey_number 
+                                ? { backgroundColor: isFlipped ? homeTeamColor : awayTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + (isFlipped ? homeTeamColor : awayTeamColor) + '99' } 
+                                : { borderColor: (isFlipped ? homeTeamColor : awayTeamColor) + '40' }">
+                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                            <span class="font-bold text-amber-300" x-text="(isFlipped ? homeCourt : awayCourt)[2] ? '#' + (isFlipped ? homeCourt : awayCourt)[2].jersey_number : ''"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="(isFlipped ? homeCourt : awayCourt)[2]?.position || 'G/F'"></span>
+                        </div>
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="(isFlipped ? homeCourt : awayCourt)[2] ? '#' + (isFlipped ? homeCourt : awayCourt)[2].jersey_number : ''"></div>
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="(isFlipped ? homeCourt : awayCourt)[2]?.player_name || ''"></div>
+                    </button>
+
+                    <!-- Slot 4: RH Player 4 -->
+                    <button @click="(isFlipped ? homeCourt : awayCourt)[3] && openActionPad(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[3].jersey_number, (isFlipped ? homeCourt : awayCourt)[3].player_name, (isFlipped ? homeCourt : awayCourt)[3].id)"
+                            type="button"
+                            :class="[
+                                !(isFlipped ? homeCourt : awayCourt)[3] ? 'invisible pointer-events-none' : '',
+                                selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[3]?.jersey_number
+                                    ? 'text-white border-white ring-2 ring-white/50' 
+                                    : 'bg-slate-950/90 hover:bg-slate-900'
+                            ]"
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :style="selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[3]?.jersey_number 
+                                ? { backgroundColor: isFlipped ? homeTeamColor : awayTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + (isFlipped ? homeTeamColor : awayTeamColor) + '99' } 
+                                : { borderColor: (isFlipped ? homeTeamColor : awayTeamColor) + '40' }">
+                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                            <span class="font-bold text-amber-300" x-text="(isFlipped ? homeCourt : awayCourt)[3] ? '#' + (isFlipped ? homeCourt : awayCourt)[3].jersey_number : ''"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="(isFlipped ? homeCourt : awayCourt)[3]?.position || 'G/F'"></span>
+                        </div>
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="(isFlipped ? homeCourt : awayCourt)[3] ? '#' + (isFlipped ? homeCourt : awayCourt)[3].jersey_number : ''"></div>
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="(isFlipped ? homeCourt : awayCourt)[3]?.player_name || ''"></div>
+                    </button>
+
+                    <!-- Slot 5: RH TEAM ACTIONS (Anchored permanently on inside bottom-left) -->
+                    <div class="h-full w-full rounded-2xl bg-slate-950/95 border-2 border-slate-700/90 p-1.5 shadow-2xl grid grid-rows-3 gap-1 overflow-hidden">
+                        <!-- 1. Full Timeout -->
+                        <button type="button" 
+                                @click="callTimeoutFast(isFlipped ? 'home' : 'away', 'full')" 
+                                class="h-full w-full rounded-xl border bg-slate-900/90 hover:bg-slate-800 p-1 sm:p-1.5 flex items-center justify-between touch-active transition-all group"
+                                :style="{ borderColor: (isFlipped ? homeTeamColor : awayTeamColor) + '60' }"
+                                :title="(isFlipped ? 'Home' : 'Away') + ' Full Timeout (Hotkey: G)'">
+                            <div class="flex items-center gap-1 min-w-0">
+                                <svg class="w-3.5 h-3.5 shrink-0" :style="{ color: isFlipped ? homeTeamColor : awayTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <span class="text-[11px] sm:text-xs font-black uppercase text-white tracking-tight truncate">Full TO</span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <span class="px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-mono font-bold text-white" :style="{ backgroundColor: (isFlipped ? homeTeamColor : awayTeamColor) + '40', border: '1px solid ' + (isFlipped ? homeTeamColor : awayTeamColor) }" x-text="(isFlipped ? homeFullTimeouts : awayFullTimeouts) + ' left'"></span>
+                                <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">G</span>
+                            </div>
+                        </button>
+
+                        <!-- 2. 30s Short Timeout -->
+                        <button type="button" 
+                                @click="callTimeoutFast(isFlipped ? 'home' : 'away', '30s')" 
+                                class="h-full w-full rounded-xl border bg-slate-900/90 hover:bg-slate-800 p-1 sm:p-1.5 flex items-center justify-between touch-active transition-all group"
+                                :style="{ borderColor: (isFlipped ? homeTeamColor : awayTeamColor) + '60' }"
+                                :title="(isFlipped ? 'Home' : 'Away') + ' 30-Second Timeout (Hotkey: J)'">
+                            <div class="flex items-center gap-1 min-w-0">
+                                <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                <span class="text-[11px] sm:text-xs font-black uppercase text-white tracking-tight truncate">30s TO</span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <span class="px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/80 text-[8px] sm:text-[9px] font-mono font-bold" x-text="(isFlipped ? home30sTimeouts : away30sTimeouts) + ' left'"></span>
+                                <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">J</span>
+                            </div>
+                        </button>
+
+                        <!-- 3. Edit Roster -->
+                        <button type="button" 
+                                @click="@this.openRosterModal(isFlipped ? 'home' : 'away'); playSound('tap')" 
+                                class="h-full w-full rounded-xl border bg-slate-900/90 hover:bg-slate-800 p-1 sm:p-1.5 flex items-center justify-between touch-active transition-all group"
+                                :style="{ borderColor: (isFlipped ? homeTeamColor : awayTeamColor) + '60' }"
+                                :title="'Manage ' + (isFlipped ? 'Home' : 'Away') + ' Team Roster (Hotkey: T)'">
+                            <div class="flex items-center gap-1 min-w-0">
+                                <svg class="w-3.5 h-3.5 shrink-0" :style="{ color: isFlipped ? homeTeamColor : awayTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                <span class="text-[11px] sm:text-xs font-black uppercase text-white tracking-tight truncate">Roster</span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">T</span>
+                            </div>
+                        </button>
+                    </div>
+
+                    <!-- Slot 6: RH Player 5 -->
+                    <button @click="(isFlipped ? homeCourt : awayCourt)[4] && openActionPad(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[4].jersey_number, (isFlipped ? homeCourt : awayCourt)[4].player_name, (isFlipped ? homeCourt : awayCourt)[4].id)"
+                            type="button"
+                            :class="[
+                                !(isFlipped ? homeCourt : awayCourt)[4] ? 'invisible pointer-events-none' : '',
+                                selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[4]?.jersey_number
+                                    ? 'text-white border-white ring-2 ring-white/50' 
+                                    : 'bg-slate-950/90 hover:bg-slate-900'
+                            ]"
+                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                            :style="selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[4]?.jersey_number 
+                                ? { backgroundColor: isFlipped ? homeTeamColor : awayTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + (isFlipped ? homeTeamColor : awayTeamColor) + '99' } 
+                                : { borderColor: (isFlipped ? homeTeamColor : awayTeamColor) + '40' }">
+                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                            <span class="font-bold text-amber-300" x-text="(isFlipped ? homeCourt : awayCourt)[4] ? '#' + (isFlipped ? homeCourt : awayCourt)[4].jersey_number : ''"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="(isFlipped ? homeCourt : awayCourt)[4]?.position || 'G/F'"></span>
+                        </div>
+                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="(isFlipped ? homeCourt : awayCourt)[4] ? '#' + (isFlipped ? homeCourt : awayCourt)[4].jersey_number : ''"></div>
+                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="(isFlipped ? homeCourt : awayCourt)[4]?.player_name || ''"></div>
                     </button>
                 </div>
             </div>
-        </div>
         </div>
 
         <!-- ACTIVE: FULL ACTION PAD (Takes up 100% of the player card area left-to-right, top-to-bottom) -->
@@ -1498,7 +1651,8 @@
 
     <!-- ON-THE-FLY SPREADSHEET ROSTER MANAGEMENT MODAL -->
     @if ($showRosterModal)
-        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none animate-fade-in"
+        <div wire:key="in-game-roster-modal-{{ $rosterModalTeam }}-{{ $rosterModalLineups->pluck('id')->join('-') }}"
+             class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none animate-fade-in"
              @keydown.window.escape.prevent="$wire.closeRosterModal()"
              wire:keydown.escape="closeRosterModal"
              x-data="inGameRosterSpreadsheet({
@@ -1509,6 +1663,8 @@
                          'id' => $l->id,
                          'jersey_number' => (string)$l->jersey_number,
                          'name' => $l->player_name,
+                         'position' => (string)($l->position ?? ''),
+                         'is_starter' => (bool)$l->is_starter,
                          'is_on_court' => (bool)$l->is_on_court,
                      ];
                  })->values()) }}
@@ -1569,16 +1725,22 @@
                         <thead class="bg-slate-950 text-slate-400 font-mono uppercase text-[10px] sticky top-0 z-10 border-b border-slate-700 select-none">
                             <tr>
                                 <th class="w-10 py-2 px-2 text-center bg-slate-950/90 border-r border-slate-800 text-slate-500 font-bold">#</th>
-                                <th class="w-28 py-2 px-3 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                                <th class="w-24 py-2 px-3 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
                                     A &bull; Jersey #
                                 </th>
                                 <th class="py-2 px-3 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
                                     B &bull; Player Name (First & Last)
                                 </th>
-                                <th class="w-28 py-2 px-2 text-center border-r border-slate-800 uppercase tracking-wider text-slate-300">
-                                    Court Status
+                                <th class="w-20 py-2 px-2 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                                    C &bull; Pos
                                 </th>
-                                <th class="w-12 py-2 px-1 text-center text-slate-600"></th>
+                                <th class="w-24 py-2 px-2 text-center border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                                    D &bull; Starter
+                                </th>
+                                <th class="w-24 py-2 px-2 text-center border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                                    Court
+                                </th>
+                                <th class="w-10 py-2 px-1 text-center text-slate-600"></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-800 text-slate-200 bg-slate-950/40">
@@ -1588,7 +1750,7 @@
                                     <td class="w-10 text-center py-0 px-2 bg-slate-950/70 border-r border-slate-800 text-slate-500 font-mono text-[11px] select-none font-bold" x-text="idx + 1"></td>
 
                                     <!-- Jersey Number Cell -->
-                                    <td class="w-28 p-0 border-r border-slate-800 relative">
+                                    <td class="w-24 p-0 border-r border-slate-800 relative">
                                         <input type="text"
                                                :data-row="idx"
                                                data-field="jersey_number"
@@ -1614,8 +1776,32 @@
                                                class="w-full h-8 px-3 py-1 bg-transparent border-0 outline-none text-white font-medium text-xs focus:bg-blue-950/40 focus:ring-2 focus:ring-blue-500 focus:ring-inset transition">
                                     </td>
 
+                                    <!-- Position Cell -->
+                                    <td class="w-20 p-0 border-r border-slate-800 relative">
+                                        <input type="text"
+                                               :data-row="idx"
+                                               data-field="position"
+                                               data-grid="ingame-roster-grid"
+                                               x-model="row.position"
+                                               @keydown="handleKeydown($event, idx, 'position')"
+                                               @paste="handlePaste($event, idx, 'position')"
+                                               placeholder="PG"
+                                               maxlength="6"
+                                               class="w-full h-8 px-2 py-1 bg-transparent border-0 outline-none text-amber-300 uppercase font-mono font-semibold text-xs focus:bg-blue-950/40 focus:ring-2 focus:ring-blue-500 focus:ring-inset transition">
+                                    </td>
+
+                                    <!-- Starter Toggle -->
+                                    <td class="w-24 p-0 border-r border-slate-800 text-center">
+                                        <button type="button"
+                                                @click="toggleStarter(idx)"
+                                                class="w-full h-8 px-1 flex items-center justify-center text-[10px] font-bold uppercase transition cursor-pointer"
+                                                :class="row.is_starter ? 'bg-amber-950/70 text-amber-300 hover:bg-amber-900/80 font-black' : 'text-slate-600 hover:text-slate-400'">
+                                            <span x-text="row.is_starter ? '★ Starter' : 'Bench'"></span>
+                                        </button>
+                                    </td>
+
                                     <!-- Court Status Toggle -->
-                                    <td class="w-28 p-0 border-r border-slate-800 text-center">
+                                    <td class="w-24 p-0 border-r border-slate-800 text-center">
                                         <button type="button"
                                                 @click="toggleCourt(idx)"
                                                 class="w-full h-8 px-2 flex items-center justify-center text-[10px] font-bold uppercase transition cursor-pointer"
@@ -1625,7 +1811,7 @@
                                     </td>
 
                                     <!-- Actions (Delete) -->
-                                    <td class="w-12 p-0 text-center">
+                                    <td class="w-10 p-0 text-center">
                                         <button type="button" @click="removeRow(idx)" class="w-full h-8 flex items-center justify-center text-slate-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition cursor-pointer" title="Delete Row">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                                         </button>

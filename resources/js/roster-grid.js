@@ -8,6 +8,11 @@ export function parseRosterClipboardText(text) {
     const lines = text.split(/\r\n|\r|\n/).map(l => l.trim()).filter(Boolean);
     const parsed = [];
 
+    const knownPositions = [
+        'PG', 'SG', 'SF', 'PF', 'C', 'G', 'F', 'GF', 'FC', 'GUARD', 'FORWARD', 'CENTER',
+        'OH', 'MB', 'OPP', 'RS', 'S', 'L', 'DS', 'SETTER', 'LIBERO', 'HITTER', 'MIDDLE'
+    ];
+
     for (const line of lines) {
         let cells = [];
         if (line.includes('\t')) {
@@ -20,6 +25,22 @@ export function parseRosterClipboardText(text) {
 
         let jersey = '';
         let name = '';
+        let position = '';
+        let isStarter = false;
+
+        // Extract starter indicator if present in any cell
+        const starterIdx = cells.findIndex(c => ['starter', 'start', 'yes', 'true', '1', 'x', 'y'].includes(c.toLowerCase()));
+        if (starterIdx !== -1) {
+            isStarter = true;
+            cells = cells.filter((_, idx) => idx !== starterIdx);
+        }
+
+        // Extract position indicator if present
+        const posIdx = cells.findIndex(c => knownPositions.includes(c.toUpperCase()) || /^(PG|SG|SF|PF|C|OH|MB|RS|OPP|S|L|DS|G|F)\/?[A-Z]*$/i.test(c));
+        if (posIdx !== -1) {
+            position = cells[posIdx].toUpperCase();
+            cells = cells.filter((_, idx) => idx !== posIdx);
+        }
 
         if (cells.length >= 2) {
             const c0Clean = cells[0].replace(/^#/, '').trim();
@@ -27,14 +48,11 @@ export function parseRosterClipboardText(text) {
 
             if (/^\d{1,4}[A-Za-z]?$/.test(c0Clean)) {
                 jersey = c0Clean;
-                const textCells = cells.slice(1).filter(c => !['starter', 'start', 'bench', 'libero', 'lib', 'yes', 'no', 'true', 'false'].includes(c.toLowerCase()));
-                if (textCells.length >= 2 && textCells[textCells.length - 1].length <= 3 && /^[A-Z\/]+$/i.test(textCells[textCells.length - 1])) {
-                    textCells.pop();
-                }
+                const textCells = cells.slice(1).filter(c => !['bench', 'libero', 'lib', 'no', 'false', '0'].includes(c.toLowerCase()));
                 name = textCells.join(' ');
             } else if (/^\d{1,4}[A-Za-z]?$/.test(cLastClean)) {
                 jersey = cLastClean;
-                const textCells = cells.slice(0, -1).filter(c => !['starter', 'start', 'bench', 'libero', 'lib', 'yes', 'no', 'true', 'false'].includes(c.toLowerCase()));
+                const textCells = cells.slice(0, -1).filter(c => !['bench', 'libero', 'lib', 'no', 'false', '0'].includes(c.toLowerCase()));
                 name = textCells.join(' ');
             } else {
                 const numIdx = cells.findIndex(c => /^\#?\d{1,4}[A-Za-z]?$/.test(c.trim()));
@@ -54,7 +72,6 @@ export function parseRosterClipboardText(text) {
             if (matchLead) {
                 jersey = matchLead[1];
                 let rest = matchLead[2].trim();
-                rest = rest.replace(/\s+(starter|start|bench|libero|lib)$/i, '');
                 name = rest;
             } else if (matchTrail) {
                 name = matchTrail[1].trim();
@@ -67,7 +84,9 @@ export function parseRosterClipboardText(text) {
         if (jersey || name) {
             parsed.push({
                 jersey_number: jersey,
-                name: name.trim()
+                name: name.trim(),
+                position: position,
+                is_starter: isStarter
             });
         }
     }
@@ -76,7 +95,9 @@ export function parseRosterClipboardText(text) {
 }
 
 export function handleGridKeydown(e, rowIndex, fieldName, component, gridId = 'roster-grid') {
-    const fields = ['jersey_number', 'name'];
+    const rowInputs = Array.from(document.querySelectorAll(`[data-grid='${gridId}'] [data-row='${rowIndex}'][data-field]`));
+    const domFields = rowInputs.map(el => el.getAttribute('data-field')).filter((v, i, a) => v && a.indexOf(v) === i);
+    const fields = domFields.length > 0 ? domFields : ['jersey_number', 'name', 'position'];
     const colIndex = fields.indexOf(fieldName);
     const target = e.target;
     const isAtStart = target.selectionStart === 0 && target.selectionEnd === 0;
@@ -173,13 +194,17 @@ export function handleGridPaste(e, startRowIndex, startFieldName, component, gri
             if (curRow < component.rows.length) {
                 component.rows[curRow].jersey_number = item.jersey_number || component.rows[curRow].jersey_number;
                 component.rows[curRow].name = item.name || component.rows[curRow].name;
+                if (item.position) component.rows[curRow].position = item.position;
+                if (item.is_starter !== undefined) component.rows[curRow].is_starter = Boolean(item.is_starter);
             } else {
                 component.rows.push({
                     id: null,
                     player_id: null,
-                    jersey_number: item.jersey_number,
-                    name: item.name,
-                    is_on_court: curRow < 5,
+                    jersey_number: item.jersey_number || '',
+                    name: item.name || '',
+                    position: item.position || '',
+                    is_starter: Boolean(item.is_starter),
+                    is_on_court: curRow < (component.sport === 'volleyball' ? 6 : 5),
                 });
             }
             curRow++;
@@ -204,7 +229,14 @@ export function rosterSpreadsheet(config) {
         sport: config.sport,
         saveUrl: config.saveUrl,
         teamSlug: config.teamSlug,
-        rows: Array.isArray(config.initialPlayers) ? config.initialPlayers : [],
+        rows: Array.isArray(config.initialPlayers) ? config.initialPlayers.map(p => ({
+            id: p.id || null,
+            player_id: p.player_id || null,
+            jersey_number: p.jersey_number ?? '',
+            name: p.name ?? '',
+            position: p.position ?? '',
+            is_starter: Boolean(p.is_starter)
+        })) : [],
         isDirty: false,
         isSaving: false,
         saveSuccessMessage: '',
@@ -217,13 +249,13 @@ export function rosterSpreadsheet(config) {
             // Ensure at least 15 rows for authentic spreadsheet feel
             const minRows = 15;
             while (this.rows.length < minRows) {
-                this.rows.push({ id: null, player_id: null, jersey_number: '', name: '' });
+                this.rows.push({ id: null, player_id: null, jersey_number: '', name: '', position: '', is_starter: false });
             }
             this.$watch('rows', () => { this.isDirty = true; }, { deep: true });
         },
 
         addEmptyRow() {
-            this.rows.push({ id: null, player_id: null, jersey_number: '', name: '' });
+            this.rows.push({ id: null, player_id: null, jersey_number: '', name: '', position: '', is_starter: false });
             this.isDirty = true;
         },
 
@@ -235,11 +267,18 @@ export function rosterSpreadsheet(config) {
             }
         },
 
+        toggleStarter(index) {
+            if (this.rows[index]) {
+                this.rows[index].is_starter = !this.rows[index].is_starter;
+                this.isDirty = true;
+            }
+        },
+
         clearAllRows() {
             if (confirm('Clear all player entries in this spreadsheet view?')) {
                 this.rows = [];
                 for (let i = 0; i < 15; i++) {
-                    this.rows.push({ id: null, player_id: null, jersey_number: '', name: '' });
+                    this.rows.push({ id: null, player_id: null, jersey_number: '', name: '', position: '', is_starter: false });
                 }
                 this.isDirty = true;
             }
@@ -364,6 +403,13 @@ export function rosterSpreadsheet(config) {
                 const data = await response.json();
 
                 if (response.ok && data.success) {
+                    if (data.players && Array.isArray(data.players)) {
+                        this.rows = data.players;
+                        const minRows = 15;
+                        while (this.rows.length < minRows) {
+                            this.rows.push({ id: null, player_id: null, jersey_number: '', name: '' });
+                        }
+                    }
                     this.isDirty = false;
                     this.saveSuccessMessage = 'Roster saved!';
                     setTimeout(() => { this.saveSuccessMessage = ''; }, 3000);
@@ -388,7 +434,15 @@ export function inGameRosterSpreadsheet(config) {
     return {
         gridId: 'ingame-roster-grid',
         teamSide: config.teamSide || 'home',
-        rows: Array.isArray(config.initialPlayers) ? config.initialPlayers : [],
+        sport: config.sport || 'basketball',
+        rows: Array.isArray(config.initialPlayers) ? config.initialPlayers.map(p => ({
+            id: p.id || null,
+            jersey_number: p.jersey_number ?? '',
+            name: p.name ?? '',
+            position: p.position ?? '',
+            is_starter: Boolean(p.is_starter),
+            is_on_court: Boolean(p.is_on_court)
+        })) : [],
         isDirty: false,
         isSaving: false,
         saveSuccessMessage: '',
@@ -399,13 +453,15 @@ export function inGameRosterSpreadsheet(config) {
 
         init() {
             const minRows = 12;
-            const maxCourt = config.sport === 'volleyball' ? 6 : 5;
+            const maxCourt = this.sport === 'volleyball' ? 6 : 5;
             while (this.rows.length < minRows) {
                 const courtCount = this.rows.filter(r => r.is_on_court).length;
                 this.rows.push({
                     id: null,
                     jersey_number: '',
                     name: '',
+                    position: '',
+                    is_starter: courtCount < maxCourt,
                     is_on_court: courtCount < maxCourt,
                 });
             }
@@ -414,11 +470,13 @@ export function inGameRosterSpreadsheet(config) {
 
         addEmptyRow() {
             const courtCount = this.rows.filter(r => r.is_on_court).length;
-            const maxCourt = config.sport === 'volleyball' ? 6 : 5;
+            const maxCourt = this.sport === 'volleyball' ? 6 : 5;
             this.rows.push({
                 id: null,
                 jersey_number: '',
                 name: '',
+                position: '',
+                is_starter: courtCount < maxCourt,
                 is_on_court: courtCount < maxCourt,
             });
             this.isDirty = true;
@@ -435,6 +493,13 @@ export function inGameRosterSpreadsheet(config) {
         toggleCourt(index) {
             if (this.rows[index]) {
                 this.rows[index].is_on_court = !this.rows[index].is_on_court;
+                this.isDirty = true;
+            }
+        },
+
+        toggleStarter(index) {
+            if (this.rows[index]) {
+                this.rows[index].is_starter = !this.rows[index].is_starter;
                 this.isDirty = true;
             }
         },

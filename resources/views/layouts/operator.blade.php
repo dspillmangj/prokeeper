@@ -426,9 +426,9 @@
                         &bull; <strong class="text-amber-300">[</strong> / <strong class="text-amber-300">{</strong> : Home Score +1 / -1<br>
                         &bull; <strong class="text-amber-300">]</strong> / <strong class="text-amber-300">}</strong> : Away Score +1 / -1<br>
                         &bull; <strong class="text-amber-300">U</strong> or <strong class="text-amber-300">Ctrl+Z</strong> : Instant Undo<br>
-                        &bull; <strong class="text-amber-300">H</strong> / <strong class="text-amber-300">⇧H</strong> : Home Full / 30s Timeout<br>
-                        &bull; <strong class="text-amber-300">A</strong> / <strong class="text-amber-300">⇧A</strong> : Away Full / 30s Timeout<br>
-                        &bull; <strong class="text-amber-300">R</strong> / <strong class="text-amber-300">⇧R</strong> : Home / Away Roster Editor (1-9 jump, 0 empty)<br>
+                        &bull; <strong class="text-amber-300">F</strong> / <strong class="text-amber-300">H</strong> : Left Full / 30s Timeout<br>
+                        &bull; <strong class="text-amber-300">G</strong> / <strong class="text-amber-300">J</strong> : Right Full / 30s Timeout<br>
+                        &bull; <strong class="text-amber-300">R</strong> / <strong class="text-amber-300">T</strong> : Left / Right Roster Editor (1-9 jump, 0 empty)<br>
                         &bull; <strong class="text-amber-300">Esc</strong> : Instant Reset / Close Any Modal
                     </p>
                 </div>

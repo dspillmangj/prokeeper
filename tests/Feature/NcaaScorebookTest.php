@@ -109,7 +109,7 @@ test('operator header displays Share button with escapable modal and all three s
     $response->assertSee('showShareModal');
 });
 
-test('scorebook renders 2-page official ledger layout with team sheets and running score', function () {
+test('scorebook renders 2-page official ledger layout with 4 quarters regulation format by default', function () {
     $response = $this->get(route('public.scorebook', $this->game->access_code));
     $response->assertStatus(200);
 
@@ -123,15 +123,55 @@ test('scorebook renders 2-page official ledger layout with team sheets and runni
     $response->assertSee('Cooper Flagg');
     $response->assertSee('RJ Davis');
 
-    // Check Running Score Matrix
+    // Check 4 Quarters Layout Elements
+    $response->assertSee('4 QUARTERS');
+    $response->assertSee('Official Score by Quarters');
+    $response->assertSee('1Q');
+    $response->assertSee('2Q');
+    $response->assertSee('3Q');
+    $response->assertSee('4Q');
+    $response->assertSee('1st Quarter');
+    $response->assertSee('2nd Quarter');
+    $response->assertSee('3rd Quarter');
+    $response->assertSee('4th Quarter');
+    $response->assertSee('Team Fouls Cumulative Tracker (By Quarter)');
+    $response->assertSee('1ST QTR:');
+    $response->assertSee('2ND QTR:');
+    $response->assertSee('3RD QTR:');
+    $response->assertSee('4TH QTR:');
+
+    // Check Running Score Matrix & Signatures
     $response->assertSee('Official Running Score Progression');
-    $response->assertSee('Team Fouls Cumulative Tracker');
-    $response->assertSee('Bonus (1+1)');
-    $response->assertSee('Double Bonus (2 Shots)');
     $response->assertSee('OFFICIAL SCORER');
     $response->assertSee('REFEREE');
     $response->assertSee('UMPIRE 1');
     $response->assertSee('UMPIRE 2');
+});
+
+test('scorebook dynamically reflects 2 halves format when set by operator or preset', function () {
+    $this->game->settings = [
+        'rules' => [
+            'period_format' => 'halves',
+            'bonus_foul_threshold' => 7,
+            'double_bonus_foul_threshold' => 10,
+        ],
+    ];
+    $this->game->save();
+
+    $response = $this->get(route('public.scorebook', $this->game->access_code));
+    $response->assertStatus(200);
+
+    $response->assertSee('2 HALVES');
+    $response->assertSee('Official Score by Halves');
+    $response->assertSee('1st Half');
+    $response->assertSee('2nd Half');
+    $response->assertSee('First Half Scoring');
+    $response->assertSee('Second Half Scoring');
+    $response->assertSee('Team Fouls Cumulative Tracker (By Half)');
+    $response->assertSee('1ST HALF:');
+    $response->assertSee('2ND HALF:');
+    $response->assertSee('Bonus (1+1)');
+    $response->assertSee('Double Bonus (2 Shots)');
 });
 
 test('operator can configure game-level details including date, venue, officials, and clock', function () {

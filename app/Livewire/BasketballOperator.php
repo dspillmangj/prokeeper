@@ -499,6 +499,7 @@ class BasketballOperator extends Component
         ]);
 
         $this->syncLineupPlayerToTeamRoster($newLineup);
+        $this->dispatchLineupUpdate();
 
         $this->resetNewPlayerFields();
         $this->feedbackMessage = "Added #{$jersey} {$name} to ".strtoupper($this->rosterModalTeam).' roster!';
@@ -569,6 +570,7 @@ class BasketballOperator extends Component
         }
 
         $this->syncLineupPlayerToTeamRoster($lineup, $oldJersey);
+        $this->dispatchLineupUpdate();
 
         $this->editingLineupId = null;
         $this->feedbackMessage = "Updated player #{$newJersey} {$newName} successfully.";
@@ -580,6 +582,7 @@ class BasketballOperator extends Component
         $lineup = GameLineup::where('game_id', $this->gameId)->findOrFail($id);
         $lineup->is_on_court = ! $lineup->is_on_court;
         $lineup->save();
+        $this->dispatchLineupUpdate();
 
         $this->feedbackMessage = "Player #{$lineup->jersey_number} moved to ".($lineup->is_on_court ? 'Court' : 'Bench').'.';
         $this->feedbackType = 'info';
@@ -591,6 +594,7 @@ class BasketballOperator extends Component
         $jersey = $lineup->jersey_number;
         $name = $lineup->player_name;
         $lineup->delete();
+        $this->dispatchLineupUpdate();
 
         $this->feedbackMessage = "Removed #{$jersey} {$name} from game lineup.";
         $this->feedbackType = 'info';
@@ -704,6 +708,7 @@ class BasketballOperator extends Component
         }
 
         $this->bulkRosterInput = '';
+        $this->dispatchLineupUpdate();
         $this->feedbackMessage = "Imported {$importedCount} players into ".strtoupper($teamSide).' roster.';
         $this->feedbackType = 'success';
         $this->rosterModalTab = 'list';
@@ -723,11 +728,16 @@ class BasketballOperator extends Component
             }
 
             $lineupId = ! empty($row['id']) ? (int) $row['id'] : null;
+            $position = ! empty($row['position']) ? strtoupper(trim($row['position'])) : null;
             $isOnCourt = filter_var($row['is_on_court'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $isStarter = filter_var($row['is_starter'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-            // Default first 5 players to on-court if court status not specified
+            // Default first 5 players to on-court and starter if not specified
             if (! isset($row['is_on_court']) && count($submittedLineupIds) < 5) {
                 $isOnCourt = true;
+            }
+            if (! isset($row['is_starter']) && count($submittedLineupIds) < 5) {
+                $isStarter = true;
             }
 
             $lineup = null;
@@ -751,6 +761,8 @@ class BasketballOperator extends Component
 
                 $lineup->jersey_number = $jersey;
                 $lineup->player_name = $name;
+                $lineup->position = $position;
+                $lineup->is_starter = $isStarter;
                 $lineup->is_on_court = $isOnCourt;
                 $lineup->save();
 
@@ -780,6 +792,8 @@ class BasketballOperator extends Component
                     'team_side' => $teamSide,
                     'jersey_number' => $jersey,
                     'player_name' => $name,
+                    'position' => $position,
+                    'is_starter' => $isStarter,
                     'is_on_court' => $isOnCourt,
                 ]);
 
@@ -794,6 +808,7 @@ class BasketballOperator extends Component
             ->whereNotIn('id', $submittedLineupIds)
             ->delete();
 
+        $this->dispatchLineupUpdate();
         $this->feedbackMessage = 'Updated '.strtoupper($teamSide).' roster spreadsheet.';
         $this->feedbackType = 'success';
     }
@@ -824,6 +839,7 @@ class BasketballOperator extends Component
             $result = $this->statService->recordStat($game, $teamSide, $jersey, $actionCode);
             $this->feedbackMessage = $result['message'];
             $this->feedbackType = 'success';
+            $this->dispatchGameStateUpdate();
         } catch (Exception $e) {
             $this->feedbackMessage = $e->getMessage();
             $this->feedbackType = 'error';
@@ -836,6 +852,7 @@ class BasketballOperator extends Component
             $event = $this->statService->adjustScore($this->game, $teamSide, $delta);
             $this->feedbackMessage = $event->description;
             $this->feedbackType = 'info';
+            $this->dispatchGameStateUpdate();
         } catch (Exception $e) {
             $this->feedbackMessage = $e->getMessage();
             $this->feedbackType = 'error';
@@ -876,6 +893,7 @@ class BasketballOperator extends Component
 
         $this->feedbackMessage = "Advanced to {$game->period_name}.";
         $this->feedbackType = 'info';
+        $this->dispatchGameStateUpdate();
     }
 
     public function setPeriod(int $period)
@@ -894,6 +912,7 @@ class BasketballOperator extends Component
 
         $this->feedbackMessage = "Set period to {$game->period_name}.";
         $this->feedbackType = 'info';
+        $this->dispatchGameStateUpdate();
     }
 
     public function togglePossession()
@@ -901,6 +920,7 @@ class BasketballOperator extends Component
         $game = $this->game;
         $game->possession_arrow = ($game->possession_arrow === 'home') ? 'away' : 'home';
         $game->save();
+        $this->dispatchGameStateUpdate();
     }
 
     public function callTimeout(string $teamSide, string $timeoutType = 'full')
@@ -909,6 +929,7 @@ class BasketballOperator extends Component
             $event = $this->statService->callTimeout($this->game, $teamSide, $timeoutType);
             $this->feedbackMessage = $event->description;
             $this->feedbackType = 'info';
+            $this->dispatchGameStateUpdate();
         } catch (Exception $e) {
             $this->feedbackMessage = $e->getMessage();
             $this->feedbackType = 'error';
@@ -926,6 +947,8 @@ class BasketballOperator extends Component
 
         try {
             $this->statService->substitute($this->game, $this->subTeamSide, $this->subOutJersey, $this->subInJersey);
+            $this->dispatchLineupUpdate();
+            $this->dispatchGameStateUpdate();
             $this->feedbackMessage = "Subbed OUT #{$this->subOutJersey} -> IN #{$this->subInJersey} (".strtoupper($this->subTeamSide).')';
             $this->feedbackType = 'success';
             $this->showSubModal = false;
@@ -937,12 +960,78 @@ class BasketballOperator extends Component
         }
     }
 
+    public function setAndExecuteSub(string $teamSide, string $outJersey, string $inJersey)
+    {
+        $this->subTeamSide = $teamSide;
+        $this->subOutJersey = $outJersey;
+        $this->subInJersey = $inJersey;
+        $this->executeSub();
+    }
+
+    public function dispatchLineupUpdate(): void
+    {
+        $homeCourt = GameLineup::where('game_id', $this->gameId)->where('team_side', 'home')->where('is_on_court', true)->get();
+        $awayCourt = GameLineup::where('game_id', $this->gameId)->where('team_side', 'away')->where('is_on_court', true)->get();
+        $homeBench = GameLineup::where('game_id', $this->gameId)->where('team_side', 'home')->where('is_on_court', false)->get();
+        $awayBench = GameLineup::where('game_id', $this->gameId)->where('team_side', 'away')->where('is_on_court', false)->get();
+
+        $this->dispatch('lineups-updated', [
+            'homeCourt' => $homeCourt,
+            'awayCourt' => $awayCourt,
+            'homeBench' => $homeBench,
+            'awayBench' => $awayBench,
+        ]);
+    }
+
+    public function dispatchGameStateUpdate(): void
+    {
+        $game = Game::find($this->gameId);
+        if (! $game) {
+            return;
+        }
+
+        $recentEvents = GameEvent::where('game_id', $game->id)
+            ->where('is_undone', false)
+            ->orderBy('sequence', 'desc')
+            ->take(100)
+            ->get();
+
+        $homeCourt = GameLineup::where('game_id', $game->id)->where('team_side', 'home')->where('is_on_court', true)->get();
+        $awayCourt = GameLineup::where('game_id', $game->id)->where('team_side', 'away')->where('is_on_court', true)->get();
+        $homeBench = GameLineup::where('game_id', $game->id)->where('team_side', 'home')->where('is_on_court', false)->get();
+        $awayBench = GameLineup::where('game_id', $game->id)->where('team_side', 'away')->where('is_on_court', false)->get();
+
+        $this->dispatch('game-state-updated', [
+            'homeScore' => (int) $game->home_score,
+            'awayScore' => (int) $game->away_score,
+            'homePeriodScores' => $game->home_period_scores ?? [0, 0, 0, 0, 0, 0],
+            'awayPeriodScores' => $game->away_period_scores ?? [0, 0, 0, 0, 0, 0],
+            'currentPeriod' => (int) $game->current_period,
+            'periodName' => $game->period_name,
+            'possession' => $game->possession_arrow ?? 'home',
+            'homeFouls' => (int) $game->home_fouls_current_period,
+            'awayFouls' => (int) $game->away_fouls_current_period,
+            'homeTimeouts' => (int) $game->home_timeouts_remaining,
+            'awayTimeouts' => (int) $game->away_timeouts_remaining,
+            'homeFullTimeouts' => (int) ($game->home_timeouts_breakdown['rem_full'] ?? 3),
+            'home30sTimeouts' => (int) ($game->home_timeouts_breakdown['rem_30s'] ?? 2),
+            'awayFullTimeouts' => (int) ($game->away_timeouts_breakdown['rem_full'] ?? 3),
+            'away30sTimeouts' => (int) ($game->away_timeouts_breakdown['rem_30s'] ?? 2),
+            'recentEvents' => $recentEvents,
+            'homeCourt' => $homeCourt,
+            'awayCourt' => $awayCourt,
+            'homeBench' => $homeBench,
+            'awayBench' => $awayBench,
+        ]);
+    }
+
     public function createManualEvent(array $data)
     {
         try {
             $event = $this->statService->createManualEvent($this->game, $data);
             $this->feedbackMessage = "Logged: {$event->description}";
             $this->feedbackType = 'success';
+            $this->dispatchGameStateUpdate();
         } catch (Exception $e) {
             $this->feedbackMessage = $e->getMessage();
             $this->feedbackType = 'error';
@@ -955,6 +1044,7 @@ class BasketballOperator extends Component
         if ($undone) {
             $this->feedbackMessage = "Undone: {$undone->description}";
             $this->feedbackType = 'info';
+            $this->dispatchGameStateUpdate();
         } else {
             $this->feedbackMessage = 'No active plays to undo.';
             $this->feedbackType = 'error';
@@ -967,6 +1057,7 @@ class BasketballOperator extends Component
         if ($deleted) {
             $this->feedbackMessage = "Deleted play: {$deleted->description}";
             $this->feedbackType = 'info';
+            $this->dispatchGameStateUpdate();
         }
     }
 
@@ -994,6 +1085,7 @@ class BasketballOperator extends Component
         if ($updated) {
             $this->feedbackMessage = "Updated play: {$updated->description}";
             $this->feedbackType = 'success';
+            $this->dispatchGameStateUpdate();
         }
     }
 

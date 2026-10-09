@@ -220,16 +220,17 @@ class NcaaScorebook extends Component
             ->orderBy('sequence', 'asc')
             ->get();
 
-        // 1. Build Detailed Half-by-Half and Running Score breakdown for Home
+        // 1. Build Detailed Quarters/Halves and Running Score breakdown for Home
         $homeData = $this->compileTeamNcaaData('home', $homeLineup, $homeStats, $events, $game);
 
-        // 2. Build Detailed Half-by-Half and Running Score breakdown for Away
+        // 2. Build Detailed Quarters/Halves and Running Score breakdown for Away
         $awayData = $this->compileTeamNcaaData('away', $awayLineup, $awayStats, $events, $game);
 
         return view('livewire.ncaa-scorebook', [
             'game' => $game,
             'home' => $homeData,
             'away' => $awayData,
+            'isQuarters' => ($game->period_format === 'quarters'),
         ])->layout('layouts.public');
     }
 
@@ -237,8 +238,8 @@ class NcaaScorebook extends Component
     {
         $teamEvents = $events->where('team_side', $teamSide);
         $oppSide = ($teamSide === 'home') ? 'away' : 'home';
+        $isQuarters = ($game->period_format === 'quarters');
 
-        // Half 1 = Period 1 & 2; Half 2 = Period 3 & 4; OT = Period 5+
         $playerBreakdown = [];
 
         foreach ($lineup as $lp) {
@@ -246,19 +247,61 @@ class NcaaScorebook extends Component
             $pEvents = $teamEvents->where('jersey_number', $j);
             $st = $stats[$j] ?? null;
 
-            $h1_2pt = $pEvents->whereIn('period', [1, 2])->whereIn('action_code', ['2P', '2P_FAST', '2P_SECOND'])->count();
-            $h1_3pt = $pEvents->whereIn('period', [1, 2])->where('action_code', '3P')->count();
-            $h1_ft_events = $pEvents->whereIn('period', [1, 2])->whereIn('action_code', ['FT_MADE', 'FT_MISSED']);
-            $h1_ft_str = $h1_ft_events->map(fn ($e) => $e->action_code === 'FT_MADE' ? 'O' : 'X')->implode(' ');
-            $h1_pts = $pEvents->whereIn('period', [1, 2])->sum('points');
+            // Quarter 1 (Period 1)
+            $q1_2pt = $pEvents->where('period', 1)->whereIn('action_code', ['2P', '2P_FAST', '2P_SECOND'])->count();
+            $q1_3pt = $pEvents->where('period', 1)->where('action_code', '3P')->count();
+            $q1_ft_events = $pEvents->where('period', 1)->whereIn('action_code', ['FT_MADE', 'FT_MISSED']);
+            $q1_ft_str = $q1_ft_events->map(fn ($e) => $e->action_code === 'FT_MADE' ? 'O' : 'X')->implode(' ');
+            $q1_pts = $pEvents->where('period', 1)->sum('points');
 
-            $h2_2pt = $pEvents->whereIn('period', [3, 4])->whereIn('action_code', ['2P', '2P_FAST', '2P_SECOND'])->count();
-            $h2_3pt = $pEvents->whereIn('period', [3, 4])->where('action_code', '3P')->count();
-            $h2_ft_events = $pEvents->whereIn('period', [3, 4])->whereIn('action_code', ['FT_MADE', 'FT_MISSED']);
-            $h2_ft_str = $h2_ft_events->map(fn ($e) => $e->action_code === 'FT_MADE' ? 'O' : 'X')->implode(' ');
-            $h2_pts = $pEvents->whereIn('period', [3, 4])->sum('points');
+            // Quarter 2 (Period 2)
+            $q2_2pt = $pEvents->where('period', 2)->whereIn('action_code', ['2P', '2P_FAST', '2P_SECOND'])->count();
+            $q2_3pt = $pEvents->where('period', 2)->where('action_code', '3P')->count();
+            $q2_ft_events = $pEvents->where('period', 2)->whereIn('action_code', ['FT_MADE', 'FT_MISSED']);
+            $q2_ft_str = $q2_ft_events->map(fn ($e) => $e->action_code === 'FT_MADE' ? 'O' : 'X')->implode(' ');
+            $q2_pts = $pEvents->where('period', 2)->sum('points');
 
-            $ot_pts = $pEvents->where('period', '>=', 5)->sum('points');
+            // Quarter 3 (Period 3)
+            $q3_2pt = $pEvents->where('period', 3)->whereIn('action_code', ['2P', '2P_FAST', '2P_SECOND'])->count();
+            $q3_3pt = $pEvents->where('period', 3)->where('action_code', '3P')->count();
+            $q3_ft_events = $pEvents->where('period', 3)->whereIn('action_code', ['FT_MADE', 'FT_MISSED']);
+            $q3_ft_str = $q3_ft_events->map(fn ($e) => $e->action_code === 'FT_MADE' ? 'O' : 'X')->implode(' ');
+            $q3_pts = $pEvents->where('period', 3)->sum('points');
+
+            // Quarter 4 (Period 4)
+            $q4_2pt = $pEvents->where('period', 4)->whereIn('action_code', ['2P', '2P_FAST', '2P_SECOND'])->count();
+            $q4_3pt = $pEvents->where('period', 4)->where('action_code', '3P')->count();
+            $q4_ft_events = $pEvents->where('period', 4)->whereIn('action_code', ['FT_MADE', 'FT_MISSED']);
+            $q4_ft_str = $q4_ft_events->map(fn ($e) => $e->action_code === 'FT_MADE' ? 'O' : 'X')->implode(' ');
+            $q4_pts = $pEvents->where('period', 4)->sum('points');
+
+            if (! $isQuarters) {
+                // Halves mode: Period 1 = 1st Half, Period 2 = 2nd Half, Period >= 3 = Overtime
+                $h1_2pt = $q1_2pt;
+                $h1_3pt = $q1_3pt;
+                $h1_ft_str = $q1_ft_str;
+                $h1_pts = $q1_pts;
+
+                $h2_2pt = $q2_2pt;
+                $h2_3pt = $q2_3pt;
+                $h2_ft_str = $q2_ft_str;
+                $h2_pts = $q2_pts;
+
+                $ot_pts = $pEvents->where('period', '>=', 3)->sum('points');
+            } else {
+                // Quarters mode: OT = Period >= 5
+                $h1_2pt = $q1_2pt + $q2_2pt;
+                $h1_3pt = $q1_3pt + $q2_3pt;
+                $h1_ft_str = trim($q1_ft_str.' '.$q2_ft_str);
+                $h1_pts = $q1_pts + $q2_pts;
+
+                $h2_2pt = $q3_2pt + $q4_2pt;
+                $h2_3pt = $q3_3pt + $q4_3pt;
+                $h2_ft_str = trim($q3_ft_str.' '.$q4_ft_str);
+                $h2_pts = $q3_pts + $q4_pts;
+
+                $ot_pts = $pEvents->where('period', '>=', 5)->sum('points');
+            }
 
             $fouls = $pEvents->whereIn('action_code', ['F', 'R', 'T'])->values();
             $pfCount = $fouls->where('action_code', '!=', 'T')->count();
@@ -270,6 +313,24 @@ class NcaaScorebook extends Component
                 'name' => $lp->player_name,
                 'position' => $lp->position ?: '—',
                 'is_starter' => $lp->is_starter,
+                // Quarters specific
+                'q1_2pt' => $q1_2pt,
+                'q1_3pt' => $q1_3pt,
+                'q1_ft_str' => $q1_ft_str ?: '—',
+                'q1_pts' => $q1_pts,
+                'q2_2pt' => $q2_2pt,
+                'q2_3pt' => $q2_3pt,
+                'q2_ft_str' => $q2_ft_str ?: '—',
+                'q2_pts' => $q2_pts,
+                'q3_2pt' => $q3_2pt,
+                'q3_3pt' => $q3_3pt,
+                'q3_ft_str' => $q3_ft_str ?: '—',
+                'q3_pts' => $q3_pts,
+                'q4_2pt' => $q4_2pt,
+                'q4_3pt' => $q4_3pt,
+                'q4_ft_str' => $q4_ft_str ?: '—',
+                'q4_pts' => $q4_pts,
+                // Halves specific
                 'h1_2pt' => $h1_2pt,
                 'h1_3pt' => $h1_3pt,
                 'h1_ft_str' => $h1_ft_str ?: '—',
@@ -279,7 +340,7 @@ class NcaaScorebook extends Component
                 'h2_ft_str' => $h2_ft_str ?: '—',
                 'h2_pts' => $h2_pts,
                 'ot_pts' => $ot_pts,
-                'total_pts' => $st?->points ?? ($h1_pts + $h2_pts + $ot_pts),
+                'total_pts' => $st?->points ?? ($isQuarters ? ($q1_pts + $q2_pts + $q3_pts + $q4_pts + $ot_pts) : ($h1_pts + $h2_pts + $ot_pts)),
                 'pf_count' => $pfCount,
                 'tf_count' => $tfCount,
                 'fouls_list' => $fouls,
@@ -293,30 +354,76 @@ class NcaaScorebook extends Component
 
         foreach ($scoringEvents as $sev) {
             $pts = $sev->points;
+            $periodLabel = '';
+            if ($isQuarters) {
+                $periodLabel = match ((int) $sev->period) {
+                    1 => 'Q1',
+                    2 => 'Q2',
+                    3 => 'Q3',
+                    4 => 'Q4',
+                    5 => 'OT',
+                    default => 'OT'.($sev->period - 4),
+                };
+            } else {
+                $periodLabel = match ((int) $sev->period) {
+                    1 => '1H',
+                    2 => '2H',
+                    3 => 'OT',
+                    default => 'OT'.($sev->period - 2),
+                };
+            }
+
             for ($p = 1; $p <= $pts; $p++) {
                 $currentPts++;
                 $runningScore[$currentPts] = [
                     'jersey' => $sev->jersey_number,
                     'period' => $sev->period,
+                    'period_label' => $periodLabel,
                     'is_scoring_point' => ($p === $pts),
                     'action' => $sev->action_code,
                 ];
             }
         }
 
-        // Team Fouls per Half (1st Half: P1 & P2; 2nd Half: P3 & P4)
-        $h1_team_fouls = $teamEvents->whereIn('period', [1, 2])->whereIn('action_code', ['F', 'R', 'T'])->count();
-        $h2_team_fouls = $teamEvents->whereIn('period', [3, 4])->whereIn('action_code', ['F', 'R', 'T'])->count();
-        $ot_team_fouls = $teamEvents->where('period', '>=', 5)->whereIn('action_code', ['F', 'R', 'T'])->count();
+        if ($isQuarters) {
+            $q1_team_fouls = $teamEvents->where('period', 1)->whereIn('action_code', ['F', 'R', 'T'])->count();
+            $q2_team_fouls = $teamEvents->where('period', 2)->whereIn('action_code', ['F', 'R', 'T'])->count();
+            $q3_team_fouls = $teamEvents->where('period', 3)->whereIn('action_code', ['F', 'R', 'T'])->count();
+            $q4_team_fouls = $teamEvents->where('period', 4)->whereIn('action_code', ['F', 'R', 'T'])->count();
+            $ot_team_fouls = $teamEvents->where('period', '>=', 5)->whereIn('action_code', ['F', 'R', 'T'])->count();
+
+            $h1_team_fouls = $q1_team_fouls + $q2_team_fouls;
+            $h2_team_fouls = $q3_team_fouls + $q4_team_fouls;
+
+            $q1_total_pts = collect($playerBreakdown)->sum('q1_pts');
+            $q2_total_pts = collect($playerBreakdown)->sum('q2_pts');
+            $q3_total_pts = collect($playerBreakdown)->sum('q3_pts');
+            $q4_total_pts = collect($playerBreakdown)->sum('q4_pts');
+            $h1_total_pts = $q1_total_pts + $q2_total_pts;
+            $h2_total_pts = $q3_total_pts + $q4_total_pts;
+            $ot_total_pts = collect($playerBreakdown)->sum('ot_pts');
+        } else {
+            $h1_team_fouls = $teamEvents->where('period', 1)->whereIn('action_code', ['F', 'R', 'T'])->count();
+            $h2_team_fouls = $teamEvents->where('period', 2)->whereIn('action_code', ['F', 'R', 'T'])->count();
+            $ot_team_fouls = $teamEvents->where('period', '>=', 3)->whereIn('action_code', ['F', 'R', 'T'])->count();
+
+            $q1_team_fouls = $h1_team_fouls;
+            $q2_team_fouls = $h2_team_fouls;
+            $q3_team_fouls = 0;
+            $q4_team_fouls = 0;
+
+            $h1_total_pts = collect($playerBreakdown)->sum('h1_pts');
+            $h2_total_pts = collect($playerBreakdown)->sum('h2_pts');
+            $ot_total_pts = collect($playerBreakdown)->sum('ot_pts');
+            $q1_total_pts = $h1_total_pts;
+            $q2_total_pts = $h2_total_pts;
+            $q3_total_pts = 0;
+            $q4_total_pts = 0;
+        }
 
         // Team Timeouts
         $timeouts_taken = $teamEvents->whereIn('action_code', ['TIMEOUT', 'TO'])->values();
         $timeouts_breakdown = $game->calculateTimeoutsBreakdown($teamSide);
-
-        // Half scoring sums
-        $h1_total_pts = collect($playerBreakdown)->sum('h1_pts');
-        $h2_total_pts = collect($playerBreakdown)->sum('h2_pts');
-        $ot_total_pts = collect($playerBreakdown)->sum('ot_pts');
 
         return [
             'side' => $teamSide,
@@ -324,9 +431,19 @@ class NcaaScorebook extends Component
             'score' => ($teamSide === 'home') ? $game->home_score : $game->away_score,
             'players' => $playerBreakdown,
             'running_score' => $runningScore,
+            'period_format' => $game->period_format,
+            'is_quarters' => $isQuarters,
+            'q1_team_fouls' => $q1_team_fouls,
+            'q2_team_fouls' => $q2_team_fouls,
+            'q3_team_fouls' => $q3_team_fouls,
+            'q4_team_fouls' => $q4_team_fouls,
             'h1_team_fouls' => $h1_team_fouls,
             'h2_team_fouls' => $h2_team_fouls,
             'ot_team_fouls' => $ot_team_fouls,
+            'q1_total_pts' => $q1_total_pts,
+            'q2_total_pts' => $q2_total_pts,
+            'q3_total_pts' => $q3_total_pts,
+            'q4_total_pts' => $q4_total_pts,
             'h1_total_pts' => $h1_total_pts,
             'h2_total_pts' => $h2_total_pts,
             'ot_total_pts' => $ot_total_pts,

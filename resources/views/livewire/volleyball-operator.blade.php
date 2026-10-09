@@ -243,10 +243,10 @@
                         <button type="button" @click="@this.openRosterModal('away')" 
                                 class="px-2 py-0.5 rounded-lg bg-slate-950 hover:bg-slate-800 border text-white text-[10px] font-bold transition flex items-center gap-1 shadow-sm"
                                 :style="{ borderColor: awayTeamColor + '60' }"
-                                title="Manage Away Team Roster (Hotkey: Shift+R)">
+                                title="Manage Away Team Roster (Hotkey: T)">
                             <svg class="w-3 h-3" :style="{ color: awayTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                             <span>Edit Roster</span>
-                            <span class="px-1 py-0.2 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono text-amber-300 ml-0.5">⇧R</span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono text-amber-300 ml-0.5">T</span>
                         </button>
                     </div>
                 </div>
@@ -477,7 +477,7 @@
                     :style="{ borderColor: homeTeamColor + '50' }">
                 <div class="flex items-center gap-0.5 max-w-full truncate">
                     <span class="text-[9px] sm:text-[10px] font-black uppercase truncate" :style="{ color: homeTeamColor }">HOME TO</span>
-                    <span class="px-1 py-0.2 rounded bg-slate-900 border border-slate-700 text-[7px] sm:text-[8px] font-mono font-bold text-amber-300 shrink-0">H</span>
+                    <span class="px-1 py-0.2 rounded bg-slate-900 border border-slate-700 text-[7px] sm:text-[8px] font-mono font-bold text-amber-300 shrink-0">F</span>
                 </div>
                 <span class="text-[8px] sm:text-[9px] text-slate-400 font-mono truncate max-w-full" x-text="homeTimeouts + ' Left'"></span>
             </button>
@@ -585,7 +585,7 @@
                     :style="{ borderColor: awayTeamColor + '50' }">
                 <div class="flex items-center gap-0.5 max-w-full truncate">
                     <span class="text-[9px] sm:text-[10px] font-black uppercase truncate" :style="{ color: awayTeamColor }">AWAY TO</span>
-                    <span class="px-1 py-0.2 rounded bg-slate-900 border border-slate-700 text-[7px] sm:text-[8px] font-mono font-bold text-amber-300 shrink-0">A</span>
+                    <span class="px-1 py-0.2 rounded bg-slate-900 border border-slate-700 text-[7px] sm:text-[8px] font-mono font-bold text-amber-300 shrink-0">G</span>
                 </div>
                 <span class="text-[8px] sm:text-[9px] text-slate-400 font-mono truncate max-w-full" x-text="awayTimeouts + ' Left'"></span>
             </button>
@@ -1369,7 +1369,8 @@
 
     <!-- ON-THE-FLY SPREADSHEET ROSTER MANAGEMENT MODAL -->
     @if ($showRosterModal)
-        <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none animate-fade-in"
+        <div wire:key="in-game-roster-modal-{{ $rosterModalTeam }}-{{ $rosterModalLineups->pluck('id')->join('-') }}"
+             class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none animate-fade-in"
              @keydown.window.escape.prevent="$wire.closeRosterModal()"
              wire:keydown.escape="closeRosterModal"
              x-data="inGameRosterSpreadsheet({
@@ -1380,6 +1381,8 @@
                          'id' => $l->id,
                          'jersey_number' => (string)$l->jersey_number,
                          'name' => $l->player_name,
+                         'position' => (string)($l->position ?? ''),
+                         'is_starter' => (bool)$l->is_starter,
                          'is_on_court' => (bool)$l->is_on_court,
                      ];
                  })->values()) }}
@@ -1440,16 +1443,22 @@
                         <thead class="bg-slate-950 text-slate-400 font-mono uppercase text-[10px] sticky top-0 z-10 border-b border-slate-700 select-none">
                             <tr>
                                 <th class="w-10 py-2 px-2 text-center bg-slate-950/90 border-r border-slate-800 text-slate-500 font-bold">#</th>
-                                <th class="w-28 py-2 px-3 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                                <th class="w-24 py-2 px-3 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
                                     A &bull; Jersey #
                                 </th>
                                 <th class="py-2 px-3 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
                                     B &bull; Player Name (First & Last)
                                 </th>
-                                <th class="w-28 py-2 px-2 text-center border-r border-slate-800 uppercase tracking-wider text-slate-300">
-                                    Court Status
+                                <th class="w-20 py-2 px-2 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                                    C &bull; Pos
                                 </th>
-                                <th class="w-12 py-2 px-1 text-center text-slate-600"></th>
+                                <th class="w-24 py-2 px-2 text-center border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                                    D &bull; Starter
+                                </th>
+                                <th class="w-24 py-2 px-2 text-center border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                                    Court
+                                </th>
+                                <th class="w-10 py-2 px-1 text-center text-slate-600"></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-800 text-slate-200 bg-slate-950/40">
@@ -1459,7 +1468,7 @@
                                     <td class="w-10 text-center py-0 px-2 bg-slate-950/70 border-r border-slate-800 text-slate-500 font-mono text-[11px] select-none font-bold" x-text="idx + 1"></td>
 
                                     <!-- Jersey Number Cell -->
-                                    <td class="w-28 p-0 border-r border-slate-800 relative">
+                                    <td class="w-24 p-0 border-r border-slate-800 relative">
                                         <input type="text"
                                                :data-row="idx"
                                                data-field="jersey_number"
@@ -1485,8 +1494,32 @@
                                                class="w-full h-8 px-3 py-1 bg-transparent border-0 outline-none text-white font-medium text-xs focus:bg-blue-950/40 focus:ring-2 focus:ring-blue-500 focus:ring-inset transition">
                                     </td>
 
+                                    <!-- Position Cell -->
+                                    <td class="w-20 p-0 border-r border-slate-800 relative">
+                                        <input type="text"
+                                               :data-row="idx"
+                                               data-field="position"
+                                               data-grid="ingame-roster-grid"
+                                               x-model="row.position"
+                                               @keydown="handleKeydown($event, idx, 'position')"
+                                               @paste="handlePaste($event, idx, 'position')"
+                                               placeholder="OH"
+                                               maxlength="6"
+                                               class="w-full h-8 px-2 py-1 bg-transparent border-0 outline-none text-amber-300 uppercase font-mono font-semibold text-xs focus:bg-blue-950/40 focus:ring-2 focus:ring-blue-500 focus:ring-inset transition">
+                                    </td>
+
+                                    <!-- Starter Toggle -->
+                                    <td class="w-24 p-0 border-r border-slate-800 text-center">
+                                        <button type="button"
+                                                @click="toggleStarter(idx)"
+                                                class="w-full h-8 px-1 flex items-center justify-center text-[10px] font-bold uppercase transition cursor-pointer"
+                                                :class="row.is_starter ? 'bg-amber-950/70 text-amber-300 hover:bg-amber-900/80 font-black' : 'text-slate-600 hover:text-slate-400'">
+                                            <span x-text="row.is_starter ? '★ Starter' : 'Bench'"></span>
+                                        </button>
+                                    </td>
+
                                     <!-- Court Status Toggle -->
-                                    <td class="w-28 p-0 border-r border-slate-800 text-center">
+                                    <td class="w-24 p-0 border-r border-slate-800 text-center">
                                         <button type="button"
                                                 @click="toggleCourt(idx)"
                                                 class="w-full h-8 px-2 flex items-center justify-center text-[10px] font-bold uppercase transition cursor-pointer"
@@ -1496,7 +1529,7 @@
                                     </td>
 
                                     <!-- Actions (Delete) -->
-                                    <td class="w-12 p-0 text-center">
+                                    <td class="w-10 p-0 text-center">
                                         <button type="button" @click="removeRow(idx)" class="w-full h-8 flex items-center justify-center text-slate-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition cursor-pointer" title="Delete Row">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                                         </button>

@@ -13,6 +13,8 @@
             'player_id' => $rp->player_id,
             'jersey_number' => (string)$rp->jersey_number,
             'name' => trim(($rp->player->first_name ?? '') . ' ' . ($rp->player->last_name ?? '')),
+            'position' => (string)($rp->position ?? ($rp->player->position ?? '')),
+            'is_starter' => (bool)$rp->is_starter,
         ];
     })) }}
 })"
@@ -101,11 +103,17 @@
                 <thead class="bg-slate-950 text-slate-400 font-mono text-[11px] sticky top-0 z-10 border-b border-slate-700 select-none">
                     <tr>
                         <th class="w-12 py-2 px-2 text-center bg-slate-950/90 border-r border-slate-800 text-slate-500 font-bold">#</th>
-                        <th class="w-36 py-2 px-3 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                        <th class="w-32 py-2 px-3 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
                             A &bull; Jersey #
                         </th>
                         <th class="py-2 px-3 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
                             B &bull; Player Name (First & Last)
+                        </th>
+                        <th class="w-28 py-2 px-3 text-left border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                            C &bull; Position
+                        </th>
+                        <th class="w-28 py-2 px-2 text-center border-r border-slate-800 uppercase tracking-wider text-slate-300">
+                            D &bull; Starter
                         </th>
                         <th class="w-14 py-2 px-2 text-center text-slate-600"></th>
                     </tr>
@@ -117,7 +125,7 @@
                             <td class="w-12 text-center py-0 px-2 bg-slate-950/70 border-r border-slate-800 text-slate-500 font-mono text-[11px] select-none font-bold" x-text="idx + 1"></td>
 
                             <!-- Jersey Number Cell -->
-                            <td class="w-36 p-0 border-r border-slate-800 relative">
+                            <td class="w-32 p-0 border-r border-slate-800 relative">
                                 <input type="text"
                                        :data-row="idx"
                                        data-field="jersey_number"
@@ -141,6 +149,30 @@
                                        @paste="handlePaste($event, idx, 'name')"
                                        placeholder=""
                                        class="w-full h-9 px-3 py-1.5 bg-transparent border-0 outline-none text-white font-medium text-xs focus:bg-blue-950/40 focus:ring-2 focus:ring-blue-500 focus:ring-inset transition">
+                            </td>
+
+                            <!-- Position Cell -->
+                            <td class="w-28 p-0 border-r border-slate-800 relative">
+                                <input type="text"
+                                       :data-row="idx"
+                                       data-field="position"
+                                       data-grid="main-roster-grid"
+                                       x-model="row.position"
+                                       @keydown="handleKeydown($event, idx, 'position')"
+                                       @paste="handlePaste($event, idx, 'position')"
+                                       placeholder="e.g. PG"
+                                       maxlength="10"
+                                       class="w-full h-9 px-3 py-1.5 bg-transparent border-0 outline-none text-amber-300 uppercase font-mono font-semibold text-xs focus:bg-blue-950/40 focus:ring-2 focus:ring-blue-500 focus:ring-inset transition">
+                            </td>
+
+                            <!-- Starter Toggle -->
+                            <td class="w-28 p-0 border-r border-slate-800 text-center">
+                                <button type="button"
+                                        @click="toggleStarter(idx)"
+                                        class="w-full h-9 px-2 flex items-center justify-center text-xs font-bold uppercase transition cursor-pointer"
+                                        :class="row.is_starter ? 'bg-amber-950/60 text-amber-300 hover:bg-amber-900/80 font-black' : 'text-slate-500 hover:text-slate-300'">
+                                    <span x-text="row.is_starter ? '★ Starter' : 'Bench'"></span>
+                                </button>
                             </td>
 
                             <!-- Row Action (Delete) -->

@@ -388,3 +388,168 @@ test('in-game roster edits propagate to saved team roster for future game reuse'
     expect($klayRp->player)->not->toBeNull();
     expect($klayRp->player->full_name)->toBe('Klay Thompson');
 });
+
+test('roster changes in basketball and volleyball operators dispatch lineups-updated events without page reload', function () {
+    $org = Organization::create(['name' => 'State University', 'slug' => 'state-univ-realtime']);
+    $user = User::create([
+        'organization_id' => $org->id,
+        'name' => 'Head Coach',
+        'email' => 'coach_rt@example.com',
+        'password' => bcrypt('password'),
+        'role' => 'admin',
+    ]);
+
+    $game = Game::create([
+        'access_code' => 'RTGAME',
+        'slug' => 'realtime-game',
+        'organization_id' => $org->id,
+        'created_by_user_id' => $user->id,
+        'sport' => 'basketball',
+        'status' => 'in_progress',
+        'home_team_name' => 'Tigers',
+        'away_team_name' => 'Bulldogs',
+        'current_period' => 1,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->call('saveRosterSpreadsheet', 'home', [
+            ['id' => null, 'jersey_number' => '23', 'name' => 'Michael Jordan', 'is_on_court' => true],
+            ['id' => null, 'jersey_number' => '33', 'name' => 'Scottie Pippen', 'is_on_court' => true],
+        ])
+        ->assertDispatched('lineups-updated');
+
+    $vbGame = Game::create([
+        'access_code' => 'RTVB01',
+        'slug' => 'realtime-vb-game',
+        'organization_id' => $org->id,
+        'created_by_user_id' => $user->id,
+        'sport' => 'volleyball',
+        'status' => 'in_progress',
+        'home_team_name' => 'Home VB',
+        'away_team_name' => 'Away VB',
+        'current_period' => 1,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(VolleyballOperator::class, ['gameId' => $vbGame->id])
+        ->call('saveRosterSpreadsheet', 'home', [
+            ['id' => null, 'jersey_number' => '10', 'name' => 'Karch Kiraly', 'is_on_court' => true],
+        ])
+        ->assertDispatched('lineups-updated');
+});
+
+test('updating team roster on team management page instantly syncs to active game lineups', function () {
+    $org = Organization::create(['name' => 'State University', 'slug' => 'state-univ-sync']);
+    $user = User::create([
+        'organization_id' => $org->id,
+        'name' => 'Head Coach',
+        'email' => 'coach_sync@example.com',
+        'password' => bcrypt('password'),
+        'role' => 'admin',
+    ]);
+
+    $team = Team::create([
+        'organization_id' => $org->id,
+        'name' => 'Synced Team',
+        'sport' => 'basketball',
+        'gender' => 'mens',
+        'level' => 'varsity',
+        'season' => '2026-2027',
+    ]);
+
+    $game = Game::create([
+        'access_code' => 'SYNC01',
+        'slug' => 'synced-team-game',
+        'organization_id' => $org->id,
+        'created_by_user_id' => $user->id,
+        'sport' => 'basketball',
+        'status' => 'in_progress',
+        'home_team_id' => $team->id,
+        'home_team_name' => 'Synced Team',
+        'away_team_name' => 'Rivals',
+        'current_period' => 1,
+    ]);
+
+    $response = $this->actingAs($user)->postJson(route('teams.roster.batch', $team->id), [
+        'players' => [
+            ['id' => null, 'jersey_number' => '77', 'name' => 'Luka Doncic'],
+        ],
+    ]);
+
+    $response->assertOk();
+    $response->assertJsonStructure(['success', 'message', 'players']);
+
+    // Check that game lineup has Luka Doncic automatically without reload
+    $gameLineup = GameLineup::where('game_id', $game->id)->where('jersey_number', '77')->first();
+    expect($gameLineup)->not->toBeNull();
+    expect($gameLineup->player_name)->toBe('Luka Doncic');
+});
+
+test('batch roster update and in-game spreadsheet save preserve position and starter status for scorebook', function () {
+    $org = Organization::create(['name' => 'Scorebook Org', 'slug' => 'scorebook-org']);
+    $user = User::create([
+        'organization_id' => $org->id,
+        'name' => 'Coach Scorebook',
+        'email' => 'scorebook_coach@example.com',
+        'password' => bcrypt('password'),
+        'role' => 'admin',
+    ]);
+
+    $team = Team::create([
+        'organization_id' => $org->id,
+        'name' => 'Scorebook Stars',
+        'sport' => 'basketball',
+        'gender' => 'boys',
+        'level' => 'varsity',
+        'season' => '2026-2027',
+    ]);
+
+    // 1. Save roster via batch with position and is_starter
+    $response = $this->actingAs($user)->postJson(route('teams.roster.batch', $team->id), [
+        'players' => [
+            ['id' => null, 'jersey_number' => '23', 'name' => 'Michael Jordan', 'position' => 'SG', 'is_starter' => true],
+            ['id' => null, 'jersey_number' => '33', 'name' => 'Scottie Pippen', 'position' => 'SF', 'is_starter' => true],
+            ['id' => null, 'jersey_number' => '9', 'name' => 'Ron Harper', 'position' => 'PG', 'is_starter' => false],
+        ],
+    ]);
+
+    $response->assertOk();
+    $response->assertJson(['success' => true]);
+
+    $jordanRp = RosterPlayer::where('team_id', $team->id)->where('jersey_number', '23')->first();
+    expect($jordanRp->position)->toBe('SG');
+    expect($jordanRp->is_starter)->toBeTrue();
+
+    $harperRp = RosterPlayer::where('team_id', $team->id)->where('jersey_number', '9')->first();
+    expect($harperRp->position)->toBe('PG');
+    expect($harperRp->is_starter)->toBeFalse();
+
+    // 2. In-game spreadsheet save
+    $game = Game::create([
+        'access_code' => 'SCRB01',
+        'slug' => 'scorebook-game',
+        'organization_id' => $org->id,
+        'created_by_user_id' => $user->id,
+        'sport' => 'basketball',
+        'status' => 'in_progress',
+        'home_team_id' => $team->id,
+        'home_team_name' => 'Scorebook Stars',
+        'away_team_name' => 'Visitors',
+        'current_period' => 1,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->call('saveRosterSpreadsheet', 'home', [
+            ['id' => null, 'jersey_number' => '23', 'name' => 'Michael Jordan', 'position' => 'SG', 'is_starter' => true, 'is_on_court' => true],
+            ['id' => null, 'jersey_number' => '33', 'name' => 'Scottie Pippen', 'position' => 'SF', 'is_starter' => true, 'is_on_court' => true],
+            ['id' => null, 'jersey_number' => '91', 'name' => 'Dennis Rodman', 'position' => 'PF', 'is_starter' => true, 'is_on_court' => true],
+        ]);
+
+    $rodmanLineup = GameLineup::where('game_id', $game->id)->where('jersey_number', '91')->first();
+    expect($rodmanLineup->position)->toBe('PF');
+    expect($rodmanLineup->is_starter)->toBeTrue();
+});
+
+

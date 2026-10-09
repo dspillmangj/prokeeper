@@ -201,6 +201,55 @@ window.ProKeeperEngine = {
                 }
             },
 
+            recalculateLocalEventsAndScores() {
+                if (!Array.isArray(this.recentEvents)) return;
+
+                // Sort ascending by sequence / reverse chronological to compute running scores
+                const chronological = [...this.recentEvents].reverse();
+
+                let runningHome = 0;
+                let runningAway = 0;
+                const homePeriod = [0, 0, 0, 0, 0, 0];
+                const awayPeriod = [0, 0, 0, 0, 0, 0];
+                let currentHomeFouls = 0;
+                let currentAwayFouls = 0;
+
+                for (const ev of chronological) {
+                    const pts = Number(ev.points) || 0;
+                    const p = Number(ev.period) || 1;
+                    const pIdx = Math.max(0, p - 1);
+                    const side = ev.team_side || 'home';
+
+                    if (side === 'home') {
+                        runningHome += pts;
+                        while (homePeriod.length <= pIdx) homePeriod.push(0);
+                        homePeriod[pIdx] = (homePeriod[pIdx] || 0) + pts;
+                        if (['F', 'R', 'T'].includes(ev.action_code) && p === this.currentPeriod) {
+                            currentHomeFouls++;
+                        }
+                    } else {
+                        runningAway += pts;
+                        while (awayPeriod.length <= pIdx) awayPeriod.push(0);
+                        awayPeriod[pIdx] = (awayPeriod[pIdx] || 0) + pts;
+                        if (['F', 'R', 'T'].includes(ev.action_code) && p === this.currentPeriod) {
+                            currentAwayFouls++;
+                        }
+                    }
+
+                    ev.home_score_after = runningHome;
+                    ev.away_score_after = runningAway;
+                }
+
+                this.homeScore = Math.max(0, runningHome);
+                this.awayScore = Math.max(0, runningAway);
+                this.homePeriodScores = homePeriod;
+                this.awayPeriodScores = awayPeriod;
+                if (this.sport === 'basketball') {
+                    this.homeFouls = currentHomeFouls;
+                    this.awayFouls = currentAwayFouls;
+                }
+            },
+
             saveManualEventFast() {
                 const teamSide = this.newEvent.team_side || 'home';
                 const jersey = this.newEvent.jersey_number ? String(this.newEvent.jersey_number).trim() : null;
@@ -219,20 +268,6 @@ window.ProKeeperEngine = {
                     const bench = (teamSide === 'home' ? this.homeBench : this.awayBench) || [];
                     const found = [...court, ...bench].find(p => String(p.jersey_number) === jersey);
                     playerName = found ? found.player_name : `Player #${jersey}`;
-                }
-
-                if (points > 0) {
-                    if (teamSide === 'home') {
-                        this.homeScore += points;
-                    } else {
-                        this.awayScore += points;
-                    }
-                    this.updateCurrentPeriodScore(teamSide, points);
-                }
-
-                if (['F', 'R', 'T'].includes(actionCode)) {
-                    if (teamSide === 'home') this.homeFouls++;
-                    else this.awayFouls++;
                 }
 
                 const desc = this.newEvent.description || (
@@ -254,12 +289,13 @@ window.ProKeeperEngine = {
                     action_type: def.type || 'manual_entry',
                     action_name: def.name || actionCode,
                     points: points,
-                    home_score_after: this.homeScore,
-                    away_score_after: this.awayScore,
+                    home_score_after: this.homeScore + (teamSide === 'home' ? points : 0),
+                    away_score_after: this.awayScore + (teamSide === 'away' ? points : 0),
                     description: desc,
                 };
 
                 this.recentEvents.unshift(localEvent);
+                this.recalculateLocalEventsAndScores();
                 this.playSound(points > 0 ? 'score' : 'tap');
                 this.feedbackMessage = `Logged: ${desc}`;
                 this.feedbackType = 'success';
@@ -313,28 +349,10 @@ window.ProKeeperEngine = {
                 const event = this.recentEvents[idx];
                 this.pushUndoSnapshot('delete_event', { event });
 
-                // Reverse local points if any
-                const pts = Number(event.points) || 0;
-                if (pts > 0) {
-                    if (event.team_side === 'home') {
-                        this.homeScore = Math.max(0, this.homeScore - pts);
-                    } else {
-                        this.awayScore = Math.max(0, this.awayScore - pts);
-                    }
-                    this.updateCurrentPeriodScore(event.team_side, -pts);
-                }
-
-                // Reverse local fouls if any
-                if (['F', 'R', 'T'].includes(event.action_code)) {
-                    if (event.team_side === 'home') {
-                        this.homeFouls = Math.max(0, this.homeFouls - 1);
-                    } else {
-                        this.awayFouls = Math.max(0, this.awayFouls - 1);
-                    }
-                }
-
-                // Remove from recentEvents array
+                // Remove from recentEvents array and recalculate running state
                 this.recentEvents.splice(idx, 1);
+                this.recalculateLocalEventsAndScores();
+
                 this.playSound('tap');
                 this.feedbackMessage = `Deleted: ${event.description || 'Play'}`;
                 this.feedbackType = 'info';
@@ -383,23 +401,20 @@ window.ProKeeperEngine = {
                 const newPts = (typeof this.editingEvent.points === 'number' && !isNaN(this.editingEvent.points))
                     ? Number(this.editingEvent.points)
                     : (Number(actionDef.points) || 0);
-                const oldPts = Number(oldEvent.points) || 0;
-                const delta = newPts - oldPts;
 
-                if (delta !== 0) {
-                    if (newTeamSide === 'home') {
-                        this.homeScore = Math.max(0, this.homeScore + delta);
-                    } else {
-                        this.awayScore = Math.max(0, this.awayScore + delta);
-                    }
-                    this.updateCurrentPeriodScore(newTeamSide, delta);
+                let newPlayerName = oldEvent.player_name;
+                if (newJersey && newJersey !== String(oldEvent.jersey_number || '')) {
+                    const court = (newTeamSide === 'home' ? this.homeCourt : this.awayCourt) || [];
+                    const bench = (newTeamSide === 'home' ? this.homeBench : this.awayBench) || [];
+                    const found = [...court, ...bench].find(p => String(p.jersey_number) === newJersey);
+                    newPlayerName = found ? found.player_name : `Player #${newJersey}`;
                 }
 
                 // Update local event object
                 const customDesc = this.editingEvent.description ? this.editingEvent.description.trim() : null;
                 const newDesc = customDesc || (
                     newJersey
-                        ? `${newTeamSide.toUpperCase()} #${newJersey} ${oldEvent.player_name || ''}: ${actionDef.name}${newPts > 0 ? ` (+${newPts} pts)` : ''}`
+                        ? `${newTeamSide.toUpperCase()} #${newJersey} ${newPlayerName || ''}: ${actionDef.name}${newPts > 0 ? ` (+${newPts} pts)` : ''}`
                         : `${newTeamSide.toUpperCase()}: ${actionDef.name}${newPts > 0 ? ` (+${newPts} pts)` : ''}`
                 );
 
@@ -407,17 +422,18 @@ window.ProKeeperEngine = {
                     ...oldEvent,
                     team_side: newTeamSide,
                     jersey_number: newJersey,
+                    player_name: newPlayerName,
                     action_code: newActionCode,
                     action_name: actionDef.name,
                     points: newPts,
                     period: newPeriod,
                     clock_seconds_remaining: newClock,
                     description: newDesc,
-                    home_score_after: this.homeScore,
-                    away_score_after: this.awayScore,
                 };
 
-                this.playSound(delta > 0 ? 'score' : 'tap');
+                this.recalculateLocalEventsAndScores();
+
+                this.playSound(newPts > 0 ? 'score' : 'tap');
                 this.feedbackMessage = `Updated: ${newDesc}`;
                 this.feedbackType = 'success';
                 this.editingEvent = null;
@@ -637,6 +653,45 @@ window.ProKeeperEngine = {
                 };
                 window.addEventListener('game-colors-updated', this._colorsListener);
 
+                this._lineupsListener = (event) => {
+                    const data = event.detail?.[0] || event.detail;
+                    if (data) {
+                        if (data.homeCourt) this.homeCourt = JSON.parse(JSON.stringify(data.homeCourt));
+                        if (data.awayCourt) this.awayCourt = JSON.parse(JSON.stringify(data.awayCourt));
+                        if (data.homeBench) this.homeBench = JSON.parse(JSON.stringify(data.homeBench));
+                        if (data.awayBench) this.awayBench = JSON.parse(JSON.stringify(data.awayBench));
+                    }
+                };
+                window.addEventListener('lineups-updated', this._lineupsListener);
+
+                this._gameStateListener = (event) => {
+                    const data = event.detail?.[0] || event.detail;
+                    if (data) {
+                        if (typeof data.homeScore !== 'undefined') this.homeScore = Number(data.homeScore);
+                        if (typeof data.awayScore !== 'undefined') this.awayScore = Number(data.awayScore);
+                        if (data.homePeriodScores) this.homePeriodScores = JSON.parse(JSON.stringify(data.homePeriodScores));
+                        if (data.awayPeriodScores) this.awayPeriodScores = JSON.parse(JSON.stringify(data.awayPeriodScores));
+                        if (typeof data.currentPeriod !== 'undefined') this.currentPeriod = Number(data.currentPeriod);
+                        if (data.periodName) this.periodName = data.periodName;
+                        if (data.possession) this.possession = data.possession;
+                        if (data.server) this.server = data.server;
+                        if (typeof data.homeFouls !== 'undefined') this.homeFouls = Number(data.homeFouls);
+                        if (typeof data.awayFouls !== 'undefined') this.awayFouls = Number(data.awayFouls);
+                        if (typeof data.homeTimeouts !== 'undefined') this.homeTimeouts = Number(data.homeTimeouts);
+                        if (typeof data.awayTimeouts !== 'undefined') this.awayTimeouts = Number(data.awayTimeouts);
+                        if (typeof data.homeFullTimeouts !== 'undefined') this.homeFullTimeouts = Number(data.homeFullTimeouts);
+                        if (typeof data.home30sTimeouts !== 'undefined') this.home30sTimeouts = Number(data.home30sTimeouts);
+                        if (typeof data.awayFullTimeouts !== 'undefined') this.awayFullTimeouts = Number(data.awayFullTimeouts);
+                        if (typeof data.away30sTimeouts !== 'undefined') this.away30sTimeouts = Number(data.away30sTimeouts);
+                        if (data.recentEvents) this.recentEvents = JSON.parse(JSON.stringify(data.recentEvents));
+                        if (data.homeCourt) this.homeCourt = JSON.parse(JSON.stringify(data.homeCourt));
+                        if (data.awayCourt) this.awayCourt = JSON.parse(JSON.stringify(data.awayCourt));
+                        if (data.homeBench) this.homeBench = JSON.parse(JSON.stringify(data.homeBench));
+                        if (data.awayBench) this.awayBench = JSON.parse(JSON.stringify(data.awayBench));
+                    }
+                };
+                window.addEventListener('game-state-updated', this._gameStateListener);
+
                 if (window._operatorSyncInterval) clearInterval(window._operatorSyncInterval);
                 window._operatorSyncInterval = setInterval(() => {
                     if (this.syncQueue.length > 0 && !this.isSyncing) {
@@ -651,6 +706,12 @@ window.ProKeeperEngine = {
                 }
                 if (this._colorsListener) {
                     window.removeEventListener('game-colors-updated', this._colorsListener);
+                }
+                if (this._lineupsListener) {
+                    window.removeEventListener('lineups-updated', this._lineupsListener);
+                }
+                if (this._gameStateListener) {
+                    window.removeEventListener('game-state-updated', this._gameStateListener);
                 }
                 if (window._operatorSyncInterval) {
                     clearInterval(window._operatorSyncInterval);
@@ -1167,26 +1228,46 @@ window.ProKeeperEngine = {
                         return;
                     }
 
-                    // Home Timeout: 'H' for Full, 'Shift+H' (⇧H) for 30s
+                    // Left and Right team sides dynamically respecting flipped court
+                    const leftTeam = this.isFlipped ? 'away' : 'home';
+                    const rightTeam = this.isFlipped ? 'home' : 'away';
+
+                    // Left Hand Full Timeout: 'F'
+                    if (k === 'F') {
+                        e.preventDefault();
+                        this.callTimeoutFast(leftTeam, 'full');
+                        return;
+                    }
+
+                    // Right Hand Full Timeout: 'G'
+                    if (k === 'G') {
+                        e.preventDefault();
+                        this.callTimeoutFast(rightTeam, 'full');
+                        return;
+                    }
+
+                    // Left Hand 30s Timeout: 'H'
                     if (k === 'H') {
                         e.preventDefault();
-                        if (e.shiftKey && this.sport === 'basketball') {
-                            this.callTimeoutFast('home', '30s');
+                        if (this.sport === 'basketball') {
+                            this.callTimeoutFast(leftTeam, '30s');
                         } else {
-                            this.callTimeoutFast('home', 'full');
+                            this.callTimeoutFast(leftTeam, 'full');
                         }
                         return;
                     }
-                    // Away Timeout: 'A' for Full, 'Shift+A' (⇧A) for 30s
-                    if (k === 'A') {
+
+                    // Right Hand 30s Timeout: 'J'
+                    if (k === 'J') {
                         e.preventDefault();
-                        if (e.shiftKey && this.sport === 'basketball') {
-                            this.callTimeoutFast('away', '30s');
+                        if (this.sport === 'basketball') {
+                            this.callTimeoutFast(rightTeam, '30s');
                         } else {
-                            this.callTimeoutFast('away', 'full');
+                            this.callTimeoutFast(rightTeam, 'full');
                         }
                         return;
                     }
+
                     // Advance Period / Set
                     if (k === 'N') {
                         e.preventDefault();
@@ -1199,14 +1280,25 @@ window.ProKeeperEngine = {
                         this.openLineupModal();
                         return;
                     }
-                    // Open Rosters Modal (R: Left team, Shift+R: Right team)
+                    // Left Hand Team Roster Modal: 'R'
                     if (k === 'R') {
                         e.preventDefault();
-                        const targetSide = e.shiftKey ? (this.isFlipped ? 'home' : 'away') : (this.isFlipped ? 'away' : 'home');
                         try {
                             const wireEl = document.querySelector('[wire\\:id]');
                             if (wireEl && window.Livewire) {
-                                window.Livewire.find(wireEl.getAttribute('wire:id'))?.call('openRosterModal', targetSide);
+                                window.Livewire.find(wireEl.getAttribute('wire:id'))?.call('openRosterModal', leftTeam);
+                                this.playSound('tap');
+                            }
+                        } catch (err) {}
+                        return;
+                    }
+                    // Right Hand Team Roster Modal: 'T'
+                    if (k === 'T') {
+                        e.preventDefault();
+                        try {
+                            const wireEl = document.querySelector('[wire\\:id]');
+                            if (wireEl && window.Livewire) {
+                                window.Livewire.find(wireEl.getAttribute('wire:id'))?.call('openRosterModal', rightTeam);
                                 this.playSound('tap');
                             }
                         } catch (err) {}
@@ -1737,6 +1829,7 @@ window.ProKeeperEngine = {
                 // Remove top play from recent events
                 if (this.recentEvents.length > 0) {
                     const undone = this.recentEvents.shift();
+                    this.recalculateLocalEventsAndScores();
                     this.feedbackMessage = `Reverted: ${undone.description || 'Last play'}`;
                 } else {
                     this.feedbackMessage = 'Last action reverted';

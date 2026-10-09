@@ -51,7 +51,7 @@
                         <div class="h-4 w-px bg-slate-700"></div>
                         <div class="flex items-center space-x-2">
                             <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono text-[11px] font-black border border-amber-500/40">
-                                PROKEEPER OFFICIAL SCOREBOOK
+                                PROKEEPER OFFICIAL SCOREBOOK &bull; {{ $game->period_format === 'halves' ? '2 HALVES' : '4 QUARTERS' }}
                             </span>
                             <span class="text-xs text-slate-400 font-mono hidden md:inline">GAME CODE: {{ $game->access_code }}</span>
                         </div>

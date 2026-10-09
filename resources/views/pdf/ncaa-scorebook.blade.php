@@ -69,7 +69,7 @@
         <table class="info-grid">
             <tr>
                 <td><strong>Home Team:</strong> {{ $game->home_display_name }} ({{ $game->home_score }} PTS)</td>
-                <td style="text-align: center;"><strong>Date:</strong> {{ $game->scheduled_at?->format('m/d/Y') ?? date('m/d/Y') }}</td>
+                <td style="text-align: center;"><strong>Date:</strong> {{ $game->scheduled_at?->format('m/d/Y') ?? date('m/d/Y') }} &nbsp;|&nbsp; <strong>Format:</strong> {{ $game->period_format === 'halves' ? '2 Halves' : '4 Quarters' }}</td>
                 <td style="text-align: right;"><strong>Visiting Team:</strong> {{ $game->away_display_name }} ({{ $game->away_score }} PTS)</td>
             </tr>
         </table>

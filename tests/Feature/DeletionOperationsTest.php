@@ -300,3 +300,130 @@ test('operator can delete game from livewire volleyball operator', function () {
 
     expect(Game::find($game->id))->toBeNull();
 });
+
+test('changes made in plays listing propagate via game-state-updated events in basketball operator without page reload', function () {
+    $org = Organization::create(['name' => 'Eagles Athletics', 'slug' => 'eagles-plays-sync-bb']);
+    $user = User::create([
+        'organization_id' => $org->id,
+        'name' => 'BB Operator',
+        'email' => 'bb-plays@example.com',
+        'password' => bcrypt('password'),
+    ]);
+
+    $game = Game::create([
+        'access_code' => 'PLAY01',
+        'slug' => 'test-plays-sync-bb',
+        'organization_id' => $org->id,
+        'created_by_user_id' => $user->id,
+        'sport' => 'basketball',
+        'status' => 'in_progress',
+        'home_team_name' => 'Tigers',
+        'away_team_name' => 'Hawks',
+        'current_period' => 1,
+    ]);
+
+    $event = GameEvent::create([
+        'game_id' => $game->id,
+        'sequence' => 1,
+        'period' => 1,
+        'team_side' => 'home',
+        'jersey_number' => '23',
+        'player_name' => 'M. Jordan',
+        'sport' => 'basketball',
+        'action_code' => 'X',
+        'action_type' => 'stat',
+        'action_name' => '2pt MAKE',
+        'points' => 2,
+        'home_score_after' => 2,
+        'away_score_after' => 0,
+        'description' => 'HOME #23 M. Jordan: 2pt MAKE (+2 pts)',
+    ]);
+    $game->home_score = 2;
+    $game->home_period_scores = [2, 0, 0, 0];
+    $game->save();
+
+    // 1. Update play via updateGameEvent
+    Livewire::actingAs($user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->call('updateGameEvent', $event->id, '23', 'M', 1, 'HOME #23 M. Jordan: 3pt MAKE (+3 pts)', 3, 'home')
+        ->assertDispatched('game-state-updated');
+
+    // 2. Add play via createManualEvent
+    Livewire::actingAs($user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->call('createManualEvent', [
+            'team_side' => 'away',
+            'jersey_number' => '33',
+            'action_code' => 'X',
+            'period' => 1,
+            'points' => 2,
+            'description' => 'AWAY #33: 2pt MAKE (+2 pts)',
+        ])
+        ->assertDispatched('game-state-updated');
+
+    // 3. Delete play via deleteGameEvent
+    Livewire::actingAs($user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->call('deleteGameEvent', $event->id)
+        ->assertDispatched('game-state-updated');
+
+    // 4. Undo play via undo
+    Livewire::actingAs($user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->call('undo')
+        ->assertDispatched('game-state-updated');
+});
+
+test('changes made in plays listing propagate via game-state-updated events in volleyball operator without page reload', function () {
+    $org = Organization::create(['name' => 'Eagles Athletics', 'slug' => 'eagles-plays-sync-vb']);
+    $user = User::create([
+        'organization_id' => $org->id,
+        'name' => 'VB Operator',
+        'email' => 'vb-plays@example.com',
+        'password' => bcrypt('password'),
+    ]);
+
+    $game = Game::create([
+        'access_code' => 'PLAY02',
+        'slug' => 'test-plays-sync-vb',
+        'organization_id' => $org->id,
+        'created_by_user_id' => $user->id,
+        'sport' => 'volleyball',
+        'status' => 'in_progress',
+        'home_team_name' => 'Home VB',
+        'away_team_name' => 'Away VB',
+        'current_period' => 1,
+    ]);
+
+    $event = GameEvent::create([
+        'game_id' => $game->id,
+        'sequence' => 1,
+        'period' => 1,
+        'team_side' => 'home',
+        'jersey_number' => '10',
+        'player_name' => 'K. Kiraly',
+        'sport' => 'volleyball',
+        'action_code' => 'K',
+        'action_type' => 'stat',
+        'action_name' => 'Kill (+1)',
+        'points' => 1,
+        'home_score_after' => 1,
+        'away_score_after' => 0,
+        'description' => 'HOME #10 K. Kiraly: Kill (+1 pt)',
+    ]);
+    $game->home_score = 1;
+    $game->home_period_scores = [1, 0, 0, 0, 0];
+    $game->save();
+
+    // 1. Update play
+    Livewire::actingAs($user)
+        ->test(VolleyballOperator::class, ['gameId' => $game->id])
+        ->call('updateGameEvent', $event->id, '10', 'A', 1, 'HOME #10 K. Kiraly: Ace (+1 pt)', 1, 'home')
+        ->assertDispatched('game-state-updated');
+
+    // 2. Delete play
+    Livewire::actingAs($user)
+        ->test(VolleyballOperator::class, ['gameId' => $game->id])
+        ->call('deleteGameEvent', $event->id)
+        ->assertDispatched('game-state-updated');
+});

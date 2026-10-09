@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Game;
+use App\Models\GameLineup;
 use App\Models\Player;
 use App\Models\RosterPlayer;
 use App\Models\Team;
@@ -208,12 +210,69 @@ class TeamController extends Controller
             RosterPlayer::where('team_id', $team->id)
                 ->whereNotIn('id', $submittedRosterPlayerIds)
                 ->delete();
+
+            // Sync updated roster to any active/scheduled games with this team
+            $activeGames = Game::where(function ($q) use ($team) {
+                $q->where('home_team_id', $team->id)->orWhere('away_team_id', $team->id);
+            })->whereIn('status', ['scheduled', 'in_progress', 'paused'])->get();
+
+            foreach ($activeGames as $g) {
+                $side = ($g->home_team_id === $team->id) ? 'home' : 'away';
+                $teamRoster = RosterPlayer::where('team_id', $team->id)->with('player')->get();
+
+                foreach ($teamRoster as $rp) {
+                    $playerName = $rp->player ? trim($rp->player->first_name.' '.$rp->player->last_name) : "Player #{$rp->jersey_number}";
+                    $existingLineup = GameLineup::where('game_id', $g->id)
+                        ->where('team_side', $side)
+                        ->where(function ($q) use ($rp) {
+                            if ($rp->player_id) {
+                                $q->where('player_id', $rp->player_id)->orWhere('jersey_number', (string) $rp->jersey_number);
+                            } else {
+                                $q->where('jersey_number', (string) $rp->jersey_number);
+                            }
+                        })->first();
+
+                    if ($existingLineup) {
+                        $existingLineup->update([
+                            'player_id' => $rp->player_id,
+                            'jersey_number' => (string) $rp->jersey_number,
+                            'player_name' => $playerName,
+                            'position' => $rp->position,
+                            'is_starter' => (bool) $rp->is_starter,
+                            'is_libero' => (bool) $rp->is_libero,
+                        ]);
+                    } else {
+                        GameLineup::create([
+                            'game_id' => $g->id,
+                            'team_side' => $side,
+                            'player_id' => $rp->player_id,
+                            'jersey_number' => (string) $rp->jersey_number,
+                            'player_name' => $playerName,
+                            'position' => $rp->position,
+                            'is_starter' => (bool) $rp->is_starter,
+                            'is_libero' => (bool) $rp->is_libero,
+                            'is_on_court' => false,
+                        ]);
+                    }
+                }
+            }
         });
 
         if ($request->wantsJson()) {
+            $team->refresh();
+            $team->load(['rosterPlayers.player']);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Roster updated successfully.',
+                'players' => $team->rosterPlayers->map(function ($rp) {
+                    return [
+                        'id' => $rp->id,
+                        'player_id' => $rp->player_id,
+                        'jersey_number' => (string) $rp->jersey_number,
+                        'name' => trim(($rp->player->first_name ?? '').' '.($rp->player->last_name ?? '')),
+                    ];
+                })->values(),
             ]);
         }
 
