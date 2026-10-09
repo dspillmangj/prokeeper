@@ -30,7 +30,7 @@ test('watch prompt renders successfully without code', function () {
 test('scorebook prompt renders successfully without code', function () {
     $response = $this->get('/scorebook');
     $response->assertStatus(200);
-    $response->assertSee('Official NCAA Scorebook');
+    $response->assertSee('ProKeeper Scorebook');
     $response->assertSee('Game Access Code');
 });
 

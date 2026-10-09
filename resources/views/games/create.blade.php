@@ -1,5 +1,7 @@
 @extends('layouts.app')
 
+@section('title', 'Start New Game')
+
 @section('content')
 <div class="max-w-3xl mx-auto" x-data="gameSetup()">
     <div class="mb-6">
@@ -427,8 +429,8 @@ function gameSetup() {
         },
         basketballPresets: [
             {
-                id: 'nfhs_hs',
-                name: 'NFHS High School',
+                id: 'high_school',
+                name: 'High School Standard',
                 summary: '4x8m Qtrs • 3 Full + 2 30s • 5 Fouls 2-FT Bonus',
                 rules: {
                     timeouts_full: 3,
@@ -444,8 +446,8 @@ function gameSetup() {
                 }
             },
             {
-                id: 'ncaa_men',
-                name: "College Men's (Halves)",
+                id: 'standard_halves',
+                name: 'Standard Halves',
                 summary: '2x20m Halves • 4 Full + 2 30s • 7/10 Bonus • 30s Shot',
                 rules: {
                     timeouts_full: 4,
@@ -461,8 +463,8 @@ function gameSetup() {
                 }
             },
             {
-                id: 'ncaa_women',
-                name: "College Women's (Quarters)",
+                id: 'standard_quarters',
+                name: 'Standard Quarters',
                 summary: '4x10m Qtrs • 3 Full + 2 30s • 5 Fouls 2-FT • 30s Shot',
                 rules: {
                     timeouts_full: 3,
@@ -478,8 +480,8 @@ function gameSetup() {
                 }
             },
             {
-                id: 'fiba_pro',
-                name: 'FIBA / Pro Rules',
+                id: 'pro_rules',
+                name: 'Professional Rules',
                 summary: '4x10m Qtrs • 5 Timeouts • 24s Shot • 5 Fouls Penalty',
                 rules: {
                     timeouts_full: 3,

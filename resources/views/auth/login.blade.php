@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Sign In - ProKeeper</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
+    <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}">
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800&display=swap" rel="stylesheet" />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -11,9 +13,9 @@
 <body class="h-full font-sans antialiased bg-slate-950 text-slate-100 flex items-center justify-center p-4">
     <div class="max-w-md w-full">
         <div class="text-center mb-8">
-            <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 mx-auto flex items-center justify-center font-black text-white text-2xl shadow-xl shadow-blue-500/20 mb-4">
-                PK
-            </div>
+            <a href="/" class="inline-block mb-4">
+                <img src="{{ asset('images/icon-white.svg') }}" alt="ProKeeper" class="h-12 w-auto mx-auto">
+            </a>
             <h1 class="text-2xl font-extrabold tracking-tight text-white">Sign in to ProKeeper</h1>
             <p class="text-sm text-slate-400 mt-1">High-speed athletic scorekeeping & live stats</p>
         </div>

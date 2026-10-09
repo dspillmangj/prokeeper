@@ -43,7 +43,7 @@ test('game can be created with custom full and 30s timeout configuration and rul
         'away_team_id' => $this->awayTeam->id,
         'venue' => 'Main Fieldhouse',
         'event_name' => 'Eagle Classic Tournament',
-        'preset' => 'ncaa_men',
+        'preset' => 'standard_halves',
         'timeouts_full' => 4,
         'timeouts_30s' => 2,
         'timeouts_ot' => 1,

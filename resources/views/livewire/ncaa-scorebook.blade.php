@@ -9,7 +9,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                     </div>
-                    <h1 class="text-2xl font-black tracking-tight text-white">Official NCAA Scorebook</h1>
+                    <h1 class="text-2xl font-black tracking-tight text-white">ProKeeper Scorebook</h1>
                     <p class="text-xs text-slate-400">Enter a 6-digit game access code to load the official scoresheet, running score, and signatures.</p>
                 </div>
 
@@ -90,7 +90,7 @@
     <main class="max-w-[1240px] mx-auto py-6 px-4 space-y-10 print:max-w-none print:p-0 print:m-0 print:space-y-0">
 
         <!-- ========================================== -->
-        <!-- SHEET 1: HOME TEAM NCAA SCOREBOOK PAGE     -->
+        <!-- SHEET 1: HOME TEAM PROKEEPER SCOREBOOK PAGE -->
         <!-- ========================================== -->
         <section id="sheet-home" class="ncaa-page-sheet bg-white text-black p-6 rounded-xl shadow-2xl border border-slate-300 font-sans print:rounded-none print:shadow-none print:border-none print:p-0 print:m-0">
             @include('livewire.partials.ncaa-team-sheet', [
@@ -112,9 +112,9 @@
             </div>
         </div>
 
-        <!-- ========================================== -->
-        <!-- SHEET 2: VISITING TEAM NCAA SCOREBOOK PAGE -->
-        <!-- ========================================== -->
+        <!-- ============================================== -->
+        <!-- SHEET 2: VISITING TEAM PROKEEPER SCOREBOOK PAGE -->
+        <!-- ============================================== -->
         <section id="sheet-away" class="ncaa-page-sheet bg-white text-black p-6 rounded-xl shadow-2xl border border-slate-300 font-sans print:rounded-none print:shadow-none print:border-none print:p-0 print:m-0">
             @include('livewire.partials.ncaa-team-sheet', [
                 'team' => $away,

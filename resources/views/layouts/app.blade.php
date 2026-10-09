@@ -5,7 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>{{ config('app.name', 'ProKeeper') }} - Digital Athletic Scorekeeping</title>
+    <title>@yield('title', 'Athletic Command Center') - ProKeeper</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
+    <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}">
+
+    <!-- PWA & Mobile Meta Tags -->
+    <meta name="theme-color" content="#020617">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ProKeeper">
+    <link rel="manifest" href="/manifest.json" id="pwa-manifest-link">
+    <link rel="apple-touch-icon" href="/icons/appicon_blue_appletouchicon.png" id="apple-touch-icon-link">
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -21,13 +32,9 @@
         <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-40">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                 <div class="flex items-center space-x-6">
-                    <a href="{{ route('dashboard') }}" class="flex items-center space-x-3 text-white font-bold text-xl tracking-tight">
-                        <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center font-black text-white text-lg tracking-tighter">
-                            PK
-                        </div>
-                        <span class="bg-gradient-to-r from-blue-400 via-indigo-200 to-white bg-clip-text text-transparent font-extrabold tracking-tight">
-                            PROKEEPER
-                        </span>
+                    <a href="{{ route('dashboard') }}" class="flex items-center space-x-2.5 text-white font-bold text-lg tracking-tight group">
+                        <img src="{{ asset('images/icon-white.svg') }}" alt="ProKeeper" class="h-7 w-auto">
+                        <span class="text-white font-black tracking-wider text-base">PROKEEPER</span>
                     </a>
 
                     <nav class="hidden md:flex items-center space-x-1">
@@ -39,6 +46,9 @@
                         </a>
                         <a href="{{ route('games.create') }}" class="px-3 py-2 rounded-md text-sm font-medium {{ request()->routeIs('games.create') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/50' }}">
                             New Game
+                        </a>
+                        <a href="{{ route('install') }}" class="px-3 py-2 rounded-md text-sm font-medium {{ request()->routeIs('install') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/50' }}">
+                            Install App
                         </a>
                     </nav>
                 </div>
@@ -84,15 +94,25 @@
         <!-- Footer -->
         <footer class="border-t border-slate-800/80 py-6 bg-slate-950 text-slate-500 text-xs">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>&copy; {{ date('Y') }} ProKeeper Systems. All rights reserved. Standard Regulation & Rally Scoring Compliance.</div>
-                <div class="flex space-x-6 text-slate-400">
-                    <span>app.prokeeper.com</span>
-                    <span>docs.prokeeper.com</span>
+                <div>&copy; {{ date('Y') }} ProKeeper Systems. All rights reserved.</div>
+                <div class="flex items-center space-x-6 text-slate-400 font-medium">
+                    <a href="https://prokeeper.taligent.dev" class="hover:underline hover:text-slate-200 transition">Home</a>
+                    <a href="https://app.prokeeper.taligent.dev" class="hover:underline hover:text-slate-200 transition">App</a>
+                    <a href="https://docs.prokeeper.taligent.dev" class="hover:underline hover:text-slate-200 transition">Docs</a>
                 </div>
             </div>
         </footer>
     </div>
 
     @livewireScripts
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').catch(err => {
+                    console.log('SW registration skipped:', err);
+                });
+            });
+        }
+    </script>
 </body>
 </html>

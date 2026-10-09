@@ -1,0 +1,62 @@
+{
+  "name": "ProKeeper - Athletic Engine",
+  "short_name": "ProKeeper",
+  "description": "High-speed sports statistics, live stadium scoreboards, and official NCAA digital scorebooks.",
+  "start_url": "/install",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#0f172a",
+  "categories": ["sports", "utilities", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/appicon_black_pwa_192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/appicon_black_pwa_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/appicon_black_svg.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Live Stadium Scoreboard",
+      "short_name": "Scoreboard",
+      "description": "View live game scores, clock, and fouls",
+      "url": "/scoreboard",
+      "icons": [{ "src": "/icons/appicon_black_pwa_192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Watch Game Live",
+      "short_name": "Watch",
+      "description": "Watch live game stream, box score, and play-by-play",
+      "url": "/watch",
+      "icons": [{ "src": "/icons/appicon_black_pwa_192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Digital Scorebook",
+      "short_name": "Scorebook",
+      "description": "NCAA format digital scorebook & PDF export",
+      "url": "/scorebook",
+      "icons": [{ "src": "/icons/appicon_black_pwa_192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Operator Command Center",
+      "short_name": "Operator",
+      "description": "Scorekeeper dashboard & game operation",
+      "url": "/dashboard",
+      "icons": [{ "src": "/icons/appicon_black_pwa_192.png", "sizes": "192x192" }]
+    }
+  ]
+}

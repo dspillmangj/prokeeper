@@ -1,5 +1,7 @@
 @extends('layouts.app')
 
+@section('title', 'Dashboard')
+
 @section('content')
 <div class="space-y-8">
     <!-- Top Welcome & Quick Actions -->

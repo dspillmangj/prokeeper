@@ -8,7 +8,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#020617">
 
-    <title>{{ config('app.name', 'ProKeeper') }} Operator - {{ $game->home_display_name ?? 'Home' }} vs {{ $game->away_display_name ?? 'Away' }}</title>
+    <title>ProKeeper Operator - {{ $game->home_display_name ?? 'Home' }} vs {{ $game->away_display_name ?? 'Away' }}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
+    <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}">
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -159,6 +161,7 @@
             </a>
 
             <div class="flex items-center space-x-2 border-l border-slate-800 pl-2.5">
+                <img src="{{ asset('images/icon-white.svg') }}" alt="ProKeeper" class="w-4 h-4 inline-block">
                 <span class="text-xs font-black tracking-wider uppercase text-white">PROKEEPER</span>
                 <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-black border border-emerald-500/40 flex items-center gap-1.5 shadow-sm" title="Operator live and synchronized">
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>

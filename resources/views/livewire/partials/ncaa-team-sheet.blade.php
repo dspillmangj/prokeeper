@@ -1,13 +1,16 @@
 <div class="space-y-4 print:space-y-1.5">
     <!-- Top Official Banner -->
     <div class="ncaa-border-thick p-2.5 print:p-1.5 bg-slate-100 flex items-center justify-between">
-        <div>
-            <div class="text-[10px] print:text-[8px] font-mono uppercase tracking-widest text-slate-600 font-bold leading-none">
-                PROKEEPER ATHLETIC SYSTEMS &bull; OFFICIAL BASKETBALL SCOREBOOK
+        <div class="flex items-center space-x-3">
+            <img src="{{ asset('images/logo-blue.svg') }}" alt="ProKeeper" class="h-6 print:h-5 w-auto shrink-0">
+            <div>
+                <div class="text-[10px] print:text-[8px] font-mono uppercase tracking-widest text-slate-600 font-bold leading-none">
+                    PROKEEPER ATHLETIC SYSTEMS &bull; OFFICIAL BASKETBALL SCOREBOOK
+                </div>
+                <h2 class="text-base print:text-sm font-black uppercase tracking-tight text-black mt-0.5 leading-none">
+                    {{ $sheetTitle }} &mdash; <span class="{{ $isHome ? 'text-blue-900' : 'text-rose-900' }}">{{ $team['name'] }}</span>
+                </h2>
             </div>
-            <h2 class="text-base print:text-sm font-black uppercase tracking-tight text-black mt-0.5 leading-none">
-                {{ $sheetTitle }} &mdash; <span class="{{ $isHome ? 'text-blue-900' : 'text-rose-900' }}">{{ $team['name'] }}</span>
-            </h2>
         </div>
         <div class="text-right font-mono">
             <span class="inline-block px-2 py-0.5 bg-black text-white text-[11px] print:text-[9px] font-bold uppercase rounded-sm">

@@ -3,11 +3,21 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GameController;
+use App\Http\Controllers\InstallController;
 use App\Http\Controllers\TeamController;
 use App\Livewire\NcaaScorebook;
 use App\Livewire\PureScoreboard;
 use App\Livewire\WatchGame;
 use Illuminate\Support\Facades\Route;
+
+/*
+|--------------------------------------------------------------------------
+| PWA App Installation & Manifest Routes
+|--------------------------------------------------------------------------
+*/
+Route::get('/install', [InstallController::class, 'index'])->name('install');
+Route::get('/manifest.json', [InstallController::class, 'manifest'])->name('manifest');
+
 
 /*
 |--------------------------------------------------------------------------

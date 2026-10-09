@@ -10,12 +10,12 @@ use App\Models\User;
 beforeEach(function () {
     $this->org = \App\Models\Organization::create([
         'name' => 'LCA Athletics',
-        'slug' => 'lca-athletics-ncaa',
+        'slug' => 'lca-athletics-scorebook',
     ]);
 
     $this->user = User::create([
         'name' => 'Coach Dan',
-        'email' => 'dan_ncaa@lca.org',
+        'email' => 'dan_scorebook@lca.org',
         'password' => bcrypt('password'),
         'organization_id' => $this->org->id,
         'role' => 'admin',
@@ -24,8 +24,8 @@ beforeEach(function () {
     $this->game = Game::create([
         'organization_id' => $this->org->id,
         'created_by_user_id' => $this->user->id,
-        'home_team_name' => 'Duke Blue Devils',
-        'away_team_name' => 'UNC Tar Heels',
+        'home_team_name' => 'Eagles',
+        'away_team_name' => 'Knights',
         'sport' => 'basketball',
         'status' => 'active',
         'period' => 2,
@@ -35,8 +35,8 @@ beforeEach(function () {
         'away_team_fouls' => 8,
         'home_timeouts_remaining' => 4,
         'away_timeouts_remaining' => 3,
-        'access_code' => 'NCAA2026',
-        'slug' => 'duke-vs-unc-ncaa2026',
+        'access_code' => 'PK2026',
+        'slug' => 'eagles-vs-knights-pk2026',
         'uuid' => (string) \Illuminate\Support\Str::uuid(),
     ]);
 

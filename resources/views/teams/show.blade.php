@@ -1,5 +1,7 @@
 @extends('layouts.app')
 
+@section('title', $team->name . ' Roster')
+
 @section('content')
 <div class="space-y-4" x-data="rosterSpreadsheet({
     sport: '{{ $team->sport }}',

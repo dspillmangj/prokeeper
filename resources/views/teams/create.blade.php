@@ -1,5 +1,7 @@
 @extends('layouts.app')
 
+@section('title', 'Create Team')
+
 @section('content')
 <div class="max-w-xl mx-auto">
     <div class="mb-6">
