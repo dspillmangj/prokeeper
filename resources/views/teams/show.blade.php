@@ -13,7 +13,8 @@
             'name' => trim(($rp->player->first_name ?? '') . ' ' . ($rp->player->last_name ?? '')),
         ];
     })) }}
-})">
+})"
+@keydown.window="handleWindowKeydown($event)">
     <!-- Header & Breadcrumb -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -36,6 +37,10 @@
 
         <!-- Header Actions: Total count & Quick Save -->
         <div class="flex items-center space-x-3">
+            <template x-if="jumpFeedback">
+                <span class="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold animate-pulse flex items-center gap-1" x-text="'Jump: ' + jumpFeedback"></span>
+            </template>
+
             <div class="text-xs font-mono bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-slate-300">
                 <span class="text-slate-500 uppercase mr-1">Roster:</span>
                 <strong class="text-white text-sm" x-text="validPlayerCount"></strong>
@@ -128,7 +133,7 @@
         <div class="px-4 py-2 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
             <div class="flex items-center space-x-2">
                 <span class="text-blue-400 font-bold">Spreadsheet View:</span>
-                <span>Type directly in cells &bull; Navigate with <kbd class="px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[10px]">↑</kbd> <kbd class="px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[10px]">↓</kbd> <kbd class="px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[10px]">←</kbd> <kbd class="px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[10px]">→</kbd> <kbd class="px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[10px]">Tab</kbd> <kbd class="px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[10px]">Enter</kbd> &bull; Paste directly (<kbd class="px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[10px]">Ctrl+V</kbd> / <kbd class="px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[10px]">Cmd+V</kbd>) from Google Sheets or Excel.</span>
+                <span>Press <kbd class="px-1 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[10px]">1-9</kbd> jump to row &bull; <kbd class="px-1 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[10px]">0</kbd> first available slot &bull; Arrow keys navigate &bull; Paste directly (<kbd class="px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[10px]">Ctrl+V</kbd> / <kbd class="px-1 py-0.5 rounded bg-slate-800 text-white font-mono text-[10px]">Cmd+V</kbd>) from Google Sheets or Excel.</span>
             </div>
             <div>
                 <button type="button" @click="addEmptyRow()" class="text-xs text-blue-400 hover:text-blue-300 font-bold font-mono transition cursor-pointer">

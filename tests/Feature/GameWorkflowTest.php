@@ -36,16 +36,16 @@ test('public live scoreboard renders successfully', function () {
     $response->assertSee('Grace Knights');
 });
 
-test('public NCAA scorebook renders successfully', function () {
+test('public scorebook renders successfully', function () {
     $response = $this->get(route('public.scorebook', 'EAG999'));
     $response->assertStatus(200);
-    $response->assertSee('OFFICIAL MEN\'S BASKETBALL SCOREBOOK', false);
+    $response->assertSee('OFFICIAL BASKETBALL SCOREBOOK', false);
     $response->assertSee('Running Score Progression');
     $response->assertSee('HOME TEAM SCOREBOOK PAGE');
     $response->assertSee('VISITING TEAM SCOREBOOK PAGE');
 });
 
-test('NCAA PDF download route generates PDF stream', function () {
+test('PDF download route generates PDF stream', function () {
     $response = $this->get(route('games.pdf', 'EAG999'));
     $response->assertStatus(200);
     $response->assertHeader('content-type', 'application/pdf');

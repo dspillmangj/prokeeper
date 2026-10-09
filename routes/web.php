@@ -26,9 +26,16 @@ Route::get('/watch/{code}', WatchGame::class)->name('public.watch');
 Route::get('/live', WatchGame::class)->name('public.live.prompt');
 Route::get('/live/{code}', WatchGame::class)->name('public.live');
 
-// 3. Official NCAA Scorebook & PDF Export
+// 3. Official Digital Scorebook & PDF Export
+Route::get('/scorebook', NcaaScorebook::class)->name('public.scorebook.prompt');
 Route::get('/scorebook/{code}', NcaaScorebook::class)->name('public.scorebook');
-Route::get('/export/ncaa/{code}.pdf', [GameController::class, 'exportNcaaPdf'])->name('games.pdf');
+Route::get('/export/scorebook/{code}.pdf', [GameController::class, 'exportNcaaPdf'])->name('games.pdf');
+Route::get('/export/ncaa/{code}.pdf', [GameController::class, 'exportNcaaPdf'])->name('games.pdf.legacy');
+
+// Operator route redirect (redirects to login)
+Route::get('/operator', function () {
+    return redirect()->route('login');
+})->name('operator.redirect');
 
 /*
 |--------------------------------------------------------------------------

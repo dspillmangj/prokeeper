@@ -12,7 +12,7 @@
             <!-- Scorebook link button if basketball -->
             @if ($game->sport === 'basketball')
                 <a href="{{ route('public.scorebook', $game->access_code) }}" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition">
-                    View Official NCAA Scorebook &rarr;
+                    View Official Scorebook &rarr;
                 </a>
             @endif
         </div>

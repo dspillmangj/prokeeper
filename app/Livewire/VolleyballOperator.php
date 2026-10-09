@@ -40,6 +40,12 @@ class VolleyballOperator extends Component
 
     public int $gamePeriod = 1;
 
+    public string $homeScoreColor = '#1e40af';
+
+    public string $awayScoreColor = '#b91c1c';
+
+    public bool $broadcastFlip = false;
+
     public string $officialReferee = '';
 
     public string $officialUmpire1 = '';
@@ -142,6 +148,9 @@ class VolleyballOperator extends Component
         $this->gameHomeName = $game->home_team_name ?? ($game->homeTeam?->name ?? '');
         $this->gameAwayName = $game->away_team_name ?? ($game->awayTeam?->name ?? '');
         $this->gamePeriod = (int) $game->current_period;
+        $this->homeScoreColor = $game->home_team_score_color ?: '#1e40af';
+        $this->awayScoreColor = $game->away_team_score_color ?: '#b91c1c';
+        $this->broadcastFlip = (bool) ($game->settings['broadcast_flip'] ?? false);
 
         $officials = $game->settings['officials'] ?? [];
         $this->officialReferee = $officials['referee'] ?? '';
@@ -156,6 +165,11 @@ class VolleyballOperator extends Component
     public function closeGameDetailsModal()
     {
         $this->showGameDetailsModal = false;
+    }
+
+    public function closeSignatureModal()
+    {
+        // Safe no-op if invoked by universal modal escape
     }
 
     public function saveGameDetails()
@@ -174,6 +188,7 @@ class VolleyballOperator extends Component
 
         $settings = $game->settings ?? [];
         $settings['event_name'] = trim($this->gameEventName);
+        $settings['broadcast_flip'] = (bool) $this->broadcastFlip;
         $settings['officials'] = [
             'referee' => trim($this->officialReferee),
             'umpire1' => trim($this->officialUmpire1),
@@ -186,6 +201,8 @@ class VolleyballOperator extends Component
         $game->venue = trim($this->gameVenue);
         $game->status = $this->gameStatus;
         $game->current_period = max(1, $this->gamePeriod);
+        $game->home_team_score_color = !empty($this->homeScoreColor) ? $this->homeScoreColor : '#1e40af';
+        $game->away_team_score_color = !empty($this->awayScoreColor) ? $this->awayScoreColor : '#b91c1c';
         $game->settings = $settings;
 
         if (!empty($this->gameHomeName)) {
@@ -197,8 +214,14 @@ class VolleyballOperator extends Component
 
         $game->save();
 
+        $this->dispatch('game-colors-updated', [
+            'homeColor' => $game->home_team_score_color,
+            'awayColor' => $game->away_team_score_color,
+            'broadcastFlip' => $this->broadcastFlip,
+        ]);
+
         $this->showGameDetailsModal = false;
-        $this->feedbackMessage = 'Game details, schedule, venue, and officials updated successfully.';
+        $this->feedbackMessage = 'Game details, team colors, schedule, venue, and officials updated.';
         $this->feedbackType = 'success';
     }
 
@@ -744,30 +767,16 @@ class VolleyballOperator extends Component
 
     public function adjustScore(string $teamSide, int $delta)
     {
-        $game = $this->game;
-        if ($teamSide === 'home') {
-            $game->home_score = max(0, $game->home_score + $delta);
-            $scores = $game->home_period_scores ?? [0, 0, 0, 0, 0];
-            $cur = $game->current_period;
-            while (count($scores) < $cur) {
-                $scores[] = 0;
-            }
-            $scores[$cur - 1] = max(0, $scores[$cur - 1] + $delta);
-            $game->home_period_scores = $scores;
-        } else {
-            $game->away_score = max(0, $game->away_score + $delta);
-            $scores = $game->away_period_scores ?? [0, 0, 0, 0, 0];
-            $cur = $game->current_period;
-            while (count($scores) < $cur) {
-                $scores[] = 0;
-            }
-            $scores[$cur - 1] = max(0, $scores[$cur - 1] + $delta);
-            $game->away_period_scores = $scores;
+        try {
+            $event = $this->statService->adjustScore($this->game, $teamSide, $delta);
+            $this->feedbackMessage = $event->description;
+            $this->feedbackType = 'info';
+        } catch (Exception $e) {
+            $this->feedbackMessage = $e->getMessage();
+            $this->feedbackType = 'error';
         }
-        $game->save();
-        $this->feedbackMessage = "Adjusted ".strtoupper($teamSide)." score (".($delta > 0 ? "+{$delta}" : "{$delta}").")";
-        $this->feedbackType = 'info';
     }
+
 
     public function setSet(int $set)
     {
@@ -885,16 +894,26 @@ class VolleyballOperator extends Component
 
     public function callTimeout(string $teamSide)
     {
-        $game = $this->game;
-        if ($teamSide === 'home' && $game->home_timeouts_remaining > 0) {
-            $game->home_timeouts_remaining -= 1;
-            $this->feedbackMessage = "Timeout charged to HOME. Remaining: {$game->home_timeouts_remaining}";
-        } elseif ($teamSide === 'away' && $game->away_timeouts_remaining > 0) {
-            $game->away_timeouts_remaining -= 1;
-            $this->feedbackMessage = "Timeout charged to AWAY. Remaining: {$game->away_timeouts_remaining}";
+        try {
+            $event = $this->statService->callTimeout($this->game, $teamSide);
+            $this->feedbackMessage = $event->description;
+            $this->feedbackType = 'info';
+        } catch (Exception $e) {
+            $this->feedbackMessage = $e->getMessage();
+            $this->feedbackType = 'error';
         }
-        $game->save();
-        $this->feedbackType = 'info';
+    }
+
+    public function createManualEvent(array $data)
+    {
+        try {
+            $event = $this->statService->createManualEvent($this->game, $data);
+            $this->feedbackMessage = "Logged: {$event->description}";
+            $this->feedbackType = 'success';
+        } catch (Exception $e) {
+            $this->feedbackMessage = $e->getMessage();
+            $this->feedbackType = 'error';
+        }
     }
 
     public function undo()
@@ -919,18 +938,24 @@ class VolleyballOperator extends Component
         }
     }
 
-    public function updateGameEvent(int $eventId, string $jersey, string $actionCode, int $period)
+    public function updateGameEvent(int $eventId, string $jersey, string $actionCode, int $period, ?string $description = null, ?int $points = null, ?string $teamSide = null)
     {
-        $updated = $this->statService->updateEvent($this->game, $eventId, [
+        $payload = [
             'jersey_number' => $jersey,
             'action_code' => $actionCode,
             'period' => $period,
-        ]);
+        ];
+        if (!is_null($description)) $payload['description'] = $description;
+        if (!is_null($points)) $payload['points'] = $points;
+        if (!is_null($teamSide)) $payload['team_side'] = $teamSide;
+
+        $updated = $this->statService->updateEvent($this->game, $eventId, $payload);
         if ($updated) {
             $this->feedbackMessage = "Updated play: {$updated->description}";
             $this->feedbackType = 'success';
         }
     }
+
 
     public function render()
     {

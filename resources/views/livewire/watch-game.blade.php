@@ -10,7 +10,7 @@
                         </svg>
                     </div>
                     <h1 class="text-2xl font-black tracking-tight text-white">Watch Game Live</h1>
-                    <p class="text-xs text-slate-400">Enter a 6-character game access code to watch live play-by-play, box scores, and scoreboard.</p>
+                    <p class="text-xs text-slate-400">Enter a 6-digit game access code to watch live play-by-play, box scores, and scoreboard.</p>
                 </div>
 
                 @if ($errorMessage)
@@ -36,32 +36,14 @@
                         Start Watching &rarr;
                     </button>
                 </form>
-
-                @if (isset($liveGames) && $liveGames->isNotEmpty())
-                    <div class="pt-4 border-t border-slate-800/80 space-y-2.5">
-                        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500 text-center">
-                            Featured Live Games
-                        </div>
-                        <div class="space-y-2">
-                            @foreach ($liveGames as $lg)
-                                <a href="{{ route('public.watch', $lg->access_code) }}"
-                                   class="p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between group">
-                                    <div class="truncate text-xs font-bold text-slate-200 group-hover:text-white">
-                                        <span class="text-blue-400">{{ $lg->home_display_name }}</span>
-                                        <span class="text-slate-500 text-[10px]">vs</span>
-                                        <span class="text-rose-400">{{ $lg->away_display_name }}</span>
-                                    </div>
-                                    <span class="px-2 py-0.5 rounded bg-slate-800 text-[10px] font-mono font-bold text-slate-300">
-                                        {{ $lg->access_code }}
-                                    </span>
-                                </a>
-                            @endforeach
-                        </div>
-                    </div>
-                @endif
             </div>
         </div>
     @else
+        @php
+            $homeColor = $game->home_team_score_color ?? '#1e40af';
+            $awayColor = $game->away_team_score_color ?? '#b91c1c';
+        @endphp
+
         <!-- Live Watch Game Spectator Experience -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6" wire:poll.2000ms>
             
@@ -70,7 +52,7 @@
                 <!-- Top Meta Bar -->
                 <div class="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-800/80 text-xs">
                     <div class="flex items-center space-x-2.5">
-                        <span class="px-2.5 py-1 rounded-full bg-blue-950 border border-blue-800 text-blue-400 font-extrabold uppercase tracking-wider text-[11px]">
+                        <span class="px-2.5 py-1 rounded-full bg-slate-950 border border-slate-700 text-slate-300 font-extrabold uppercase tracking-wider text-[11px]">
                             {{ ucfirst($game->sport) }} &bull; {{ $game->period_name }}
                         </span>
                         <span class="text-slate-400 font-medium hidden sm:inline">{{ $game->venue ?: 'Main Gymnasium' }}</span>
@@ -87,8 +69,8 @@
                         </a>
                         @if ($game->sport === 'basketball')
                             <a href="{{ route('public.scorebook', $game->access_code) }}" target="_blank"
-                               class="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs border border-slate-700 transition hidden sm:inline-flex items-center gap-1">
-                                <span>NCAA Book</span>
+                                class="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs border border-slate-700 transition hidden sm:inline-flex items-center gap-1">
+                                <span>Scorebook</span>
                             </a>
                         @endif
                     </div>
@@ -97,11 +79,12 @@
                 <!-- Matchup Score Display -->
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-center">
                     <!-- Home Team -->
-                    <div class="md:col-span-5 flex items-center justify-between p-4 sm:p-5 rounded-2xl bg-slate-950/90 border border-slate-800">
+                    <div class="md:col-span-5 flex items-center justify-between p-4 sm:p-5 rounded-2xl bg-slate-950/90"
+                         style="border: 1.5px solid {{ $homeColor }}60;">
                         <div>
                             <div class="flex items-center space-x-2">
-                                <span class="w-3 h-3 rounded-full bg-blue-500 shadow-sm shadow-blue-500"></span>
-                                <span class="text-xs font-bold uppercase tracking-wider text-blue-400">HOME</span>
+                                <span class="w-3 h-3 rounded-full shadow-sm" style="background-color: {{ $homeColor }};"></span>
+                                <span class="text-xs font-bold uppercase tracking-wider" style="color: {{ $homeColor }};">HOME</span>
                                 @if ($game->sport === 'basketball' && $game->possession_arrow === 'home')
                                     <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold border border-amber-500/40">POSS</span>
                                 @elseif ($game->sport === 'volleyball' && $game->current_server === 'home')
@@ -130,7 +113,8 @@
                     </div>
 
                     <!-- Away Team -->
-                    <div class="md:col-span-5 flex items-center justify-between p-4 sm:p-5 rounded-2xl bg-slate-950/90 border border-slate-800">
+                    <div class="md:col-span-5 flex items-center justify-between p-4 sm:p-5 rounded-2xl bg-slate-950/90"
+                         style="border: 1.5px solid {{ $awayColor }}60;">
                         <div class="text-left pr-3">
                             <span class="font-mono text-5xl sm:text-6xl font-black text-white tracking-tighter">{{ $game->away_score }}</span>
                         </div>
@@ -141,8 +125,8 @@
                                 @elseif ($game->sport === 'volleyball' && $game->current_server === 'away')
                                     <span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold border border-emerald-500/40">SERVING</span>
                                 @endif
-                                <span class="text-xs font-bold uppercase tracking-wider text-rose-400">AWAY</span>
-                                <span class="w-3 h-3 rounded-full bg-rose-500 shadow-sm shadow-rose-500"></span>
+                                <span class="text-xs font-bold uppercase tracking-wider" style="color: {{ $awayColor }};">AWAY</span>
+                                <span class="w-3 h-3 rounded-full shadow-sm" style="background-color: {{ $awayColor }};"></span>
                             </div>
                             <h2 class="text-xl sm:text-2xl font-black text-white mt-1 tracking-tight">{{ $game->away_display_name }}</h2>
                             @if ($game->sport === 'basketball')
@@ -162,7 +146,7 @@
                     <button wire:click="setTab('scoreboard')"
                             type="button"
                             class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer flex items-center gap-2 {{ $activeTab === 'scoreboard' ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800' }}">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                         <span>Scoreboard</span>
                     </button>
 
@@ -215,7 +199,7 @@
                                 </thead>
                                 <tbody class="divide-y divide-slate-800/70 font-bold">
                                     <tr>
-                                        <td class="py-2.5 px-3 text-left font-sans font-black text-blue-400">
+                                        <td class="py-2.5 px-3 text-left font-sans font-black" style="color: {{ $homeColor }};">
                                             {{ $game->home_display_name }}
                                         </td>
                                         @foreach ($periodScores as $ps)
@@ -228,7 +212,7 @@
                                         </td>
                                     </tr>
                                     <tr>
-                                        <td class="py-2.5 px-3 text-left font-sans font-black text-rose-400">
+                                        <td class="py-2.5 px-3 text-left font-sans font-black" style="color: {{ $awayColor }};">
                                             {{ $game->away_display_name }}
                                         </td>
                                         @foreach ($periodScores as $ps)
@@ -258,7 +242,7 @@
                             @forelse ($events->take(5) as $ev)
                                 <div class="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 flex items-center justify-between gap-3 text-xs">
                                     <div class="flex items-center space-x-2.5 truncate">
-                                        <span class="w-2.5 h-2.5 rounded-full shrink-0 {{ $ev->team_side === 'home' ? 'bg-blue-500' : 'bg-rose-500' }}"></span>
+                                        <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: {{ $ev->team_side === 'home' ? $homeColor : $awayColor }};"></span>
                                         <span class="font-mono text-[11px] font-bold text-slate-400 shrink-0">
                                             P{{ $ev->period }} &bull; {{ sprintf('%d:%02d', floor(($ev->clock_seconds_remaining ?? 0) / 60), ($ev->clock_seconds_remaining ?? 0) % 60) }}
                                         </span>
@@ -297,12 +281,14 @@
                             </button>
                             <button wire:click="setPbpFilter('home')"
                                     type="button"
-                                    class="px-2.5 py-1 rounded-lg font-bold transition cursor-pointer {{ $pbpFilterTeam === 'home' ? 'bg-blue-600 text-white' : 'bg-slate-950 text-slate-400 hover:text-white' }}">
+                                    class="px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                                    style="{{ $pbpFilterTeam === 'home' ? 'background-color: ' . $homeColor . '; color: white;' : 'background-color: rgb(2 6 23); color: rgb(148 163 184);' }}">
                                 {{ $game->home_display_name }}
                             </button>
                             <button wire:click="setPbpFilter('away')"
                                     type="button"
-                                    class="px-2.5 py-1 rounded-lg font-bold transition cursor-pointer {{ $pbpFilterTeam === 'away' ? 'bg-rose-600 text-white' : 'bg-slate-950 text-slate-400 hover:text-white' }}">
+                                    class="px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                                    style="{{ $pbpFilterTeam === 'away' ? 'background-color: ' . $awayColor . '; color: white;' : 'background-color: rgb(2 6 23); color: rgb(148 163 184);' }}">
                                 {{ $game->away_display_name }}
                             </button>
                         </div>
@@ -313,7 +299,7 @@
                         @forelse ($events as $ev)
                             <div class="p-3 rounded-2xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between gap-3 text-xs">
                                 <div class="flex items-center space-x-3 min-w-0">
-                                    <span class="w-3 h-3 rounded-full shrink-0 {{ $ev->team_side === 'home' ? 'bg-blue-500' : 'bg-rose-500' }}"></span>
+                                    <span class="w-3 h-3 rounded-full shrink-0" style="background-color: {{ $ev->team_side === 'home' ? $homeColor : $awayColor }};"></span>
                                     <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 font-mono text-[10px] font-bold text-slate-400 shrink-0">
                                         P{{ $ev->period }} &bull; {{ sprintf('%d:%02d', floor(($ev->clock_seconds_remaining ?? 0) / 60), ($ev->clock_seconds_remaining ?? 0) % 60) }}
                                     </span>
@@ -349,8 +335,8 @@
                     <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-3">
                         <div class="flex items-center justify-between pb-2 border-b border-slate-800">
                             <div class="flex items-center space-x-2">
-                                <span class="w-3 h-3 rounded-full bg-blue-500"></span>
-                                <h3 class="text-sm font-black uppercase tracking-wider text-blue-400">{{ $game->home_display_name }} &bull; Box Score</h3>
+                                <span class="w-3 h-3 rounded-full" style="background-color: {{ $homeColor }};"></span>
+                                <h3 class="text-sm font-black uppercase tracking-wider" style="color: {{ $homeColor }};">{{ $game->home_display_name }} &bull; Box Score</h3>
                             </div>
                             <span class="font-mono text-lg font-black text-white">{{ $game->home_score }} PTS</span>
                         </div>
@@ -377,7 +363,7 @@
                                     <tbody class="divide-y divide-slate-800/70 text-center">
                                         @foreach ($homeBballStats as $st)
                                             <tr class="hover:bg-slate-950/40 transition">
-                                                <td class="py-2 px-2 text-left font-black text-blue-400">#{{ $st->jersey_number }}</td>
+                                                <td class="py-2 px-2 text-left font-black" style="color: {{ $homeColor }};">#{{ $st->jersey_number }}</td>
                                                 <td class="py-2 px-3 text-left font-sans font-bold text-white truncate max-w-[140px]">{{ $st->player_name }}</td>
                                                 <td class="py-2 px-2 font-black text-white text-sm">{{ $st->points }}</td>
                                                 <td class="py-2 px-2 text-slate-300">{{ $st->field_goals_made }}-{{ $st->field_goals_attempted }}</td>
@@ -427,7 +413,7 @@
                                     <tbody class="divide-y divide-slate-800/70 text-center">
                                         @foreach ($homeVbStats as $st)
                                             <tr class="hover:bg-slate-950/40 transition">
-                                                <td class="py-2 px-2 text-left font-black text-blue-400">#{{ $st->jersey_number }}</td>
+                                                <td class="py-2 px-2 text-left font-black" style="color: {{ $homeColor }};">#{{ $st->jersey_number }}</td>
                                                 <td class="py-2 px-3 text-left font-sans font-bold text-white truncate max-w-[140px]">{{ $st->player_name }}</td>
                                                 <td class="py-2 px-2 font-black text-white text-sm">{{ $st->total_points }}</td>
                                                 <td class="py-2 px-2 text-slate-300">{{ $st->kills }}</td>
@@ -449,8 +435,8 @@
                     <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-3">
                         <div class="flex items-center justify-between pb-2 border-b border-slate-800">
                             <div class="flex items-center space-x-2">
-                                <span class="w-3 h-3 rounded-full bg-rose-500"></span>
-                                <h3 class="text-sm font-black uppercase tracking-wider text-rose-400">{{ $game->away_display_name }} &bull; Box Score</h3>
+                                <span class="w-3 h-3 rounded-full" style="background-color: {{ $awayColor }};"></span>
+                                <h3 class="text-sm font-black uppercase tracking-wider" style="color: {{ $awayColor }};">{{ $game->away_display_name }} &bull; Box Score</h3>
                             </div>
                             <span class="font-mono text-lg font-black text-white">{{ $game->away_score }} PTS</span>
                         </div>
@@ -477,7 +463,7 @@
                                     <tbody class="divide-y divide-slate-800/70 text-center">
                                         @foreach ($awayBballStats as $st)
                                             <tr class="hover:bg-slate-950/40 transition">
-                                                <td class="py-2 px-2 text-left font-black text-rose-400">#{{ $st->jersey_number }}</td>
+                                                <td class="py-2 px-2 text-left font-black" style="color: {{ $awayColor }};">#{{ $st->jersey_number }}</td>
                                                 <td class="py-2 px-3 text-left font-sans font-bold text-white truncate max-w-[140px]">{{ $st->player_name }}</td>
                                                 <td class="py-2 px-2 font-black text-white text-sm">{{ $st->points }}</td>
                                                 <td class="py-2 px-2 text-slate-300">{{ $st->field_goals_made }}-{{ $st->field_goals_attempted }}</td>
@@ -527,7 +513,7 @@
                                     <tbody class="divide-y divide-slate-800/70 text-center">
                                         @foreach ($awayVbStats as $st)
                                             <tr class="hover:bg-slate-950/40 transition">
-                                                <td class="py-2 px-2 text-left font-black text-rose-400">#{{ $st->jersey_number }}</td>
+                                                <td class="py-2 px-2 text-left font-black" style="color: {{ $awayColor }};">#{{ $st->jersey_number }}</td>
                                                 <td class="py-2 px-3 text-left font-sans font-bold text-white truncate max-w-[140px]">{{ $st->player_name }}</td>
                                                 <td class="py-2 px-2 font-black text-white text-sm">{{ $st->total_points }}</td>
                                                 <td class="py-2 px-2 text-slate-300">{{ $st->kills }}</td>
@@ -555,9 +541,9 @@
                         <div class="flex items-center justify-between pb-3 border-b border-slate-800">
                             <h3 class="text-sm font-black uppercase tracking-wider text-white">Team Statistical Matchup</h3>
                             <div class="flex items-center space-x-4 text-xs font-bold font-mono">
-                                <span class="text-blue-400">{{ $game->home_display_name }}</span>
+                                <span style="color: {{ $homeColor }};">{{ $game->home_display_name }}</span>
                                 <span class="text-slate-500">VS</span>
-                                <span class="text-rose-400">{{ $game->away_display_name }}</span>
+                                <span style="color: {{ $awayColor }};">{{ $game->away_display_name }}</span>
                             </div>
                         </div>
 
@@ -566,42 +552,42 @@
                                 <!-- Field Goal % -->
                                 <div class="space-y-1.5">
                                     <div class="flex justify-between text-slate-300 font-bold">
-                                        <span class="text-blue-400">{{ $homeTeamStats['fg_pct'] }}% ({{ $homeTeamStats['fgm'] }}/{{ $homeTeamStats['fga'] }})</span>
+                                        <span style="color: {{ $homeColor }};">{{ $homeTeamStats['fg_pct'] }}% ({{ $homeTeamStats['fgm'] }}/{{ $homeTeamStats['fga'] }})</span>
                                         <span class="text-slate-400 font-sans uppercase text-[11px]">Field Goal %</span>
-                                        <span class="text-rose-400">{{ $awayTeamStats['fg_pct'] }}% ({{ $awayTeamStats['fgm'] }}/{{ $awayTeamStats['fga'] }})</span>
+                                        <span style="color: {{ $awayColor }};">{{ $awayTeamStats['fg_pct'] }}% ({{ $awayTeamStats['fgm'] }}/{{ $awayTeamStats['fga'] }})</span>
                                     </div>
                                     <div class="h-2.5 rounded-full bg-slate-950 overflow-hidden flex">
-                                        <div class="bg-blue-500 transition-all" style="width: {{ $homeTeamStats['fg_pct'] }}%"></div>
+                                        <div class="transition-all" style="width: {{ $homeTeamStats['fg_pct'] }}%; background-color: {{ $homeColor }};"></div>
                                         <div class="flex-1"></div>
-                                        <div class="bg-rose-500 transition-all" style="width: {{ $awayTeamStats['fg_pct'] }}%"></div>
+                                        <div class="transition-all" style="width: {{ $awayTeamStats['fg_pct'] }}%; background-color: {{ $awayColor }};"></div>
                                     </div>
                                 </div>
 
                                 <!-- 3-Point % -->
                                 <div class="space-y-1.5">
                                     <div class="flex justify-between text-slate-300 font-bold">
-                                        <span class="text-blue-400">{{ $homeTeamStats['three_pct'] }}% ({{ $homeTeamStats['three_pm'] }}/{{ $homeTeamStats['three_pa'] }})</span>
+                                        <span style="color: {{ $homeColor }};">{{ $homeTeamStats['three_pct'] }}% ({{ $homeTeamStats['three_pm'] }}/{{ $homeTeamStats['three_pa'] }})</span>
                                         <span class="text-slate-400 font-sans uppercase text-[11px]">3-Point %</span>
-                                        <span class="text-rose-400">{{ $awayTeamStats['three_pct'] }}% ({{ $awayTeamStats['three_pm'] }}/{{ $awayTeamStats['three_pa'] }})</span>
+                                        <span style="color: {{ $awayColor }};">{{ $awayTeamStats['three_pct'] }}% ({{ $awayTeamStats['three_pm'] }}/{{ $awayTeamStats['three_pa'] }})</span>
                                     </div>
                                     <div class="h-2.5 rounded-full bg-slate-950 overflow-hidden flex">
-                                        <div class="bg-blue-500 transition-all" style="width: {{ $homeTeamStats['three_pct'] }}%"></div>
+                                        <div class="transition-all" style="width: {{ $homeTeamStats['three_pct'] }}%; background-color: {{ $homeColor }};"></div>
                                         <div class="flex-1"></div>
-                                        <div class="bg-rose-500 transition-all" style="width: {{ $awayTeamStats['three_pct'] }}%"></div>
+                                        <div class="transition-all" style="width: {{ $awayTeamStats['three_pct'] }}%; background-color: {{ $awayColor }};"></div>
                                     </div>
                                 </div>
 
                                 <!-- Free Throw % -->
                                 <div class="space-y-1.5">
                                     <div class="flex justify-between text-slate-300 font-bold">
-                                        <span class="text-blue-400">{{ $homeTeamStats['ft_pct'] }}% ({{ $homeTeamStats['ftm'] }}/{{ $homeTeamStats['fta'] }})</span>
+                                        <span style="color: {{ $homeColor }};">{{ $homeTeamStats['ft_pct'] }}% ({{ $homeTeamStats['ftm'] }}/{{ $homeTeamStats['fta'] }})</span>
                                         <span class="text-slate-400 font-sans uppercase text-[11px]">Free Throw %</span>
-                                        <span class="text-rose-400">{{ $awayTeamStats['ft_pct'] }}% ({{ $awayTeamStats['ftm'] }}/{{ $awayTeamStats['fta'] }})</span>
+                                        <span style="color: {{ $awayColor }};">{{ $awayTeamStats['ft_pct'] }}% ({{ $awayTeamStats['ftm'] }}/{{ $awayTeamStats['fta'] }})</span>
                                     </div>
                                     <div class="h-2.5 rounded-full bg-slate-950 overflow-hidden flex">
-                                        <div class="bg-blue-500 transition-all" style="width: {{ $homeTeamStats['ft_pct'] }}%"></div>
+                                        <div class="transition-all" style="width: {{ $homeTeamStats['ft_pct'] }}%; background-color: {{ $homeColor }};"></div>
                                         <div class="flex-1"></div>
-                                        <div class="bg-rose-500 transition-all" style="width: {{ $awayTeamStats['ft_pct'] }}%"></div>
+                                        <div class="transition-all" style="width: {{ $awayTeamStats['ft_pct'] }}%; background-color: {{ $awayColor }};"></div>
                                     </div>
                                 </div>
 
@@ -610,25 +596,25 @@
                                     <div class="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-1">
                                         <div class="text-[10px] font-bold uppercase text-slate-500">Rebounds</div>
                                         <div class="text-base font-black text-white">
-                                            <span class="text-blue-400">{{ $homeTeamStats['reb'] }}</span> - <span class="text-rose-400">{{ $awayTeamStats['reb'] }}</span>
+                                            <span style="color: {{ $homeColor }};">{{ $homeTeamStats['reb'] }}</span> - <span style="color: {{ $awayColor }};">{{ $awayTeamStats['reb'] }}</span>
                                         </div>
                                     </div>
                                     <div class="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-1">
                                         <div class="text-[10px] font-bold uppercase text-slate-500">Assists</div>
                                         <div class="text-base font-black text-white">
-                                            <span class="text-blue-400">{{ $homeTeamStats['ast'] }}</span> - <span class="text-rose-400">{{ $awayTeamStats['ast'] }}</span>
+                                            <span style="color: {{ $homeColor }};">{{ $homeTeamStats['ast'] }}</span> - <span style="color: {{ $awayColor }};">{{ $awayTeamStats['ast'] }}</span>
                                         </div>
                                     </div>
                                     <div class="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-1">
                                         <div class="text-[10px] font-bold uppercase text-slate-500">Steals / Blocks</div>
                                         <div class="text-base font-black text-white">
-                                            <span class="text-blue-400">{{ $homeTeamStats['stl'] }}/{{ $homeTeamStats['blk'] }}</span> - <span class="text-rose-400">{{ $awayTeamStats['stl'] }}/{{ $awayTeamStats['blk'] }}</span>
+                                            <span style="color: {{ $homeColor }};">{{ $homeTeamStats['stl'] }}/{{ $homeTeamStats['blk'] }}</span> - <span style="color: {{ $awayColor }};">{{ $awayTeamStats['stl'] }}/{{ $awayTeamStats['blk'] }}</span>
                                         </div>
                                     </div>
                                     <div class="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-1">
                                         <div class="text-[10px] font-bold uppercase text-slate-500">Turnovers</div>
                                         <div class="text-base font-black text-white">
-                                            <span class="text-blue-400">{{ $homeTeamStats['to'] }}</span> - <span class="text-rose-400">{{ $awayTeamStats['to'] }}</span>
+                                            <span style="color: {{ $homeColor }};">{{ $homeTeamStats['to'] }}</span> - <span style="color: {{ $awayColor }};">{{ $awayTeamStats['to'] }}</span>
                                         </div>
                                     </div>
                                 </div>

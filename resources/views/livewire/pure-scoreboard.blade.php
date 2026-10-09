@@ -10,7 +10,7 @@
                         </svg>
                     </div>
                     <h1 class="text-2xl font-black tracking-tight text-white">Live Stadium Scoreboard</h1>
-                    <p class="text-xs text-slate-400">Enter a 6-character game code to launch the real-time scoreboard view.</p>
+                    <p class="text-xs text-slate-400">Enter a 6-digit game code to launch the real-time scoreboard view.</p>
                 </div>
 
                 @if ($errorMessage)
@@ -36,32 +36,15 @@
                         Launch Scoreboard &rarr;
                     </button>
                 </form>
-
-                @if (isset($liveGames) && $liveGames->isNotEmpty())
-                    <div class="pt-4 border-t border-slate-800/80 space-y-2.5">
-                        <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500 text-center">
-                            Currently Active Games
-                        </div>
-                        <div class="space-y-2">
-                            @foreach ($liveGames as $lg)
-                                <a href="{{ route('public.scoreboard', $lg->access_code) }}"
-                                   class="p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between group">
-                                    <div class="truncate text-xs font-bold text-slate-200 group-hover:text-white">
-                                        <span class="text-blue-400">{{ $lg->home_display_name }}</span>
-                                        <span class="text-slate-500 text-[10px]">vs</span>
-                                        <span class="text-rose-400">{{ $lg->away_display_name }}</span>
-                                    </div>
-                                    <span class="px-2 py-0.5 rounded bg-slate-800 text-[10px] font-mono font-bold text-slate-300">
-                                        {{ $lg->access_code }}
-                                    </span>
-                                </a>
-                            @endforeach
-                        </div>
-                    </div>
-                @endif
             </div>
         </div>
     @else
+        @php
+            $homeColor = $game->home_team_score_color ?? '#1e40af';
+            $awayColor = $game->away_team_score_color ?? '#b91c1c';
+            $isFlipped = (bool)($game->settings['broadcast_flip'] ?? false);
+        @endphp
+
         <!-- Live Pure Scoreboard Display -->
         <div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 py-4 space-y-4 select-none" wire:poll.1000ms
              x-data="{
@@ -114,12 +97,13 @@
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-center">
                     
                     <!-- HOME TEAM CARD -->
-                    <div class="md:col-span-5 bg-slate-900/90 border-2 border-blue-600/50 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
+                    <div class="md:col-span-5 bg-slate-900/90 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col justify-between {{ $isFlipped ? 'order-3 md:order-3' : 'order-1 md:order-1' }}"
+                         style="border: 2px solid {{ $homeColor }}80; box-shadow: 0 10px 25px -5px {{ $homeColor }}20;">
                         <!-- Top Team Bar with Possession Indicator -->
                         <div class="flex items-center justify-between pb-3 border-b border-slate-800">
                             <div class="flex items-center space-x-2">
-                                <span class="w-3.5 h-3.5 rounded-full bg-blue-500 shadow-sm shadow-blue-500"></span>
-                                <span class="text-xs font-black uppercase tracking-widest text-blue-400">HOME</span>
+                                <span class="w-3.5 h-3.5 rounded-full shadow-sm" style="background-color: {{ $homeColor }}; box-shadow: 0 0 8px {{ $homeColor }};"></span>
+                                <span class="text-xs font-black uppercase tracking-widest" style="color: {{ $homeColor }};">HOME</span>
                             </div>
 
                             @if ($game->sport === 'basketball' && $game->possession_arrow === 'home')
@@ -148,9 +132,9 @@
                                     <div class="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Team Fouls</div>
                                     <div class="flex items-center space-x-2">
                                         <span class="text-xl font-mono font-black text-white">{{ $game->home_fouls_current_period }}</span>
-                                        @if ($game->home_fouls_current_period >= 10)
+                                        @if ($game->isDoubleBonus('home'))
                                             <span class="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 font-bold text-[9px]">DBL BONUS</span>
-                                        @elseif ($game->home_fouls_current_period >= 7)
+                                        @elseif ($game->isBonus('home'))
                                             <span class="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-[9px]">BONUS</span>
                                         @endif
                                     </div>
@@ -177,7 +161,7 @@
                     </div>
 
                     <!-- CENTER PERIOD & STADIUM CLOCK / STATUS -->
-                    <div class="md:col-span-2 flex flex-col items-center justify-center text-center space-y-3 p-4 rounded-3xl bg-slate-900 border border-slate-800 shadow-lg">
+                    <div class="md:col-span-2 order-2 md:order-2 flex flex-col items-center justify-center text-center space-y-3 p-4 rounded-3xl bg-slate-900 border border-slate-800 shadow-lg">
                         <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">
                             {{ ucfirst($game->sport) }}
                         </span>
@@ -191,13 +175,18 @@
                         <!-- Possession Arrow Visualizer -->
                         @if ($game->sport === 'basketball')
                             <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 w-full flex items-center justify-between text-xs font-mono font-bold">
-                                <span class="px-2 py-0.5 rounded transition {{ $game->possession_arrow === 'home' ? 'bg-blue-600 text-white shadow' : 'text-slate-600' }}">&larr; HOME</span>
-                                <span class="px-2 py-0.5 rounded transition {{ $game->possession_arrow === 'away' ? 'bg-rose-600 text-white shadow' : 'text-slate-600' }}">AWAY &rarr;</span>
+                                @if (!$isFlipped)
+                                    <span class="px-2 py-0.5 rounded transition text-white shadow" style="{{ $game->possession_arrow === 'home' ? 'background-color: ' . $homeColor . ';' : 'color: rgb(100 116 139); background-color: transparent;' }}">&larr; HOME</span>
+                                    <span class="px-2 py-0.5 rounded transition text-white shadow" style="{{ $game->possession_arrow === 'away' ? 'background-color: ' . $awayColor . ';' : 'color: rgb(100 116 139); background-color: transparent;' }}">AWAY &rarr;</span>
+                                @else
+                                    <span class="px-2 py-0.5 rounded transition text-white shadow" style="{{ $game->possession_arrow === 'away' ? 'background-color: ' . $awayColor . ';' : 'color: rgb(100 116 139); background-color: transparent;' }}">&larr; AWAY</span>
+                                    <span class="px-2 py-0.5 rounded transition text-white shadow" style="{{ $game->possession_arrow === 'home' ? 'background-color: ' . $homeColor . ';' : 'color: rgb(100 116 139); background-color: transparent;' }}">HOME &rarr;</span>
+                                @endif
                             </div>
                         @else
                             <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 w-full text-center text-xs font-mono">
                                 <span class="text-[10px] text-slate-400">SERVING:</span>
-                                <strong class="text-emerald-400 ml-1 uppercase">{{ $game->current_server }}</strong>
+                                <strong class="ml-1 uppercase" style="color: {{ $game->current_server === 'home' ? $homeColor : $awayColor }};">{{ $game->current_server }}</strong>
                             </div>
                         @endif
 
@@ -207,7 +196,8 @@
                     </div>
 
                     <!-- AWAY TEAM CARD -->
-                    <div class="md:col-span-5 bg-slate-900/90 border-2 border-rose-600/50 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
+                    <div class="md:col-span-5 bg-slate-900/90 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col justify-between {{ $isFlipped ? 'order-1 md:order-1' : 'order-3 md:order-3' }}"
+                         style="border: 2px solid {{ $awayColor }}80; box-shadow: 0 10px 25px -5px {{ $awayColor }}20;">
                         <!-- Top Team Bar with Possession Indicator -->
                         <div class="flex items-center justify-between pb-3 border-b border-slate-800">
                             @if ($game->sport === 'basketball' && $game->possession_arrow === 'away')
@@ -223,8 +213,8 @@
                             @endif
 
                             <div class="flex items-center space-x-2">
-                                <span class="text-xs font-black uppercase tracking-widest text-rose-400">AWAY</span>
-                                <span class="w-3.5 h-3.5 rounded-full bg-rose-500 shadow-sm shadow-rose-500"></span>
+                                <span class="text-xs font-black uppercase tracking-widest" style="color: {{ $awayColor }};">AWAY</span>
+                                <span class="w-3.5 h-3.5 rounded-full shadow-sm" style="background-color: {{ $awayColor }}; box-shadow: 0 0 8px {{ $awayColor }};"></span>
                             </div>
                         </div>
 
@@ -254,9 +244,9 @@
                                 <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1 text-right">
                                     <div class="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Team Fouls</div>
                                     <div class="flex items-center justify-end space-x-2">
-                                        @if ($game->away_fouls_current_period >= 10)
+                                        @if ($game->isDoubleBonus('away'))
                                             <span class="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 font-bold text-[9px]">DBL BONUS</span>
-                                        @elseif ($game->away_fouls_current_period >= 7)
+                                        @elseif ($game->isBonus('away'))
                                             <span class="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-[9px]">BONUS</span>
                                         @endif
                                         <span class="text-xl font-mono font-black text-white">{{ $game->away_fouls_current_period }}</span>
@@ -289,7 +279,7 @@
                             </thead>
                             <tbody class="divide-y divide-slate-800/60 font-bold">
                                 <tr>
-                                    <td class="py-2 px-3 text-left font-sans font-black text-blue-400 truncate max-w-[120px]">
+                                    <td class="py-2 px-3 text-left font-sans font-black truncate max-w-[120px]" style="color: {{ $homeColor }};">
                                         {{ $game->home_display_name }}
                                     </td>
                                     @foreach ($periodScores as $ps)
@@ -302,7 +292,7 @@
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td class="py-2 px-3 text-left font-sans font-black text-rose-400 truncate max-w-[120px]">
+                                    <td class="py-2 px-3 text-left font-sans font-black truncate max-w-[120px]" style="color: {{ $awayColor }};">
                                         {{ $game->away_display_name }}
                                     </td>
                                     @foreach ($periodScores as $ps)

@@ -84,7 +84,7 @@
         <!-- Footer -->
         <footer class="border-t border-slate-800/80 py-6 bg-slate-950 text-slate-500 text-xs">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>&copy; {{ date('Y') }} ProKeeper Systems. All rights reserved. Standard NCAA & Rally Scoring Compliance.</div>
+                <div>&copy; {{ date('Y') }} ProKeeper Systems. All rights reserved. Standard Regulation & Rally Scoring Compliance.</div>
                 <div class="flex space-x-6 text-slate-400">
                     <span>app.prokeeper.com</span>
                     <span>docs.prokeeper.com</span>

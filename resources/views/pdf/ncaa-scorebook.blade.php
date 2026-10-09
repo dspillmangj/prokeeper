@@ -2,8 +2,12 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Official NCAA Scorebook - {{ $game->access_code }}</title>
+    <title>Official ProKeeper Scorebook - {{ $game->access_code }}</title>
     <style>
+        @page {
+            size: letter landscape;
+            margin: 15px;
+        }
         body {
             font-family: Helvetica, Arial, sans-serif;
             font-size: 9px;
@@ -61,7 +65,7 @@
 </head>
 <body>
     <div class="header">
-        <div class="title">Official Basketball Scorebook (NCAA Standards)</div>
+        <div class="title">Official Basketball Scorebook (ProKeeper Systems)</div>
         <table class="info-grid">
             <tr>
                 <td><strong>Home Team:</strong> {{ $game->home_display_name }} ({{ $game->home_score }} PTS)</td>
@@ -71,8 +75,13 @@
         </table>
     </div>
 
+    @php
+        $homeBreakdown = $game->home_timeouts_breakdown;
+        $awayBreakdown = $game->away_timeouts_breakdown;
+    @endphp
+
     <!-- Home Team Stats -->
-    <div class="section-header">HOME TEAM: {{ $game->home_display_name }}</div>
+    <div class="section-header">HOME TEAM: {{ $game->home_display_name }} &nbsp;|&nbsp; Timeouts: {{ $homeBreakdown['rem_full'] }} Full, {{ $homeBreakdown['rem_30s'] }} 30s remaining ({{ $game->home_timeouts_remaining }} Total)</div>
     <table class="stats-table">
         <thead>
             <tr>
@@ -111,7 +120,7 @@
     </table>
 
     <!-- Away Team Stats -->
-    <div class="section-header">VISITING TEAM: {{ $game->away_display_name }}</div>
+    <div class="section-header">VISITING TEAM: {{ $game->away_display_name }} &nbsp;|&nbsp; Timeouts: {{ $awayBreakdown['rem_full'] }} Full, {{ $awayBreakdown['rem_30s'] }} 30s remaining ({{ $game->away_timeouts_remaining }} Total)</div>
     <table class="stats-table">
         <thead>
             <tr>
@@ -149,12 +158,50 @@
         </tbody>
     </table>
 
+    @php
+        $officials = $game->settings['officials'] ?? [];
+        $signatures = $game->settings['signatures'] ?? [];
+    @endphp
     <table class="footer-signatures">
         <tr>
-            <td>Scorer Signature: _______________________</td>
-            <td>Referee Signature: _______________________</td>
-            <td>Final Score: {{ $game->home_score }} - {{ $game->away_score }}</td>
+            <td style="width: 25%; vertical-align: bottom;">
+                <strong>Official Scorer:</strong> {{ $officials['official_scorer'] ?? ($signatures['official_scorer']['signer_name'] ?? '—') }}<br>
+                @if (!empty($signatures['official_scorer']['data']))
+                    <img src="{{ $signatures['official_scorer']['data'] }}" style="max-height: 28px; max-width: 140px; display: block; margin-top: 2px;">
+                @else
+                    <div style="border-bottom: 1px solid #000; height: 16px; margin-top: 4px;"></div>
+                @endif
+                <span style="font-size: 7px; color: #555;">{{ $signatures['official_scorer']['signed_at'] ?? 'Official Signature' }}</span>
+            </td>
+            <td style="width: 25%; vertical-align: bottom;">
+                <strong>Referee:</strong> {{ $officials['referee'] ?? ($signatures['referee']['signer_name'] ?? '—') }}<br>
+                @if (!empty($signatures['referee']['data']))
+                    <img src="{{ $signatures['referee']['data'] }}" style="max-height: 28px; max-width: 140px; display: block; margin-top: 2px;">
+                @else
+                    <div style="border-bottom: 1px solid #000; height: 16px; margin-top: 4px;"></div>
+                @endif
+                <span style="font-size: 7px; color: #555;">{{ $signatures['referee']['signed_at'] ?? 'Official Signature' }}</span>
+            </td>
+            <td style="width: 25%; vertical-align: bottom;">
+                <strong>Umpire 1:</strong> {{ $officials['umpire1'] ?? ($signatures['umpire1']['signer_name'] ?? '—') }}<br>
+                @if (!empty($signatures['umpire1']['data']))
+                    <img src="{{ $signatures['umpire1']['data'] }}" style="max-height: 28px; max-width: 140px; display: block; margin-top: 2px;">
+                @else
+                    <div style="border-bottom: 1px solid #000; height: 16px; margin-top: 4px;"></div>
+                @endif
+                <span style="font-size: 7px; color: #555;">{{ $signatures['umpire1']['signed_at'] ?? 'Official Signature' }}</span>
+            </td>
+            <td style="width: 25%; vertical-align: bottom;">
+                <strong>Umpire 2:</strong> {{ $officials['umpire2'] ?? ($signatures['umpire2']['signer_name'] ?? '—') }}<br>
+                @if (!empty($signatures['umpire2']['data']))
+                    <img src="{{ $signatures['umpire2']['data'] }}" style="max-height: 28px; max-width: 140px; display: block; margin-top: 2px;">
+                @else
+                    <div style="border-bottom: 1px solid #000; height: 16px; margin-top: 4px;"></div>
+                @endif
+                <span style="font-size: 7px; color: #555;">{{ $signatures['umpire2']['signed_at'] ?? 'Official Signature' }}</span>
+            </td>
         </tr>
     </table>
+
 </body>
 </html>

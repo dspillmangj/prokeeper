@@ -108,3 +108,67 @@ test('undoes plays with mathematical consistency', function () {
     expect($this->game->away_score)->toBe(0);
     expect($this->game->home_score)->toBe(2);
 });
+
+test('records audit event for timeouts and decreases remaining timeouts', function () {
+    $res = $this->service->callTimeout($this->game, 'home', 'full', 450);
+    expect($res)->toBeInstanceOf(\App\Models\GameEvent::class);
+
+    $this->game->refresh();
+    expect($this->game->home_timeouts_remaining)->toBe(4); // default 5 - 1
+
+    $event = \App\Models\GameEvent::where('game_id', $this->game->id)->where('action_code', 'TIMEOUT')->first();
+    expect($event)->not->toBeNull();
+    expect($event->team_side)->toBe('home');
+    expect($event->action_name)->toContain('Timeout');
+});
+
+test('records audit event for score adjustments and updates game score', function () {
+    $res = $this->service->adjustScore($this->game, 'away', 3, 400, 'Score correction by referee table');
+    expect($res)->toBeInstanceOf(\App\Models\GameEvent::class);
+
+    $this->game->refresh();
+    expect($this->game->away_score)->toBe(3);
+
+    $event = \App\Models\GameEvent::where('game_id', $this->game->id)->where('action_code', 'SCORE_ADJ')->first();
+    expect($event)->not->toBeNull();
+    expect($event->points)->toBe(3);
+    expect($event->description)->toContain('Score correction');
+});
+
+test('creates manual event and edits existing event with full mathematical rebuild', function () {
+    $created = $this->service->createManualEvent($this->game, [
+        'team_side' => 'home',
+        'jersey_number' => '23',
+        'action_code' => 'X',
+        'period' => 1,
+        'points' => 2,
+        'description' => 'Manual 2pt Make',
+    ]);
+    expect($created)->not->toBeNull();
+
+    $this->game->refresh();
+    expect($this->game->home_score)->toBe(2);
+
+    // Now edit the event to be a 3pt make (M, points: 3)
+    $updated = $this->service->updateEvent($this->game, $created->id, [
+        'team_side' => 'home',
+        'jersey_number' => '23',
+        'action_code' => 'M',
+        'points' => 3,
+        'period' => 1,
+        'description' => 'Upgraded to 3pt Make after review',
+    ]);
+    expect($updated)->toBeInstanceOf(\App\Models\GameEvent::class);
+
+    $this->game->refresh();
+    expect($this->game->home_score)->toBe(3);
+
+    $stat23 = BasketballStat::where('game_id', $this->game->id)->where('jersey_number', '23')->first();
+    expect($stat23->points)->toBe(3);
+    expect($stat23->fg3m)->toBe(1);
+    expect($stat23->fgm)->toBe(1);
+    expect($stat23->fga)->toBe(1);
+});
+
+
+

@@ -6,7 +6,7 @@
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-900/60 border border-slate-800 p-6 rounded-2xl">
         <div>
             <h1 class="text-2xl font-black tracking-tight text-white">Athletic Command Center</h1>
-            <p class="text-sm text-slate-400 mt-0.5">Manage live games, rosters, official NCAA scorebooks, and public scoreboard broadcasts.</p>
+            <p class="text-sm text-slate-400 mt-0.5">Manage live games, rosters, official scorebooks, and public scoreboard broadcasts.</p>
         </div>
         <div class="flex items-center space-x-3">
             <a href="{{ route('teams.create') }}" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition border border-slate-700 flex items-center">
@@ -94,7 +94,7 @@
                             </a>
                             @if ($game->sport === 'basketball')
                                 <a href="{{ route('public.scorebook', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
-                                    NCAA Book
+                                    Scorebook
                                 </a>
                             @else
                                 <a href="{{ route('public.watch', $game->access_code) }}?tab=boxscore" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">

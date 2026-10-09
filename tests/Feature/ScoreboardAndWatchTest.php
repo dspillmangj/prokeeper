@@ -8,6 +8,11 @@ use App\Models\Organization;
 use App\Models\User;
 use Livewire\Livewire;
 
+test('operator route redirects to login', function () {
+    $response = $this->get('/operator');
+    $response->assertRedirect(route('login'));
+});
+
 test('scoreboard prompt renders successfully without code', function () {
     $response = $this->get('/scoreboard');
     $response->assertStatus(200);
@@ -19,6 +24,13 @@ test('watch prompt renders successfully without code', function () {
     $response = $this->get('/watch');
     $response->assertStatus(200);
     $response->assertSee('Watch Game Live');
+    $response->assertSee('Game Access Code');
+});
+
+test('scorebook prompt renders successfully without code', function () {
+    $response = $this->get('/scorebook');
+    $response->assertStatus(200);
+    $response->assertSee('Official NCAA Scorebook');
     $response->assertSee('Game Access Code');
 });
 
@@ -147,4 +159,9 @@ test('submitting code from prompt navigates directly to game view', function () 
         ->set('inputCode', 'PRO100')
         ->call('submitCode')
         ->assertRedirect(route('public.watch', 'PRO100'));
+
+    Livewire::test(\App\Livewire\NcaaScorebook::class)
+        ->set('inputCode', 'PRO100')
+        ->call('submitCode')
+        ->assertRedirect(route('public.scorebook', 'PRO100'));
 });

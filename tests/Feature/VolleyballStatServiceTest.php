@@ -67,3 +67,63 @@ test('records kills, aces, and automatic side-out rotations', function () {
     expect($stat04->attack_attempts)->toBe(1);
     expect($stat04->hitting_percentage)->toEqual(1.000);
 });
+
+test('records audit event for volleyball timeouts', function () {
+    $res = $this->service->callTimeout($this->game, 'home');
+    expect($res)->toBeInstanceOf(\App\Models\GameEvent::class);
+
+    $this->game->refresh();
+    expect($this->game->home_timeouts_remaining)->toBe(4); // default 5 - 1
+
+    $event = \App\Models\GameEvent::where('game_id', $this->game->id)->where('action_code', 'TIMEOUT')->first();
+    expect($event)->not->toBeNull();
+    expect($event->team_side)->toBe('home');
+});
+
+test('records audit event for manual score adjustments and recalculates', function () {
+    $res = $this->service->adjustScore($this->game, 'away', 2, 'Referee awarded points after review');
+    expect($res)->toBeInstanceOf(\App\Models\GameEvent::class);
+
+    $this->game->refresh();
+    expect($this->game->away_score)->toBe(2);
+
+    $event = \App\Models\GameEvent::where('game_id', $this->game->id)->where('action_code', 'SCORE_ADJ')->first();
+    expect($event)->not->toBeNull();
+    expect($event->points)->toBe(2);
+});
+
+test('creates manual event and updates event with rebuild', function () {
+    $created = $this->service->createManualEvent($this->game, [
+        'team_side' => 'home',
+        'jersey_number' => '04',
+        'action_code' => 'K',
+        'period' => 1,
+        'points' => 1,
+        'description' => 'Manual Kill',
+    ]);
+    expect($created)->not->toBeNull();
+
+    $this->game->refresh();
+    expect($this->game->home_score)->toBe(1);
+
+    // Edit to Ace
+    $updated = $this->service->updateEvent($this->game, $created->id, [
+        'team_side' => 'home',
+        'jersey_number' => '04',
+        'action_code' => 'A',
+        'points' => 1,
+        'period' => 1,
+        'description' => 'Changed to Ace',
+    ]);
+    expect($updated)->toBeInstanceOf(\App\Models\GameEvent::class);
+
+    $this->game->refresh();
+    expect($this->game->home_score)->toBe(1);
+
+    $stat04 = VolleyballStat::where('game_id', $this->game->id)->where('jersey_number', '04')->first();
+    expect($stat04->service_aces)->toBe(1);
+    expect($stat04->kills)->toBe(0);
+});
+
+
+

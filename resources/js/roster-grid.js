@@ -1,6 +1,6 @@
 /**
  * ProKeeper Literal Spreadsheet Roster Engine
- * Google Sheets / Excel style grid navigation and direct clipboard paste
+ * Google Sheets / Excel style grid navigation, sequential row jumping, and direct clipboard paste
  */
 
 export function parseRosterClipboardText(text) {
@@ -89,8 +89,20 @@ export function handleGridKeydown(e, rowIndex, fieldName, component, gridId = 'r
             if (el) {
                 el.focus();
                 if (select && el.select) el.select();
+                el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
             }
         });
+    }
+
+    // Number keys: Jump directly to sequential row if in name column and text is highlighted/empty or jumpBuffer is active
+    if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (fieldName === 'name') {
+            if (isAllSelected || target.value.trim() === '' || component.jumpBuffer) {
+                e.preventDefault();
+                component.handleDigitJump(e.key);
+                return;
+            }
+        }
     }
 
     if (e.key === 'ArrowUp') {
@@ -178,13 +190,17 @@ export function handleGridPaste(e, startRowIndex, startFieldName, component, gri
         component.$nextTick(() => {
             const nextFocusRow = Math.min(curRow, component.rows.length - 1);
             const el = document.querySelector(`[data-grid='${gridId}'] [data-row='${nextFocusRow}'][data-field='name']`);
-            if (el) el.focus();
+            if (el) {
+                el.focus();
+                if (el.select) el.select();
+            }
         });
     }
 }
 
 export function rosterSpreadsheet(config) {
     return {
+        gridId: 'main-roster-grid',
         sport: config.sport,
         saveUrl: config.saveUrl,
         teamSlug: config.teamSlug,
@@ -192,6 +208,10 @@ export function rosterSpreadsheet(config) {
         isDirty: false,
         isSaving: false,
         saveSuccessMessage: '',
+        jumpBuffer: '',
+        jumpTimeout: null,
+        jumpFeedback: '',
+        jumpFeedbackTimeout: null,
 
         init() {
             // Ensure at least 15 rows for authentic spreadsheet feel
@@ -216,11 +236,96 @@ export function rosterSpreadsheet(config) {
         },
 
         handleKeydown(e, rowIndex, fieldName) {
-            handleGridKeydown(e, rowIndex, fieldName, this, 'main-roster-grid');
+            handleGridKeydown(e, rowIndex, fieldName, this, this.gridId);
         },
 
         handlePaste(e, rowIndex, fieldName) {
-            handleGridPaste(e, rowIndex, fieldName, this, 'main-roster-grid');
+            handleGridPaste(e, rowIndex, fieldName, this, this.gridId);
+        },
+
+        setJumpFeedback(text) {
+            this.jumpFeedback = text;
+            clearTimeout(this.jumpFeedbackTimeout);
+            this.jumpFeedbackTimeout = setTimeout(() => {
+                this.jumpFeedback = '';
+            }, 2000);
+        },
+
+        focusAndSelectCell(targetIndex, colName = 'name') {
+            this.$nextTick(() => {
+                const el = document.querySelector(`[data-grid='${this.gridId}'] [data-row='${targetIndex}'][data-field='${colName}']`);
+                if (el) {
+                    el.focus();
+                    if (el.select) el.select();
+                    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            });
+        },
+
+        jumpToRow(targetNum) {
+            if (targetNum === 0) {
+                // Find first available slot (no player assigned)
+                let emptyIdx = this.rows.findIndex(r => (!r.name || r.name.trim() === '') && (!r.jersey_number || String(r.jersey_number).trim() === ''));
+                if (emptyIdx === -1) {
+                    emptyIdx = this.rows.findIndex(r => !r.name || r.name.trim() === '');
+                }
+                if (emptyIdx === -1) {
+                    this.addEmptyRow();
+                    emptyIdx = this.rows.length - 1;
+                }
+                this.setJumpFeedback(`Slot #${emptyIdx + 1} (Available)`);
+                this.focusAndSelectCell(emptyIdx, 'name');
+                this.jumpBuffer = '';
+                return;
+            }
+
+            const targetIndex = targetNum - 1;
+            while (this.rows.length <= targetIndex) {
+                this.addEmptyRow();
+            }
+            this.setJumpFeedback(`Row #${targetNum}`);
+            this.focusAndSelectCell(targetIndex, 'name');
+        },
+
+        handleDigitJump(digit) {
+            clearTimeout(this.jumpTimeout);
+            if (digit === '0' && !this.jumpBuffer) {
+                this.jumpToRow(0);
+                return;
+            }
+            this.jumpBuffer += digit;
+            const num = parseInt(this.jumpBuffer, 10);
+            if (!isNaN(num) && num > 0) {
+                this.jumpToRow(num);
+            }
+            this.jumpTimeout = setTimeout(() => {
+                this.jumpBuffer = '';
+            }, 2000);
+        },
+
+        handleWindowKeydown(e) {
+            if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const activeEl = document.activeElement;
+                const isInput = activeEl && ['INPUT', 'TEXTAREA'].includes(activeEl.tagName);
+
+                if (!isInput) {
+                    e.preventDefault();
+                    this.handleDigitJump(e.key);
+                    return;
+                }
+
+                const isOurGrid = activeEl.closest(`[data-grid='${this.gridId}']`);
+                if (isOurGrid) {
+                    const fieldName = activeEl.getAttribute('data-field');
+                    if (fieldName === 'name') {
+                        const isAllSelected = activeEl.selectionStart === 0 && activeEl.selectionEnd === activeEl.value.length;
+                        if (isAllSelected || activeEl.value.trim() === '' || this.jumpBuffer) {
+                            e.preventDefault();
+                            this.handleDigitJump(e.key);
+                        }
+                    }
+                }
+            }
         },
 
         async saveRoster() {
@@ -271,11 +376,16 @@ export function rosterSpreadsheet(config) {
 
 export function inGameRosterSpreadsheet(config) {
     return {
+        gridId: 'ingame-roster-grid',
         teamSide: config.teamSide || 'home',
         rows: Array.isArray(config.initialPlayers) ? config.initialPlayers : [],
         isDirty: false,
         isSaving: false,
         saveSuccessMessage: '',
+        jumpBuffer: '',
+        jumpTimeout: null,
+        jumpFeedback: '',
+        jumpFeedbackTimeout: null,
 
         init() {
             const minRows = 12;
@@ -320,11 +430,96 @@ export function inGameRosterSpreadsheet(config) {
         },
 
         handleKeydown(e, rowIndex, fieldName) {
-            handleGridKeydown(e, rowIndex, fieldName, this, 'ingame-roster-grid');
+            handleGridKeydown(e, rowIndex, fieldName, this, this.gridId);
         },
 
         handlePaste(e, rowIndex, fieldName) {
-            handleGridPaste(e, rowIndex, fieldName, this, 'ingame-roster-grid');
+            handleGridPaste(e, rowIndex, fieldName, this, this.gridId);
+        },
+
+        setJumpFeedback(text) {
+            this.jumpFeedback = text;
+            clearTimeout(this.jumpFeedbackTimeout);
+            this.jumpFeedbackTimeout = setTimeout(() => {
+                this.jumpFeedback = '';
+            }, 2000);
+        },
+
+        focusAndSelectCell(targetIndex, colName = 'name') {
+            this.$nextTick(() => {
+                const el = document.querySelector(`[data-grid='${this.gridId}'] [data-row='${targetIndex}'][data-field='${colName}']`);
+                if (el) {
+                    el.focus();
+                    if (el.select) el.select();
+                    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            });
+        },
+
+        jumpToRow(targetNum) {
+            if (targetNum === 0) {
+                // Find first available slot (no player assigned)
+                let emptyIdx = this.rows.findIndex(r => (!r.name || r.name.trim() === '') && (!r.jersey_number || String(r.jersey_number).trim() === ''));
+                if (emptyIdx === -1) {
+                    emptyIdx = this.rows.findIndex(r => !r.name || r.name.trim() === '');
+                }
+                if (emptyIdx === -1) {
+                    this.addEmptyRow();
+                    emptyIdx = this.rows.length - 1;
+                }
+                this.setJumpFeedback(`Slot #${emptyIdx + 1} (Available)`);
+                this.focusAndSelectCell(emptyIdx, 'name');
+                this.jumpBuffer = '';
+                return;
+            }
+
+            const targetIndex = targetNum - 1;
+            while (this.rows.length <= targetIndex) {
+                this.addEmptyRow();
+            }
+            this.setJumpFeedback(`Row #${targetNum}`);
+            this.focusAndSelectCell(targetIndex, 'name');
+        },
+
+        handleDigitJump(digit) {
+            clearTimeout(this.jumpTimeout);
+            if (digit === '0' && !this.jumpBuffer) {
+                this.jumpToRow(0);
+                return;
+            }
+            this.jumpBuffer += digit;
+            const num = parseInt(this.jumpBuffer, 10);
+            if (!isNaN(num) && num > 0) {
+                this.jumpToRow(num);
+            }
+            this.jumpTimeout = setTimeout(() => {
+                this.jumpBuffer = '';
+            }, 2000);
+        },
+
+        handleWindowKeydown(e) {
+            if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const activeEl = document.activeElement;
+                const isInput = activeEl && ['INPUT', 'TEXTAREA'].includes(activeEl.tagName);
+
+                if (!isInput) {
+                    e.preventDefault();
+                    this.handleDigitJump(e.key);
+                    return;
+                }
+
+                const isOurGrid = activeEl.closest(`[data-grid='${this.gridId}']`);
+                if (isOurGrid) {
+                    const fieldName = activeEl.getAttribute('data-field');
+                    if (fieldName === 'name') {
+                        const isAllSelected = activeEl.selectionStart === 0 && activeEl.selectionEnd === activeEl.value.length;
+                        if (isAllSelected || activeEl.value.trim() === '' || this.jumpBuffer) {
+                            e.preventDefault();
+                            this.handleDigitJump(e.key);
+                        }
+                    }
+                }
+            }
         },
 
         async saveAndApply(wire) {

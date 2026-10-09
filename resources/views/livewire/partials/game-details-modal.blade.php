@@ -1,5 +1,6 @@
 @if ($showGameDetailsModal)
     <div class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none animate-fade-in"
+         @keydown.window.escape.prevent="$wire.closeGameDetailsModal()"
          wire:keydown.escape="closeGameDetailsModal">
         
         <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full p-5 shadow-2xl space-y-4 max-h-[92vh] flex flex-col overflow-hidden"
@@ -56,12 +57,12 @@
                     </div>
                 </div>
 
-                <!-- Section 2: Officials & Table Crew (NCAA Scorebook Integration) -->
+                <!-- Section 2: Officials & Table Crew (Official Scorebook Integration) -->
                 <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
                     <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5">
                         <span class="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                            Referees & Table Crew (Official NCAA Scorebook)
+                            Referees & Table Crew (Official Scorebook)
                         </span>
                         <span class="text-[10px] font-mono text-slate-500">Prints directly on scorebook & PDF</span>
                     </div>
@@ -94,7 +95,85 @@
                     </div>
                 </div>
 
-                <!-- Section 3: Period, Clock & Game Status -->
+                <!-- Section 3: Game Rules, Timeouts & Scoring Standards -->
+                <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5">
+                        <span class="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                            Timeouts Allocation & Game Rules Standards
+                        </span>
+                        <span class="text-[10px] font-mono text-amber-300 font-bold">
+                            Total Allowed: {{ $timeoutsFull + $timeouts30s }} ({{ $timeoutsFull }} Full + {{ $timeouts30s }} 30s)
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-xs">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Full Timeouts (60s)</label>
+                            <input type="number" wire:model="timeoutsFull" min="0" max="10" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">30s Timeouts</label>
+                            <input type="number" wire:model="timeouts30s" min="0" max="10" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">OT Timeouts (+)</label>
+                            <input type="number" wire:model="timeoutsOt" min="0" max="5" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Home TOs Left</label>
+                            <input type="number" wire:model="homeTimeoutsRemaining" min="0" max="15" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-blue-500/50 text-blue-300 text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-rose-400 uppercase tracking-wider mb-1">Away TOs Left</label>
+                            <input type="number" wire:model="awayTimeoutsRemaining" min="0" max="15" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-rose-500/50 text-rose-300 text-xs font-mono font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-xs pt-1 border-t border-slate-800/60">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Period Format</label>
+                            <select wire:model="periodFormat" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                                <option value="quarters">4 Quarters</option>
+                                <option value="halves">2 Halves (College Men / Standard)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Period Mins</label>
+                            <input type="number" wire:model="gamePeriodMinutes" min="1" max="60" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">OT Mins</label>
+                            <input type="number" wire:model="otMinutes" min="1" max="30" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Bonus Fouls</label>
+                            <input type="number" wire:model="bonusFoulThreshold" min="1" max="20" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none" title="5 for Standard/Women, 7 for College Men">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Double Bonus</label>
+                            <input type="number" wire:model="doubleBonusFoulThreshold" min="1" max="20" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none" title="5 for Standard/Women, 10 for College Men">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs pt-1 border-t border-slate-800/60">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Player Disqualification Fouls</label>
+                            <input type="number" wire:model="playerFoulLimit" min="1" max="10" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-mono focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Shot Clock Seconds</label>
+                            <select wire:model="shotClockSeconds" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                                <option value="0">Off / No Shot Clock</option>
+                                <option value="35">35 Seconds (NFHS High School)</option>
+                                <option value="30">30 Seconds (College Men & Women)</option>
+                                <option value="24">24 Seconds (FIBA / Pro)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 4: Period, Clock & Game Status -->
                 <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
                     <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5">
                         <span class="text-[11px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
@@ -116,10 +195,10 @@
                         <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Current Period</label>
                             <select wire:model="gamePeriod" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
-                                <option value="1">1st Quarter / Period 1</option>
-                                <option value="2">2nd Quarter / Period 2</option>
-                                <option value="3">3rd Quarter / Period 3</option>
-                                <option value="4">4th Quarter / Period 4</option>
+                                <option value="1">1st Quarter / 1st Half</option>
+                                <option value="2">2nd Quarter / 2nd Half</option>
+                                <option value="3">3rd Quarter / Overtime 1</option>
+                                <option value="4">4th Quarter / Overtime 2</option>
                                 <option value="5">Overtime (OT 1)</option>
                                 <option value="6">2nd Overtime (OT 2)</option>
                             </select>
@@ -137,24 +216,89 @@
                     </div>
                 </div>
 
-                <!-- Section 4: Team Display Names -->
+                <!-- Section 5: Team Display Names & Custom Score Colors -->
                 <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
                     <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5">
                         <span class="text-[11px] font-black uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                            Team Display Names
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+                            Team Names, Colors & Layout Perspectives
                         </span>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div>
-                            <label class="block text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Home Team Name</label>
-                            <input type="text" wire:model="gameHomeName" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                        <!-- Home Team Name & Color -->
+                        <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-white">
+                                    <span class="w-3 h-3 rounded-full border border-white/30" style="background-color: {{ $homeScoreColor }};"></span>
+                                    Home Team Name
+                                </label>
+                                <span class="text-[10px] font-mono text-slate-400 uppercase">{{ $homeScoreColor }}</span>
+                            </div>
+                            <input type="text" wire:model="gameHomeName" class="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 text-xs font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                            
+                            <div>
+                                <label class="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Home Color Accent</label>
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    @php
+                                        $presets = ['#1e40af', '#1e3a8a', '#0284c7', '#0d9488', '#15803d', '#eab308', '#ea580c', '#dc2626', '#881337', '#7c3aed', '#334155', '#0f172a'];
+                                    @endphp
+                                    @foreach ($presets as $hex)
+                                        <button type="button" 
+                                                wire:click="$set('homeScoreColor', '{{ $hex }}')"
+                                                class="w-6 h-6 rounded-md border transition-all transform hover:scale-110 flex items-center justify-center {{ strtolower($homeScoreColor) === strtolower($hex) ? 'ring-2 ring-white border-white scale-105' : 'border-slate-700' }}"
+                                                style="background-color: {{ $hex }};"
+                                                title="{{ $hex }}">
+                                            @if (strtolower($homeScoreColor) === strtolower($hex))
+                                                <svg class="w-3 h-3 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                                            @endif
+                                        </button>
+                                    @endforeach
+                                    <input type="color" wire:model.live="homeScoreColor" class="w-6 h-6 rounded-md cursor-pointer bg-transparent border border-slate-700 p-0.5 ml-1">
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-rose-400 uppercase tracking-wider mb-1">Away Team Name</label>
-                            <input type="text" wire:model="gameAwayName" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none">
+
+                        <!-- Away Team Name & Color -->
+                        <div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-white">
+                                    <span class="w-3 h-3 rounded-full border border-white/30" style="background-color: {{ $awayScoreColor }};"></span>
+                                    Away Team Name
+                                </label>
+                                <span class="text-[10px] font-mono text-slate-400 uppercase">{{ $awayScoreColor }}</span>
+                            </div>
+                            <input type="text" wire:model="gameAwayName" class="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none">
+                            
+                            <div>
+                                <label class="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Away Color Accent</label>
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    @foreach ($presets as $hex)
+                                        <button type="button" 
+                                                wire:click="$set('awayScoreColor', '{{ $hex }}')"
+                                                class="w-6 h-6 rounded-md border transition-all transform hover:scale-110 flex items-center justify-center {{ strtolower($awayScoreColor) === strtolower($hex) ? 'ring-2 ring-white border-white scale-105' : 'border-slate-700' }}"
+                                                style="background-color: {{ $hex }};"
+                                                title="{{ $hex }}">
+                                            @if (strtolower($awayScoreColor) === strtolower($hex))
+                                                <svg class="w-3 h-3 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                                            @endif
+                                        </button>
+                                    @endforeach
+                                    <input type="color" wire:model.live="awayScoreColor" class="w-6 h-6 rounded-md cursor-pointer bg-transparent border border-slate-700 p-0.5 ml-1">
+                                </div>
+                            </div>
                         </div>
+                    </div>
+
+                    <!-- Broadcast Court Flip Toggle -->
+                    <div class="pt-2 border-t border-slate-800/80">
+                        <label class="flex items-center space-x-2.5 cursor-pointer">
+                            <input type="checkbox" wire:model="broadcastFlip" class="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 focus:ring-indigo-500 focus:ring-offset-slate-900">
+                            <div class="text-xs">
+                                <span class="font-bold text-slate-200">Broadcast Court Flip to External Scoreboards</span>
+                                <span class="text-[11px] text-slate-400 block">When enabled, switching court sides on the operator will also mirror and flip the sides on the public scoreboard and live stream overlays.</span>
+                            </div>
+                        </label>
                     </div>
                 </div>
 

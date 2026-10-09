@@ -15,25 +15,30 @@ class BasketballStatService
      * Action code mapping matching legacy syntax and expanded stat options.
      */
     public const ACTIONS = [
-        'X' => ['name' => '2pt MAKE', 'type' => '2pt_make', 'points' => 2, 'stat' => 'fgm', 'attempts' => 'fga'],
-        'Z' => ['name' => '2pt Miss', 'type' => '2pt_miss', 'points' => 0, 'attempts' => 'fga'],
-        'M' => ['name' => '3pt MAKE', 'type' => '3pt_make', 'points' => 3, 'stat' => 'fg3m', 'attempts' => 'fg3a'],
-        'N' => ['name' => '3pt Miss', 'type' => '3pt_miss', 'points' => 0, 'attempts' => 'fg3a'],
-        'B' => ['name' => 'FT MAKE', 'type' => 'ft_make', 'points' => 1, 'stat' => 'ftm', 'attempts' => 'fta'],
-        'V' => ['name' => 'FT Miss', 'type' => 'ft_miss', 'points' => 0, 'attempts' => 'fta'],
-        'D' => ['name' => 'Def Reb', 'type' => 'def_reb', 'points' => 0, 'stat' => 'dreb'],
-        'O' => ['name' => 'Off Reb', 'type' => 'off_reb', 'points' => 0, 'stat' => 'oreb'],
-        'A' => ['name' => 'Assist', 'type' => 'assist', 'points' => 0, 'stat' => 'ast'],
-        'S' => ['name' => 'Steal', 'type' => 'steal', 'points' => 0, 'stat' => 'stl'],
-        'K' => ['name' => 'Block', 'type' => 'block', 'points' => 0, 'stat' => 'blk'],
-        'W' => ['name' => 'Swat', 'type' => 'swat', 'points' => 0, 'stat' => 'swat'],
-        'P' => ['name' => 'Passing Turnover', 'type' => 'turnover_pass', 'points' => 0, 'stat' => 'to_pass'],
-        'U' => ['name' => 'Fumble Turnover', 'type' => 'turnover_fumble', 'points' => 0, 'stat' => 'to_fumble'],
-        'I' => ['name' => 'Violation Turnover', 'type' => 'turnover_violation', 'points' => 0, 'stat' => 'to_violation'],
-        'F' => ['name' => 'Pers Foul', 'type' => 'foul_pers', 'points' => 0, 'stat' => 'fouls_pers'],
-        'R' => ['name' => 'Off Foul', 'type' => 'foul_off', 'points' => 0, 'stat' => 'fouls_off'],
-        'T' => ['name' => 'Tech Foul', 'type' => 'foul_tech', 'points' => 0, 'stat' => 'fouls_tech'],
-        'H' => ['name' => 'Forc Foul', 'type' => 'foul_forced', 'points' => 0, 'stat' => 'fouls_forced'],
+        'X' => ['name' => '2pt MAKE', 'type' => '2pt_make', 'points' => 2, 'stat' => 'fgm', 'attempts' => 'fga', 'category' => 'scoring'],
+        'Z' => ['name' => '2pt Miss', 'type' => '2pt_miss', 'points' => 0, 'attempts' => 'fga', 'category' => 'scoring'],
+        'M' => ['name' => '3pt MAKE', 'type' => '3pt_make', 'points' => 3, 'stat' => 'fg3m', 'attempts' => 'fg3a', 'category' => 'scoring'],
+        'N' => ['name' => '3pt Miss', 'type' => '3pt_miss', 'points' => 0, 'attempts' => 'fg3a', 'category' => 'scoring'],
+        'B' => ['name' => 'FT MAKE', 'type' => 'ft_make', 'points' => 1, 'stat' => 'ftm', 'attempts' => 'fta', 'category' => 'scoring'],
+        'V' => ['name' => 'FT Miss', 'type' => 'ft_miss', 'points' => 0, 'attempts' => 'fta', 'category' => 'scoring'],
+        'D' => ['name' => 'Def Reb', 'type' => 'def_reb', 'points' => 0, 'stat' => 'dreb', 'category' => 'rebounds'],
+        'O' => ['name' => 'Off Reb', 'type' => 'off_reb', 'points' => 0, 'stat' => 'oreb', 'category' => 'rebounds'],
+        'A' => ['name' => 'Assist', 'type' => 'assist', 'points' => 0, 'stat' => 'ast', 'category' => 'ball_movement'],
+        'S' => ['name' => 'Steal', 'type' => 'steal', 'points' => 0, 'stat' => 'stl', 'category' => 'defense'],
+        'K' => ['name' => 'Block', 'type' => 'block', 'points' => 0, 'stat' => 'blk', 'category' => 'defense'],
+        'W' => ['name' => 'Swat', 'type' => 'swat', 'points' => 0, 'stat' => 'swat', 'category' => 'defense'],
+        'P' => ['name' => 'Passing Turnover', 'type' => 'turnover_pass', 'points' => 0, 'stat' => 'to_pass', 'category' => 'turnovers'],
+        'U' => ['name' => 'Fumble Turnover', 'type' => 'turnover_fumble', 'points' => 0, 'stat' => 'to_fumble', 'category' => 'turnovers'],
+        'I' => ['name' => 'Violation Turnover', 'type' => 'turnover_violation', 'points' => 0, 'stat' => 'to_violation', 'category' => 'turnovers'],
+        'F' => ['name' => 'Pers Foul', 'type' => 'foul_pers', 'points' => 0, 'stat' => 'fouls_pers', 'category' => 'fouls'],
+        'R' => ['name' => 'Off Foul', 'type' => 'foul_off', 'points' => 0, 'stat' => 'fouls_off', 'category' => 'fouls'],
+        'T' => ['name' => 'Tech Foul', 'type' => 'foul_tech', 'points' => 0, 'stat' => 'fouls_tech', 'category' => 'fouls'],
+        'H' => ['name' => 'Forc Foul', 'type' => 'foul_forced', 'points' => 0, 'stat' => 'fouls_forced', 'category' => 'fouls'],
+        'TIMEOUT' => ['name' => 'Timeout', 'type' => 'timeout', 'points' => 0, 'category' => 'administrative'],
+        'SCORE_ADJ' => ['name' => 'Score Adjustment', 'type' => 'score_adjustment', 'points' => 0, 'category' => 'administrative'],
+        'SUB' => ['name' => 'Substitution', 'type' => 'substitution', 'points' => 0, 'category' => 'administrative'],
+        'PERIOD' => ['name' => 'Period Advance', 'type' => 'period_change', 'points' => 0, 'category' => 'administrative'],
+        'NOTE' => ['name' => 'Audit Note', 'type' => 'audit_note', 'points' => 0, 'category' => 'administrative'],
     ];
 
     /**
@@ -69,13 +74,11 @@ class BasketballStatService
      */
     public function recordStat(Game $game, string $teamSide, string $jersey, string $actionCode, ?string $rawInput = null, ?int $clockSeconds = null): array
     {
-        $actionDef = self::ACTIONS[$actionCode];
+        $actionDef = self::ACTIONS[$actionCode] ?? ['name' => $actionCode, 'type' => 'custom', 'points' => 0];
 
         return DB::transaction(function () use ($game, $teamSide, $jersey, $actionCode, $actionDef, $rawInput, $clockSeconds) {
-            // Refresh game lock
             $game = Game::where('id', $game->id)->lockForUpdate()->first();
 
-            // Find or create player lineup entry
             $lineup = GameLineup::where('game_id', $game->id)
                 ->where('team_side', $teamSide)
                 ->where('jersey_number', $jersey)
@@ -107,14 +110,14 @@ class BasketballStatService
                 'player_name' => $playerName,
                 'sport' => 'basketball',
                 'action_code' => $actionCode,
-                'action_type' => $actionDef['type'],
-                'action_name' => $actionDef['name'],
+                'action_type' => $actionDef['type'] ?? 'stat',
+                'action_name' => $actionDef['name'] ?? $actionCode,
                 'raw_input' => $rawInput ?? "{$jersey}".($teamSide === 'home' ? '-' : '=').$actionCode,
                 'points' => $points,
                 'home_score_after' => $homeScoreAfter,
                 'away_score_after' => $awayScoreAfter,
                 'is_undone' => false,
-                'description' => strtoupper($teamSide)." #{$jersey} {$playerName}: ".$actionDef['name'],
+                'description' => strtoupper($teamSide)." #{$jersey} {$playerName}: ".($actionDef['name'] ?? $actionCode),
             ]);
 
             // Update Game Score
@@ -162,10 +165,186 @@ class BasketballStatService
 
             return [
                 'success' => true,
-                'message' => strtoupper($teamSide)." - {$playerName} (#{$jersey}): ".$actionDef['name'].($points > 0 ? " (+{$points} pts)" : ''),
+                'message' => strtoupper($teamSide)." - {$playerName} (#{$jersey}): ".($actionDef['name'] ?? $actionCode).($points > 0 ? " (+{$points} pts)" : ''),
                 'event' => $event,
                 'game' => $game,
             ];
+        });
+    }
+
+    /**
+     * Log and charge a timeout.
+     */
+    public function callTimeout(Game $game, string $teamSide, string $timeoutType = 'full', ?int $clockSeconds = null): GameEvent
+    {
+        return DB::transaction(function () use ($game, $teamSide, $timeoutType, $clockSeconds) {
+            $game = Game::where('id', $game->id)->lockForUpdate()->first();
+
+            $field = ($teamSide === 'home') ? 'home_timeouts_remaining' : 'away_timeouts_remaining';
+            if ($game->$field > 0) {
+                $game->$field -= 1;
+            }
+            $game->save();
+
+            $clock = $clockSeconds ?? $game->clock_seconds_remaining;
+            $period = $game->current_period;
+            $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
+
+            $teamName = ($teamSide === 'home') ? ($game->home_team_name ?: 'HOME') : ($game->away_team_name ?: 'AWAY');
+            $remaining = $game->$field;
+            $typeLabel = ($timeoutType === '30s') ? '30-Second' : 'Full (60s)';
+
+            return GameEvent::create([
+                'game_id' => $game->id,
+                'sequence' => $lastSequence + 1,
+                'period' => $period,
+                'clock_seconds_remaining' => $clock,
+                'team_side' => $teamSide,
+                'jersey_number' => null,
+                'player_name' => $teamName,
+                'sport' => 'basketball',
+                'action_code' => 'TIMEOUT',
+                'action_type' => 'timeout',
+                'action_name' => "{$typeLabel} Timeout",
+                'raw_input' => "TIMEOUT {$teamSide} {$timeoutType}",
+                'points' => 0,
+                'home_score_after' => $game->home_score,
+                'away_score_after' => $game->away_score,
+                'is_undone' => false,
+                'description' => strtoupper($teamSide)." {$typeLabel} Timeout Called ({$remaining} remaining)",
+                'metadata' => [
+                    'timeout_type' => $timeoutType,
+                    'timeouts_remaining' => $remaining,
+                ],
+            ]);
+        });
+    }
+
+    /**
+     * Log a manual score adjustment.
+     */
+    public function adjustScore(Game $game, string $teamSide, int $delta, ?int $clockSeconds = null, ?string $reason = null): GameEvent
+    {
+        return DB::transaction(function () use ($game, $teamSide, $delta, $clockSeconds, $reason) {
+            $game = Game::where('id', $game->id)->lockForUpdate()->first();
+
+            $clock = $clockSeconds ?? $game->clock_seconds_remaining;
+            $period = $game->current_period;
+
+            if ($teamSide === 'home') {
+                $game->home_score = max(0, $game->home_score + $delta);
+                $scores = $game->home_period_scores ?? [0, 0, 0, 0];
+                while (count($scores) < $period) {
+                    $scores[] = 0;
+                }
+                $scores[$period - 1] = max(0, $scores[$period - 1] + $delta);
+                $game->home_period_scores = $scores;
+            } else {
+                $game->away_score = max(0, $game->away_score + $delta);
+                $scores = $game->away_period_scores ?? [0, 0, 0, 0];
+                while (count($scores) < $period) {
+                    $scores[] = 0;
+                }
+                $scores[$period - 1] = max(0, $scores[$period - 1] + $delta);
+                $game->away_period_scores = $scores;
+            }
+            $game->save();
+
+            $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
+            $ptsText = ($delta > 0 ? "+{$delta}" : "{$delta}").' pts';
+            $desc = strtoupper($teamSide)." Score Adjustment: {$ptsText}".($reason ? " ({$reason})" : '');
+
+            return GameEvent::create([
+                'game_id' => $game->id,
+                'sequence' => $lastSequence + 1,
+                'period' => $period,
+                'clock_seconds_remaining' => $clock,
+                'team_side' => $teamSide,
+                'jersey_number' => null,
+                'player_name' => 'Official Scorer',
+                'sport' => 'basketball',
+                'action_code' => 'SCORE_ADJ',
+                'action_type' => 'score_adjustment',
+                'action_name' => 'Score Adjustment',
+                'raw_input' => "SCORE_ADJ {$teamSide} {$delta}",
+                'points' => $delta,
+                'home_score_after' => $game->home_score,
+                'away_score_after' => $game->away_score,
+                'is_undone' => false,
+                'description' => $desc,
+                'metadata' => [
+                    'delta' => $delta,
+                    'reason' => $reason,
+                ],
+            ]);
+        });
+    }
+
+    /**
+     * Create a manual / retroactively inserted event in the audit log.
+     */
+    public function createManualEvent(Game $game, array $data): GameEvent
+    {
+        return DB::transaction(function () use ($game, $data) {
+            $game = Game::where('id', $game->id)->lockForUpdate()->first();
+
+            $teamSide = $data['team_side'] ?? 'home';
+            $jersey = isset($data['jersey_number']) ? trim((string)$data['jersey_number']) : null;
+            $period = (int)($data['period'] ?? $game->current_period);
+            $clock = isset($data['clock_seconds_remaining']) ? (int)$data['clock_seconds_remaining'] : $game->clock_seconds_remaining;
+            $actionCode = $data['action_code'] ?? 'NOTE';
+            $actionDef = self::ACTIONS[$actionCode] ?? ['name' => $actionCode, 'type' => 'custom', 'points' => 0];
+
+            $playerName = $data['player_name'] ?? null;
+            $playerId = null;
+            if ($jersey) {
+                $lineup = GameLineup::where('game_id', $game->id)
+                    ->where('team_side', $teamSide)
+                    ->where('jersey_number', $jersey)
+                    ->first();
+                if ($lineup) {
+                    $playerName = $playerName ?: $lineup->player_name;
+                    $playerId = $lineup->player_id;
+                } else {
+                    $playerName = $playerName ?: "Player #{$jersey}";
+                }
+            }
+
+            $points = isset($data['points']) ? (int)$data['points'] : ($actionDef['points'] ?? 0);
+            $actionName = $actionDef['name'] ?? $actionCode;
+            $description = $data['description'] ?? (
+                $jersey
+                    ? strtoupper($teamSide)." #{$jersey} {$playerName}: {$actionName}".($points > 0 ? " (+{$points} pts)" : '')
+                    : strtoupper($teamSide).": {$actionName}".($points > 0 ? " (+{$points} pts)" : '')
+            );
+
+            $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
+
+            $event = GameEvent::create([
+                'game_id' => $game->id,
+                'sequence' => $lastSequence + 1,
+                'period' => $period,
+                'clock_seconds_remaining' => $clock,
+                'team_side' => $teamSide,
+                'player_id' => $playerId,
+                'jersey_number' => $jersey,
+                'player_name' => $playerName,
+                'sport' => 'basketball',
+                'action_code' => $actionCode,
+                'action_type' => $actionDef['type'] ?? 'manual_event',
+                'action_name' => $actionName,
+                'raw_input' => $data['raw_input'] ?? 'MANUAL_ENTRY',
+                'points' => $points,
+                'home_score_after' => $game->home_score,
+                'away_score_after' => $game->away_score,
+                'is_undone' => false,
+                'description' => $description,
+                'metadata' => $data['metadata'] ?? null,
+            ]);
+
+            $this->rebuildGameFromEvents($game);
+
+            return $event;
         });
     }
 
@@ -218,9 +397,6 @@ class BasketballStatService
                     $stat->fgm += 1;
                 }
             }
-            if ($attCol === 'fga' && ! empty($actionDef['stat']) && $actionDef['stat'] === 'fgm') {
-                // fgm already handled by stat col
-            }
         }
 
         $stat->save();
@@ -252,7 +428,7 @@ class BasketballStatService
     }
 
     /**
-     * Completely recompute score and stats from chronological events.
+     * Completely recompute score, fouls, timeouts, and stats from chronological events.
      */
     public function rebuildGameFromEvents(Game $game): void
     {
@@ -268,6 +444,8 @@ class BasketballStatService
         $awayPeriodScores = [0, 0, 0, 0];
         $homeFouls = 0;
         $awayFouls = 0;
+        $homeTimeoutsUsed = 0;
+        $awayTimeoutsUsed = 0;
 
         // Reset basketball_stats
         BasketballStat::where('game_id', $game->id)->update([
@@ -297,8 +475,8 @@ class BasketballStatService
         ]);
 
         foreach ($events as $event) {
-            $points = $event->points;
-            $period = $event->period;
+            $points = (int)$event->points;
+            $period = (int)$event->period;
 
             while (count($homePeriodScores) < $period) {
                 $homePeriodScores[] = 0;
@@ -313,15 +491,26 @@ class BasketballStatService
                 if (in_array($event->action_code, ['F', 'R', 'T']) && $period === $game->current_period) {
                     $homeFouls += 1;
                 }
-            } else {
+                if ($event->action_code === 'TIMEOUT') {
+                    $homeTimeoutsUsed += 1;
+                }
+            } elseif ($event->team_side === 'away') {
                 $awayScore += $points;
                 $awayPeriodScores[$period - 1] += $points;
                 if (in_array($event->action_code, ['F', 'R', 'T']) && $period === $game->current_period) {
                     $awayFouls += 1;
                 }
+                if ($event->action_code === 'TIMEOUT') {
+                    $awayTimeoutsUsed += 1;
+                }
             }
 
-            if (isset(self::ACTIONS[$event->action_code])) {
+            // Update cumulative running score on the event record
+            $event->home_score_after = $homeScore;
+            $event->away_score_after = $awayScore;
+            $event->saveQuietly();
+
+            if (isset(self::ACTIONS[$event->action_code]) && !empty($event->jersey_number)) {
                 $this->applyStatToPlayer(
                     $game->id,
                     $event->team_side,
@@ -333,12 +522,17 @@ class BasketballStatService
             }
         }
 
-        $game->home_score = $homeScore;
-        $game->away_score = $awayScore;
+        $game->home_score = max(0, $homeScore);
+        $game->away_score = max(0, $awayScore);
         $game->home_period_scores = $homePeriodScores;
         $game->away_period_scores = $awayPeriodScores;
         $game->home_fouls_current_period = $homeFouls;
         $game->away_fouls_current_period = $awayFouls;
+
+        $maxTimeouts = $game->total_timeouts_allowed;
+        $game->home_timeouts_remaining = max(0, $maxTimeouts - $homeTimeoutsUsed);
+        $game->away_timeouts_remaining = max(0, $maxTimeouts - $awayTimeoutsUsed);
+
         $game->save();
     }
 
@@ -374,6 +568,7 @@ class BasketballStatService
                 'game_id' => $game->id,
                 'sequence' => $lastSequence + 1,
                 'period' => $game->current_period,
+                'clock_seconds_remaining' => $game->clock_seconds_remaining,
                 'team_side' => $teamSide,
                 'jersey_number' => $subInJersey,
                 'player_name' => $subIn?->player_name ?? "#{$subInJersey}",
@@ -386,6 +581,10 @@ class BasketballStatService
                 'home_score_after' => $game->home_score,
                 'away_score_after' => $game->away_score,
                 'description' => strtoupper($teamSide)." Sub: OUT #{$subOutJersey}, IN #{$subInJersey}",
+                'metadata' => [
+                    'sub_out_jersey' => $subOutJersey,
+                    'sub_in_jersey' => $subInJersey,
+                ],
             ]);
         });
     }
@@ -421,16 +620,26 @@ class BasketballStatService
                 return null;
             }
 
-            if (isset($data['jersey_number'])) {
-                $event->jersey_number = $data['jersey_number'];
-                $lineup = GameLineup::where('game_id', $game->id)
-                    ->where('team_side', $event->team_side)
-                    ->where('jersey_number', $data['jersey_number'])
-                    ->first();
-                if ($lineup) {
-                    $event->player_name = $lineup->player_name;
-                    $event->player_id = $lineup->player_id;
+            if (isset($data['team_side'])) {
+                $event->team_side = $data['team_side'];
+            }
+
+            if (array_key_exists('jersey_number', $data)) {
+                $event->jersey_number = $data['jersey_number'] ? trim((string)$data['jersey_number']) : null;
+                if ($event->jersey_number) {
+                    $lineup = GameLineup::where('game_id', $game->id)
+                        ->where('team_side', $event->team_side)
+                        ->where('jersey_number', $event->jersey_number)
+                        ->first();
+                    if ($lineup) {
+                        $event->player_name = $lineup->player_name;
+                        $event->player_id = $lineup->player_id;
+                    }
                 }
+            }
+
+            if (isset($data['player_name'])) {
+                $event->player_name = $data['player_name'];
             }
 
             if (isset($data['action_code']) && isset(self::ACTIONS[$data['action_code']])) {
@@ -438,14 +647,28 @@ class BasketballStatService
                 $event->action_code = $data['action_code'];
                 $event->action_name = $actionDef['name'];
                 $event->action_type = $actionDef['type'];
-                $event->points = $actionDef['points'];
+                $event->points = $actionDef['points'] ?? 0;
+            }
+
+            if (isset($data['points'])) {
+                $event->points = (int)$data['points'];
             }
 
             if (isset($data['period'])) {
                 $event->period = (int) $data['period'];
             }
 
-            $event->description = strtoupper($event->team_side)." #{$event->jersey_number} {$event->player_name}: {$event->action_name}";
+            if (isset($data['clock_seconds_remaining'])) {
+                $event->clock_seconds_remaining = (int) $data['clock_seconds_remaining'];
+            }
+
+            if (isset($data['description'])) {
+                $event->description = trim($data['description']);
+            } else {
+                $pts = (int)$event->points;
+                $event->description = strtoupper($event->team_side).($event->jersey_number ? " #{$event->jersey_number} {$event->player_name}" : '').": {$event->action_name}".($pts > 0 ? " (+{$pts} pts)" : '');
+            }
+
             $event->save();
 
             $this->rebuildGameFromEvents($game);
@@ -454,3 +677,4 @@ class BasketballStatService
         });
     }
 }
+

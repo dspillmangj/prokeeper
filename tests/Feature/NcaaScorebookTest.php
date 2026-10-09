@@ -87,14 +87,27 @@ beforeEach(function () {
     ]);
 });
 
-test('operator header displays NCAA Scorebook button for basketball games', function () {
+test('operator header displays Official Scorebook button for basketball games', function () {
     $response = $this->actingAs($this->user)->get(route('games.operator', $this->game->uuid));
     $response->assertStatus(200);
-    $response->assertSee('NCAA Scorebook');
+    $response->assertSee('Official Scorebook');
     $response->assertSee(route('public.scorebook', $this->game->access_code));
 });
 
-test('NCAA scorebook renders 2-page official ledger layout with team sheets and running score', function () {
+test('operator header displays Share button with escapable modal and all three spectator routes', function () {
+    $response = $this->actingAs($this->user)->get(route('games.operator', $this->game->uuid));
+    $response->assertStatus(200);
+    $response->assertDontSee('<span>Fan Live</span>', false);
+    $response->assertSee('<span>Share</span>', false);
+    $response->assertSee($this->game->access_code);
+    $response->assertSee(route('public.scoreboard', $this->game->access_code));
+    $response->assertSee(route('public.scorebook', $this->game->access_code));
+    $response->assertSee(route('public.live', $this->game->access_code));
+    $response->assertSee('showShareModal');
+});
+
+
+test('scorebook renders 2-page official ledger layout with team sheets and running score', function () {
     $response = $this->get(route('public.scorebook', $this->game->access_code));
     $response->assertStatus(200);
     
@@ -148,4 +161,61 @@ test('operator can configure game-level details including date, venue, officials
     $scorebookResponse->assertSee('Ted Valentine');
     $scorebookResponse->assertSee('Alice Walker');
 });
+
+test('scorebook page contains landscape print directive and 2-page print layout', function () {
+    $response = $this->get(route('public.scorebook', $this->game->access_code));
+    $response->assertStatus(200);
+    $response->assertSee('size: letter landscape;', false);
+    $response->assertSee('ncaa-page-sheet', false);
+    $response->assertSee('break-after: page', false);
+});
+
+test('scorebook PDF export downloads in letter landscape orientation', function () {
+    $response = $this->get(route('games.pdf', $this->game->access_code));
+    $response->assertStatus(200);
+    $response->assertHeader('content-disposition', 'attachment; filename=ProKeeper-Scorebook-'.$this->game->access_code.'.pdf');
+});
+
+test('officials can draw or type signature or initials in scorebook and persist certification', function () {
+    $drawnData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    \Livewire\Livewire::test(\App\Livewire\NcaaScorebook::class, ['code' => $this->game->access_code])
+        ->call('openSignatureModal', 'referee')
+        ->assertSet('showSignatureModal', true)
+        ->assertSet('activeSignRole', 'referee')
+        ->call('saveSignature', 'referee', 'draw', $drawnData, 'Marcus Taylor', 'MT', null, '#000000')
+        ->assertSet('showSignatureModal', false);
+
+    $this->game->refresh();
+    expect($this->game->settings['signatures']['referee'])->not->toBeNull();
+    expect($this->game->settings['signatures']['referee']['type'])->toBe('draw');
+    expect($this->game->settings['signatures']['referee']['signer_name'])->toBe('Marcus Taylor');
+    expect($this->game->settings['signatures']['referee']['initials'])->toBe('MT');
+    expect($this->game->settings['officials']['referee'])->toBe('Marcus Taylor');
+
+    // Test typing a signature for official scorer
+    $typedData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    \Livewire\Livewire::test(\App\Livewire\NcaaScorebook::class, ['code' => $this->game->access_code])
+        ->call('saveSignature', 'official_scorer', 'type', $typedData, 'Sarah Jenkins', 'SJ', 'dancing_script', '#0f2942');
+
+    $this->game->refresh();
+    expect($this->game->settings['signatures']['official_scorer']['type'])->toBe('type');
+    expect($this->game->settings['signatures']['official_scorer']['font_style'])->toBe('dancing_script');
+
+    // Verify rendered on scorebook page
+    $response = $this->get(route('public.scorebook', $this->game->access_code));
+    $response->assertStatus(200);
+    $response->assertSee('Marcus Taylor');
+    $response->assertSee('Sarah Jenkins');
+    $response->assertSee('SIGNED');
+    $response->assertSee('Signatures (2/4)');
+
+    // Test clearing a signature
+    \Livewire\Livewire::test(\App\Livewire\NcaaScorebook::class, ['code' => $this->game->access_code])
+        ->call('clearSignature', 'referee');
+
+    $this->game->refresh();
+    expect(isset($this->game->settings['signatures']['referee']))->toBeFalse();
+});
+
 

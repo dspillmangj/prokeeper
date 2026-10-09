@@ -10,25 +10,175 @@ use Livewire\Component;
 
 class NcaaScorebook extends Component
 {
-    public string $code;
+    public ?string $code = null;
+    public string $inputCode = '';
+    public string $errorMessage = '';
+    public bool $showSignatureModal = false;
+    public string $activeSignRole = 'official_scorer';
+    public string $signerName = '';
+    public string $signerInitials = '';
+    public string $signatureMode = 'draw'; // 'draw' or 'type'
+    public string $typedFont = 'dancing_script';
+    public string $signatureColor = '#0f172a';
 
-    public function mount(string $code)
+    public function mount(?string $code = null)
     {
-        $this->code = $code;
+        $this->code = $code ?: request()->route('code');
+        if ($this->code) {
+            $this->inputCode = strtoupper(trim($this->code));
+        }
     }
 
-    public function getGameProperty(): Game
+    public function submitCode()
     {
+        $clean = strtoupper(trim($this->inputCode));
+        if (empty($clean)) {
+            $this->errorMessage = 'Please enter a game access code.';
+            return;
+        }
+
+        $game = Game::where('access_code', $clean)
+            ->orWhere('uuid', $clean)
+            ->orWhere('slug', $clean)
+            ->first();
+
+        if (!$game) {
+            $this->errorMessage = "No game found with code '{$clean}'.";
+            return;
+        }
+
+        return redirect()->route('public.scorebook', $game->access_code);
+    }
+
+    public function getGameProperty(): ?Game
+    {
+        if (!$this->code) {
+            return null;
+        }
+
         return Game::where('access_code', $this->code)
             ->orWhere('uuid', $this->code)
             ->orWhere('slug', $this->code)
             ->with(['homeTeam', 'awayTeam'])
-            ->firstOrFail();
+            ->first();
+    }
+
+    public function openSignatureModal(?string $role = 'official_scorer')
+    {
+        $this->activeSignRole = $role ?: 'official_scorer';
+        $game = $this->game;
+        $officials = $game->settings['officials'] ?? [];
+        $signatures = $game->settings['signatures'] ?? [];
+        $currentSig = $signatures[$this->activeSignRole] ?? null;
+
+        $this->signerName = $currentSig['signer_name'] ?? ($officials[$this->activeSignRole] ?? '');
+        $this->signerInitials = $currentSig['initials'] ?? $this->deriveInitials($this->signerName);
+        $this->signatureMode = $currentSig['type'] ?? 'draw';
+        $this->typedFont = $currentSig['font_style'] ?? 'dancing_script';
+        $this->showSignatureModal = true;
+    }
+
+    public function closeSignatureModal()
+    {
+        $this->showSignatureModal = false;
+    }
+
+    public function switchSignRole(string $role)
+    {
+        $this->activeSignRole = $role;
+        $game = $this->game;
+        $officials = $game->settings['officials'] ?? [];
+        $signatures = $game->settings['signatures'] ?? [];
+        $currentSig = $signatures[$role] ?? null;
+
+        $this->signerName = $currentSig['signer_name'] ?? ($officials[$role] ?? '');
+        $this->signerInitials = $currentSig['initials'] ?? $this->deriveInitials($this->signerName);
+        if ($currentSig) {
+            $this->signatureMode = $currentSig['type'] ?? 'draw';
+            $this->typedFont = $currentSig['font_style'] ?? 'dancing_script';
+        }
+    }
+
+    public function saveSignature(
+        string $role,
+        string $type,
+        string $data,
+        ?string $signerName = null,
+        ?string $initials = null,
+        ?string $fontStyle = null,
+        ?string $color = null
+    ) {
+        $game = $this->game;
+        $settings = $game->settings ?? [];
+        $signatures = $settings['signatures'] ?? [];
+        $officials = $settings['officials'] ?? [];
+
+        $cleanName = trim($signerName ?: $this->signerName);
+        $cleanInitials = trim($initials ?: ($this->signerInitials ?: $this->deriveInitials($cleanName)));
+
+        $signatures[$role] = [
+            'role' => $role,
+            'type' => $type, // 'draw' or 'type'
+            'data' => $data, // PNG base64 data URI or SVG string
+            'signer_name' => $cleanName,
+            'initials' => $cleanInitials,
+            'font_style' => $fontStyle ?: $this->typedFont,
+            'color' => $color ?: $this->signatureColor,
+            'signed_at' => now()->format('m/d/Y g:i A'),
+            'signed_timestamp' => now()->timestamp,
+        ];
+
+        // Keep official name in sync with game settings
+        if (!empty($cleanName)) {
+            $officials[$role] = $cleanName;
+            $settings['officials'] = $officials;
+        }
+
+        $settings['signatures'] = $signatures;
+        $game->settings = $settings;
+        $game->save();
+
+        $this->showSignatureModal = false;
+        $this->dispatch('signature-saved', role: $role, name: $cleanName);
+    }
+
+    public function clearSignature(string $role)
+    {
+        $game = $this->game;
+        $settings = $game->settings ?? [];
+        $signatures = $settings['signatures'] ?? [];
+
+        if (isset($signatures[$role])) {
+            unset($signatures[$role]);
+            $settings['signatures'] = $signatures;
+            $game->settings = $settings;
+            $game->save();
+        }
+
+        $this->dispatch('signature-cleared', role: $role);
+    }
+
+    protected function deriveInitials(string $name): string
+    {
+        $words = preg_split('/\s+/', trim($name));
+        $initials = '';
+        foreach ($words as $w) {
+            if (!empty($w)) {
+                $initials .= strtoupper(mb_substr($w, 0, 1));
+            }
+        }
+        return mb_substr($initials, 0, 4);
     }
 
     public function render()
     {
         $game = $this->game;
+
+        if (!$game) {
+            return view('livewire.ncaa-scorebook', [
+                'game' => null,
+            ])->layout('layouts.public');
+        }
 
         $homeLineup = GameLineup::where('game_id', $game->id)
             ->where('team_side', 'home')
@@ -148,7 +298,8 @@ class NcaaScorebook extends Component
         $ot_team_fouls = $teamEvents->where('period', '>=', 5)->whereIn('action_code', ['F', 'R', 'T'])->count();
 
         // Team Timeouts
-        $timeouts_taken = $teamEvents->where('action_code', 'TO')->values();
+        $timeouts_taken = $teamEvents->whereIn('action_code', ['TIMEOUT', 'TO'])->values();
+        $timeouts_breakdown = $game->calculateTimeoutsBreakdown($teamSide);
 
         // Half scoring sums
         $h1_total_pts = collect($playerBreakdown)->sum('h1_pts');
@@ -168,6 +319,7 @@ class NcaaScorebook extends Component
             'h2_total_pts' => $h2_total_pts,
             'ot_total_pts' => $ot_total_pts,
             'timeouts_taken' => $timeouts_taken,
+            'timeouts_breakdown' => $timeouts_breakdown,
             'timeouts_remaining' => ($teamSide === 'home') ? $game->home_timeouts_remaining : $game->away_timeouts_remaining,
         ];
     }

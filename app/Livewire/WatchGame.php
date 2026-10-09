@@ -87,15 +87,8 @@ class WatchGame extends Component
         $game = $this->game;
 
         if (!$game) {
-            $liveGames = Game::whereIn('status', ['in_progress', 'paused', 'scheduled'])
-                ->with(['homeTeam', 'awayTeam'])
-                ->latest()
-                ->take(6)
-                ->get();
-
             return view('livewire.watch-game', [
                 'game' => null,
-                'liveGames' => $liveGames,
             ])->layout('layouts.public');
         }
 

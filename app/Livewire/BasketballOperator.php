@@ -46,6 +46,35 @@ class BasketballOperator extends Component
 
     public int $gamePeriodMinutes = 8;
 
+    // Configurable Game Rules & Timeouts
+    public int $timeoutsFull = 3;
+
+    public int $timeouts30s = 2;
+
+    public int $timeoutsOt = 1;
+
+    public string $periodFormat = 'quarters';
+
+    public int $otMinutes = 4;
+
+    public int $shotClockSeconds = 0;
+
+    public int $bonusFoulThreshold = 5;
+
+    public int $doubleBonusFoulThreshold = 5;
+
+    public int $playerFoulLimit = 5;
+
+    public int $homeTimeoutsRemaining = 5;
+
+    public int $awayTimeoutsRemaining = 5;
+
+    public string $homeScoreColor = '#1e40af';
+
+    public string $awayScoreColor = '#b91c1c';
+
+    public bool $broadcastFlip = false;
+
     public string $officialReferee = '';
 
     public string $officialUmpire1 = '';
@@ -153,7 +182,23 @@ class BasketballOperator extends Component
         $this->gamePeriod = (int) $game->current_period;
         $this->gameClockMinutes = (int) floor($game->clock_seconds_remaining / 60);
         $this->gameClockSeconds = (int) ($game->clock_seconds_remaining % 60);
-        $this->gamePeriodMinutes = (int) ($game->settings['period_minutes'] ?? 8);
+        $this->gamePeriodMinutes = $game->period_minutes;
+
+        // Configurable rules
+        $this->timeoutsFull = $game->full_timeouts_allowed;
+        $this->timeouts30s = $game->thirty_second_timeouts_allowed;
+        $this->timeoutsOt = $game->ot_timeouts_allowed;
+        $this->periodFormat = $game->period_format;
+        $this->otMinutes = $game->ot_minutes;
+        $this->shotClockSeconds = $game->shot_clock_seconds ?? 0;
+        $this->bonusFoulThreshold = $game->bonus_threshold;
+        $this->doubleBonusFoulThreshold = $game->double_bonus_threshold;
+        $this->playerFoulLimit = $game->player_foul_limit;
+        $this->homeTimeoutsRemaining = $game->home_timeouts_remaining;
+        $this->awayTimeoutsRemaining = $game->away_timeouts_remaining;
+        $this->homeScoreColor = $game->home_team_score_color ?: '#1e40af';
+        $this->awayScoreColor = $game->away_team_score_color ?: '#b91c1c';
+        $this->broadcastFlip = (bool) ($game->settings['broadcast_flip'] ?? false);
 
         $officials = $game->settings['officials'] ?? [];
         $this->officialReferee = $officials['referee'] ?? '';
@@ -169,6 +214,11 @@ class BasketballOperator extends Component
     public function closeGameDetailsModal()
     {
         $this->showGameDetailsModal = false;
+    }
+
+    public function closeSignatureModal()
+    {
+        // Safe no-op if invoked by universal modal escape
     }
 
     public function saveGameDetails()
@@ -190,6 +240,23 @@ class BasketballOperator extends Component
         $settings = $game->settings ?? [];
         $settings['event_name'] = trim($this->gameEventName);
         $settings['period_minutes'] = max(1, $this->gamePeriodMinutes);
+        $settings['broadcast_flip'] = (bool) $this->broadcastFlip;
+
+        $rules = $settings['rules'] ?? [];
+        $rules['timeouts_full'] = max(0, $this->timeoutsFull);
+        $rules['timeouts_30s'] = max(0, $this->timeouts30s);
+        $rules['timeouts_ot'] = max(0, $this->timeoutsOt);
+        $rules['period_format'] = in_array($this->periodFormat, ['quarters', 'halves']) ? $this->periodFormat : 'quarters';
+        $rules['period_minutes'] = max(1, $this->gamePeriodMinutes);
+        $rules['ot_minutes'] = max(1, $this->otMinutes);
+        $rules['shot_clock_seconds'] = $this->shotClockSeconds > 0 ? $this->shotClockSeconds : null;
+        $rules['bonus_foul_threshold'] = max(1, $this->bonusFoulThreshold);
+        $rules['double_bonus_foul_threshold'] = max(1, $this->doubleBonusFoulThreshold);
+        $rules['player_foul_limit'] = max(1, $this->playerFoulLimit);
+
+        $settings['rules'] = $rules;
+        $settings['timeouts_per_game'] = $rules['timeouts_full'] + $rules['timeouts_30s'];
+
         $settings['officials'] = [
             'referee' => trim($this->officialReferee),
             'umpire1' => trim($this->officialUmpire1),
@@ -204,6 +271,10 @@ class BasketballOperator extends Component
         $game->status = $this->gameStatus;
         $game->current_period = min(6, max(1, $this->gamePeriod));
         $game->clock_seconds_remaining = $totalClockSeconds;
+        $game->home_timeouts_remaining = max(0, $this->homeTimeoutsRemaining);
+        $game->away_timeouts_remaining = max(0, $this->awayTimeoutsRemaining);
+        $game->home_team_score_color = !empty($this->homeScoreColor) ? $this->homeScoreColor : '#1e40af';
+        $game->away_team_score_color = !empty($this->awayScoreColor) ? $this->awayScoreColor : '#b91c1c';
         $game->settings = $settings;
 
         if (!empty($this->gameHomeName)) {
@@ -215,8 +286,14 @@ class BasketballOperator extends Component
 
         $game->save();
 
+        $this->dispatch('game-colors-updated', [
+            'homeColor' => $game->home_team_score_color,
+            'awayColor' => $game->away_team_score_color,
+            'broadcastFlip' => $this->broadcastFlip,
+        ]);
+
         $this->showGameDetailsModal = false;
-        $this->feedbackMessage = 'Game details, schedule, venue, and officials updated successfully.';
+        $this->feedbackMessage = 'Game details, team colors, rules, and officials updated.';
         $this->feedbackType = 'success';
     }
 
@@ -727,29 +804,14 @@ class BasketballOperator extends Component
 
     public function adjustScore(string $teamSide, int $delta)
     {
-        $game = $this->game;
-        if ($teamSide === 'home') {
-            $game->home_score = max(0, $game->home_score + $delta);
-            $scores = $game->home_period_scores ?? [0, 0, 0, 0];
-            $cur = $game->current_period;
-            while (count($scores) < $cur) {
-                $scores[] = 0;
-            }
-            $scores[$cur - 1] = max(0, $scores[$cur - 1] + $delta);
-            $game->home_period_scores = $scores;
-        } else {
-            $game->away_score = max(0, $game->away_score + $delta);
-            $scores = $game->away_period_scores ?? [0, 0, 0, 0];
-            $cur = $game->current_period;
-            while (count($scores) < $cur) {
-                $scores[] = 0;
-            }
-            $scores[$cur - 1] = max(0, $scores[$cur - 1] + $delta);
-            $game->away_period_scores = $scores;
+        try {
+            $event = $this->statService->adjustScore($this->game, $teamSide, $delta);
+            $this->feedbackMessage = $event->description;
+            $this->feedbackType = 'info';
+        } catch (Exception $e) {
+            $this->feedbackMessage = $e->getMessage();
+            $this->feedbackType = 'error';
         }
-        $game->save();
-        $this->feedbackMessage = "Adjusted ".strtoupper($teamSide)." score (".($delta > 0 ? "+{$delta}" : "{$delta}").")";
-        $this->feedbackType = 'info';
     }
 
     public function nextPeriod()
@@ -764,6 +826,24 @@ class BasketballOperator extends Component
         $game->home_fouls_current_period = 0;
         $game->away_fouls_current_period = 0;
         $game->save();
+
+        $lastSeq = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
+        GameEvent::create([
+            'game_id' => $game->id,
+            'sequence' => $lastSeq + 1,
+            'period' => $game->current_period,
+            'clock_seconds_remaining' => $game->clock_seconds_remaining,
+            'team_side' => 'home',
+            'player_name' => 'Period Advance',
+            'sport' => 'basketball',
+            'action_code' => 'PERIOD',
+            'action_type' => 'period_change',
+            'action_name' => "Start of {$game->period_name}",
+            'points' => 0,
+            'home_score_after' => $game->home_score,
+            'away_score_after' => $game->away_score,
+            'description' => "Advanced to {$game->period_name}",
+        ]);
 
         $this->feedbackMessage = "Advanced to {$game->period_name}.";
         $this->feedbackType = 'info';
@@ -793,18 +873,16 @@ class BasketballOperator extends Component
         $game->save();
     }
 
-    public function callTimeout(string $teamSide)
+    public function callTimeout(string $teamSide, string $timeoutType = 'full')
     {
-        $game = $this->game;
-        if ($teamSide === 'home' && $game->home_timeouts_remaining > 0) {
-            $game->home_timeouts_remaining -= 1;
-            $this->feedbackMessage = "Timeout charged to HOME. Remaining: {$game->home_timeouts_remaining}";
-        } elseif ($teamSide === 'away' && $game->away_timeouts_remaining > 0) {
-            $game->away_timeouts_remaining -= 1;
-            $this->feedbackMessage = "Timeout charged to AWAY. Remaining: {$game->away_timeouts_remaining}";
+        try {
+            $event = $this->statService->callTimeout($this->game, $teamSide, $timeoutType);
+            $this->feedbackMessage = $event->description;
+            $this->feedbackType = 'info';
+        } catch (Exception $e) {
+            $this->feedbackMessage = $e->getMessage();
+            $this->feedbackType = 'error';
         }
-        $game->save();
-        $this->feedbackType = 'info';
     }
 
     public function executeSub()
@@ -823,6 +901,18 @@ class BasketballOperator extends Component
             $this->showSubModal = false;
             $this->subOutJersey = '';
             $this->subInJersey = '';
+        } catch (Exception $e) {
+            $this->feedbackMessage = $e->getMessage();
+            $this->feedbackType = 'error';
+        }
+    }
+
+    public function createManualEvent(array $data)
+    {
+        try {
+            $event = $this->statService->createManualEvent($this->game, $data);
+            $this->feedbackMessage = "Logged: {$event->description}";
+            $this->feedbackType = 'success';
         } catch (Exception $e) {
             $this->feedbackMessage = $e->getMessage();
             $this->feedbackType = 'error';
@@ -850,18 +940,25 @@ class BasketballOperator extends Component
         }
     }
 
-    public function updateGameEvent(int $eventId, string $jersey, string $actionCode, int $period)
+    public function updateGameEvent(int $eventId, string $jersey, string $actionCode, int $period, ?string $description = null, ?int $points = null, ?string $teamSide = null, ?int $clockSeconds = null)
     {
-        $updated = $this->statService->updateEvent($this->game, $eventId, [
+        $payload = [
             'jersey_number' => $jersey,
             'action_code' => $actionCode,
             'period' => $period,
-        ]);
+        ];
+        if (!is_null($description)) $payload['description'] = $description;
+        if (!is_null($points)) $payload['points'] = $points;
+        if (!is_null($teamSide)) $payload['team_side'] = $teamSide;
+        if (!is_null($clockSeconds)) $payload['clock_seconds_remaining'] = $clockSeconds;
+
+        $updated = $this->statService->updateEvent($this->game, $eventId, $payload);
         if ($updated) {
             $this->feedbackMessage = "Updated play: {$updated->description}";
             $this->feedbackType = 'success';
         }
     }
+
 
     public function render()
     {

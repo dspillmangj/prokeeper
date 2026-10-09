@@ -15,17 +15,23 @@ class VolleyballStatService
      * Volleyball actions mapping
      */
     public const ACTIONS = [
-        'K' => ['name' => 'Kill', 'type' => 'kill', 'point_team' => 'same', 'stat' => 'kills', 'attempt' => true],
-        'E' => ['name' => 'Attack Error', 'type' => 'attack_error', 'point_team' => 'opp', 'stat' => 'attack_errors', 'attempt' => true],
-        'T' => ['name' => 'Attack Attempt', 'type' => 'attack_attempt', 'point_team' => null, 'attempt' => true],
-        'A' => ['name' => 'Service Ace', 'type' => 'service_ace', 'point_team' => 'same', 'stat' => 'service_aces', 'serve_attempt' => true],
-        'S' => ['name' => 'Service Error', 'type' => 'service_error', 'point_team' => 'opp', 'stat' => 'service_errors', 'serve_attempt' => true],
-        'D' => ['name' => 'Dig', 'type' => 'dig', 'point_team' => null, 'stat' => 'digs'],
-        'B' => ['name' => 'Block Solo', 'type' => 'block_solo', 'point_team' => 'same', 'stat' => 'block_solos'],
-        'C' => ['name' => 'Block Assist', 'type' => 'block_assist', 'point_team' => 'same', 'stat' => 'block_assists'],
-        'H' => ['name' => 'Ball Handling Error', 'type' => 'ball_handling_error', 'point_team' => 'opp', 'stat' => 'ball_handling_errors'],
-        'R' => ['name' => 'Reception Error', 'type' => 'reception_error', 'point_team' => 'opp', 'stat' => 'reception_errors'],
-        'Z' => ['name' => 'Set Assist', 'type' => 'set_assist', 'point_team' => null, 'stat' => 'assists'],
+        'K' => ['name' => 'Kill', 'type' => 'kill', 'point_team' => 'same', 'stat' => 'kills', 'attempt' => true, 'category' => 'attack'],
+        'E' => ['name' => 'Attack Error', 'type' => 'attack_error', 'point_team' => 'opp', 'stat' => 'attack_errors', 'attempt' => true, 'category' => 'attack'],
+        'T' => ['name' => 'Attack Attempt', 'type' => 'attack_attempt', 'point_team' => null, 'attempt' => true, 'category' => 'attack'],
+        'A' => ['name' => 'Service Ace', 'type' => 'service_ace', 'point_team' => 'same', 'stat' => 'service_aces', 'serve_attempt' => true, 'category' => 'serve'],
+        'S' => ['name' => 'Service Error', 'type' => 'service_error', 'point_team' => 'opp', 'stat' => 'service_errors', 'serve_attempt' => true, 'category' => 'serve'],
+        'D' => ['name' => 'Dig', 'type' => 'dig', 'point_team' => null, 'stat' => 'digs', 'category' => 'defense'],
+        'B' => ['name' => 'Block Solo', 'type' => 'block_solo', 'point_team' => 'same', 'stat' => 'block_solos', 'category' => 'defense'],
+        'C' => ['name' => 'Block Assist', 'type' => 'block_assist', 'point_team' => 'same', 'stat' => 'block_assists', 'category' => 'defense'],
+        'H' => ['name' => 'Ball Handling Error', 'type' => 'ball_handling_error', 'point_team' => 'opp', 'stat' => 'ball_handling_errors', 'category' => 'errors'],
+        'R' => ['name' => 'Reception Error', 'type' => 'reception_error', 'point_team' => 'opp', 'stat' => 'reception_errors', 'category' => 'errors'],
+        'Z' => ['name' => 'Set Assist', 'type' => 'set_assist', 'point_team' => null, 'stat' => 'assists', 'category' => 'ball_movement'],
+        'TIMEOUT' => ['name' => 'Timeout', 'type' => 'timeout', 'point_team' => null, 'points' => 0, 'category' => 'administrative'],
+        'SCORE_ADJ' => ['name' => 'Score Adjustment', 'type' => 'score_adjustment', 'point_team' => null, 'points' => 0, 'category' => 'administrative'],
+        'SUB' => ['name' => 'Substitution', 'type' => 'substitution', 'point_team' => null, 'points' => 0, 'category' => 'administrative'],
+        'PERIOD' => ['name' => 'Set Advance', 'type' => 'period_change', 'point_team' => null, 'points' => 0, 'category' => 'administrative'],
+        'ROTATE' => ['name' => 'Rotation', 'type' => 'rotation', 'point_team' => null, 'points' => 0, 'category' => 'administrative'],
+        'NOTE' => ['name' => 'Audit Note', 'type' => 'audit_note', 'point_team' => null, 'points' => 0, 'category' => 'administrative'],
     ];
 
     /**
@@ -59,7 +65,7 @@ class VolleyballStatService
      */
     public function recordStat(Game $game, string $teamSide, string $jersey, string $actionCode, ?string $rawInput = null): array
     {
-        $actionDef = self::ACTIONS[$actionCode];
+        $actionDef = self::ACTIONS[$actionCode] ?? ['name' => $actionCode, 'type' => 'custom', 'point_team' => null];
 
         return DB::transaction(function () use ($game, $teamSide, $jersey, $actionCode, $actionDef, $rawInput) {
             $game = Game::where('id', $game->id)->lockForUpdate()->first();
@@ -73,10 +79,12 @@ class VolleyballStatService
             $playerId = $lineup?->player_id;
 
             $pointSide = null;
-            if ($actionDef['point_team'] === 'same') {
-                $pointSide = $teamSide;
-            } elseif ($actionDef['point_team'] === 'opp') {
-                $pointSide = ($teamSide === 'home') ? 'away' : 'home';
+            if (isset($actionDef['point_team'])) {
+                if ($actionDef['point_team'] === 'same') {
+                    $pointSide = $teamSide;
+                } elseif ($actionDef['point_team'] === 'opp') {
+                    $pointSide = ($teamSide === 'home') ? 'away' : 'home';
+                }
             }
 
             // Points update
@@ -109,14 +117,14 @@ class VolleyballStatService
                 'player_name' => $playerName,
                 'sport' => 'volleyball',
                 'action_code' => $actionCode,
-                'action_type' => $actionDef['type'],
-                'action_name' => $actionDef['name'],
+                'action_type' => $actionDef['type'] ?? 'stat',
+                'action_name' => $actionDef['name'] ?? $actionCode,
                 'raw_input' => $rawInput ?? "{$jersey}".($teamSide === 'home' ? '-' : '=').$actionCode,
                 'points' => ($pointSide !== null) ? 1 : 0,
                 'home_score_after' => $homeScoreAfter,
                 'away_score_after' => $awayScoreAfter,
                 'is_undone' => false,
-                'description' => strtoupper($teamSide)." #{$jersey} {$playerName}: ".$actionDef['name'].($pointSide ? ' (Point '.strtoupper($pointSide).')' : ''),
+                'description' => strtoupper($teamSide)." #{$jersey} {$playerName}: ".($actionDef['name'] ?? $actionCode).($pointSide ? ' (Point '.strtoupper($pointSide).')' : ''),
             ]);
 
             $game->home_score = $homeScoreAfter;
@@ -161,22 +169,191 @@ class VolleyballStatService
 
             $game->save();
 
-            // Update individual player volleyball stats
+            // Update player volleyball stats
             $this->applyStatToPlayer($game->id, $teamSide, $jersey, $playerName, $playerId, $actionDef);
 
             return [
                 'success' => true,
-                'message' => strtoupper($teamSide)." - {$playerName} (#{$jersey}): {$actionDef['name']}".($pointSide ? ' [Point '.strtoupper($pointSide).']' : '').($sideOutOccurred ? ' (Side-out)' : ''),
+                'message' => strtoupper($teamSide)." - {$playerName} (#{$jersey}): ".($actionDef['name'] ?? $actionCode).($pointSide ? ' (Pt '.strtoupper($pointSide).')' : ''),
                 'event' => $event,
                 'game' => $game,
                 'set_won' => $setWon,
                 'set_winner' => $setWinner,
+                'side_out' => $sideOutOccurred,
             ];
         });
     }
 
     /**
-     * Apply volleyball stat update to volleyball_stats table.
+     * Log and charge a timeout.
+     */
+    public function callTimeout(Game $game, string $teamSide): GameEvent
+    {
+        return DB::transaction(function () use ($game, $teamSide) {
+            $game = Game::where('id', $game->id)->lockForUpdate()->first();
+
+            $field = ($teamSide === 'home') ? 'home_timeouts_remaining' : 'away_timeouts_remaining';
+            if ($game->$field > 0) {
+                $game->$field -= 1;
+            }
+            $game->save();
+
+            $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
+            $teamName = ($teamSide === 'home') ? ($game->home_team_name ?: 'HOME') : ($game->away_team_name ?: 'AWAY');
+            $remaining = $game->$field;
+
+            return GameEvent::create([
+                'game_id' => $game->id,
+                'sequence' => $lastSequence + 1,
+                'period' => $game->current_period,
+                'clock_seconds_remaining' => 0,
+                'team_side' => $teamSide,
+                'jersey_number' => null,
+                'player_name' => $teamName,
+                'sport' => 'volleyball',
+                'action_code' => 'TIMEOUT',
+                'action_type' => 'timeout',
+                'action_name' => 'Timeout',
+                'raw_input' => "TIMEOUT {$teamSide}",
+                'points' => 0,
+                'home_score_after' => $game->home_score,
+                'away_score_after' => $game->away_score,
+                'is_undone' => false,
+                'description' => strtoupper($teamSide)." Timeout Called ({$remaining} remaining in Set {$game->current_period})",
+                'metadata' => [
+                    'timeouts_remaining' => $remaining,
+                ],
+            ]);
+        });
+    }
+
+    /**
+     * Log a manual score adjustment.
+     */
+    public function adjustScore(Game $game, string $teamSide, int $delta, ?string $reason = null): GameEvent
+    {
+        return DB::transaction(function () use ($game, $teamSide, $delta, $reason) {
+            $game = Game::where('id', $game->id)->lockForUpdate()->first();
+            $period = $game->current_period;
+
+            if ($teamSide === 'home') {
+                $game->home_score = max(0, $game->home_score + $delta);
+                $scores = $game->home_period_scores ?? [0, 0, 0, 0, 0];
+                while (count($scores) < $period) {
+                    $scores[] = 0;
+                }
+                $scores[$period - 1] = max(0, $scores[$period - 1] + $delta);
+                $game->home_period_scores = $scores;
+            } else {
+                $game->away_score = max(0, $game->away_score + $delta);
+                $scores = $game->away_period_scores ?? [0, 0, 0, 0, 0];
+                while (count($scores) < $period) {
+                    $scores[] = 0;
+                }
+                $scores[$period - 1] = max(0, $scores[$period - 1] + $delta);
+                $game->away_period_scores = $scores;
+            }
+            $game->save();
+
+            $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
+            $ptsText = ($delta > 0 ? "+{$delta}" : "{$delta}").' pts';
+            $desc = strtoupper($teamSide)." Score Adjustment: {$ptsText}".($reason ? " ({$reason})" : '');
+
+            return GameEvent::create([
+                'game_id' => $game->id,
+                'sequence' => $lastSequence + 1,
+                'period' => $period,
+                'clock_seconds_remaining' => 0,
+                'team_side' => $teamSide,
+                'jersey_number' => null,
+                'player_name' => 'Official Scorer',
+                'sport' => 'volleyball',
+                'action_code' => 'SCORE_ADJ',
+                'action_type' => 'score_adjustment',
+                'action_name' => 'Score Adjustment',
+                'raw_input' => "SCORE_ADJ {$teamSide} {$delta}",
+                'points' => $delta,
+                'home_score_after' => $game->home_score,
+                'away_score_after' => $game->away_score,
+                'is_undone' => false,
+                'description' => $desc,
+                'metadata' => [
+                    'delta' => $delta,
+                    'reason' => $reason,
+                ],
+            ]);
+        });
+    }
+
+    /**
+     * Create a manual / retroactively inserted event.
+     */
+    public function createManualEvent(Game $game, array $data): GameEvent
+    {
+        return DB::transaction(function () use ($game, $data) {
+            $game = Game::where('id', $game->id)->lockForUpdate()->first();
+
+            $teamSide = $data['team_side'] ?? 'home';
+            $jersey = isset($data['jersey_number']) ? trim((string)$data['jersey_number']) : null;
+            $period = (int)($data['period'] ?? $game->current_period);
+            $actionCode = $data['action_code'] ?? 'NOTE';
+            $actionDef = self::ACTIONS[$actionCode] ?? ['name' => $actionCode, 'type' => 'custom', 'point_team' => null];
+
+            $playerName = $data['player_name'] ?? null;
+            $playerId = null;
+            if ($jersey) {
+                $lineup = GameLineup::where('game_id', $game->id)
+                    ->where('team_side', $teamSide)
+                    ->where('jersey_number', $jersey)
+                    ->first();
+                if ($lineup) {
+                    $playerName = $playerName ?: $lineup->player_name;
+                    $playerId = $lineup->player_id;
+                } else {
+                    $playerName = $playerName ?: "Player #{$jersey}";
+                }
+            }
+
+            $points = isset($data['points']) ? (int)$data['points'] : (isset($actionDef['point_team']) && $actionDef['point_team'] !== null ? 1 : 0);
+            $actionName = $actionDef['name'] ?? $actionCode;
+            $description = $data['description'] ?? (
+                $jersey
+                    ? strtoupper($teamSide)." #{$jersey} {$playerName}: {$actionName}".($points > 0 ? " (+{$points} pts)" : '')
+                    : strtoupper($teamSide).": {$actionName}".($points > 0 ? " (+{$points} pts)" : '')
+            );
+
+            $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
+
+            $event = GameEvent::create([
+                'game_id' => $game->id,
+                'sequence' => $lastSequence + 1,
+                'period' => $period,
+                'clock_seconds_remaining' => 0,
+                'team_side' => $teamSide,
+                'player_id' => $playerId,
+                'jersey_number' => $jersey,
+                'player_name' => $playerName,
+                'sport' => 'volleyball',
+                'action_code' => $actionCode,
+                'action_type' => $actionDef['type'] ?? 'manual_event',
+                'action_name' => $actionName,
+                'raw_input' => $data['raw_input'] ?? 'MANUAL_ENTRY',
+                'points' => $points,
+                'home_score_after' => $game->home_score,
+                'away_score_after' => $game->away_score,
+                'is_undone' => false,
+                'description' => $description,
+                'metadata' => $data['metadata'] ?? null,
+            ]);
+
+            $this->rebuildGameFromEvents($game);
+
+            return $event;
+        });
+    }
+
+    /**
+     * Apply stat to player
      */
     protected function applyStatToPlayer(int $gameId, string $teamSide, string $jersey, string $playerName, ?int $playerId, array $actionDef): void
     {
@@ -192,7 +369,7 @@ class VolleyballStatService
             ]
         );
 
-        if (isset($actionDef['stat'])) {
+        if (! empty($actionDef['stat'])) {
             $col = $actionDef['stat'];
             $stat->$col += 1;
         }
@@ -205,31 +382,18 @@ class VolleyballStatService
             $stat->service_attempts += 1;
         }
 
-        // Recalculate totals
         $stat->total_blocks = $stat->block_solos + ($stat->block_assists * 0.5);
         $stat->total_points = $stat->kills + $stat->service_aces + $stat->block_solos + ($stat->block_assists * 0.5);
-        $stat->calculateHittingPercentage();
+
+        if ($stat->attack_attempts > 0) {
+            $stat->hitting_percentage = round(($stat->kills - $stat->attack_errors) / $stat->attack_attempts, 3);
+        }
 
         $stat->save();
     }
 
     /**
-     * Advance to the next set.
-     */
-    public function advanceSet(Game $game): void
-    {
-        DB::transaction(function () use ($game) {
-            $game->current_period += 1;
-            $game->home_score = 0;
-            $game->away_score = 0;
-            $game->home_timeouts_remaining = 2;
-            $game->away_timeouts_remaining = 2;
-            $game->save();
-        });
-    }
-
-    /**
-     * Rebuild volleyball stats and scores from active events.
+     * Completely recompute score and stats from chronological events.
      */
     public function rebuildGameFromEvents(Game $game): void
     {
@@ -242,6 +406,8 @@ class VolleyballStatService
         $awayScore = 0;
         $homePeriodScores = [0, 0, 0, 0, 0];
         $awayPeriodScores = [0, 0, 0, 0, 0];
+        $homeTimeoutsUsed = 0;
+        $awayTimeoutsUsed = 0;
 
         VolleyballStat::where('game_id', $game->id)->update([
             'kills' => 0,
@@ -262,7 +428,7 @@ class VolleyballStatService
         ]);
 
         foreach ($events as $event) {
-            $period = $event->period;
+            $period = (int)$event->period;
             while (count($homePeriodScores) < $period) {
                 $homePeriodScores[] = 0;
             }
@@ -270,17 +436,27 @@ class VolleyballStatService
                 $awayPeriodScores[] = 0;
             }
 
-            if ($event->points > 0) {
+            $points = (int)$event->points;
+            if ($points > 0) {
                 if ($event->team_side === 'home') {
-                    $homeScore += $event->points;
-                    $homePeriodScores[$period - 1] += $event->points;
-                } else {
-                    $awayScore += $event->points;
-                    $awayPeriodScores[$period - 1] += $event->points;
+                    $homeScore += $points;
+                    $homePeriodScores[$period - 1] += $points;
+                } elseif ($event->team_side === 'away') {
+                    $awayScore += $points;
+                    $awayPeriodScores[$period - 1] += $points;
                 }
             }
 
-            if (isset(self::ACTIONS[$event->action_code])) {
+            if ($event->action_code === 'TIMEOUT') {
+                if ($event->team_side === 'home') $homeTimeoutsUsed++;
+                if ($event->team_side === 'away') $awayTimeoutsUsed++;
+            }
+
+            $event->home_score_after = $homeScore;
+            $event->away_score_after = $awayScore;
+            $event->saveQuietly();
+
+            if (isset(self::ACTIONS[$event->action_code]) && !empty($event->jersey_number)) {
                 $this->applyStatToPlayer(
                     $game->id,
                     $event->team_side,
@@ -292,10 +468,15 @@ class VolleyballStatService
             }
         }
 
-        $game->home_score = $homeScore;
-        $game->away_score = $awayScore;
+        $game->home_score = max(0, $homeScore);
+        $game->away_score = max(0, $awayScore);
         $game->home_period_scores = $homePeriodScores;
         $game->away_period_scores = $awayPeriodScores;
+
+        $maxTimeouts = (int)($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
+        $game->home_timeouts_remaining = max(0, $maxTimeouts - $homeTimeoutsUsed);
+        $game->away_timeouts_remaining = max(0, $maxTimeouts - $awayTimeoutsUsed);
+
         $game->save();
     }
 
@@ -354,16 +535,26 @@ class VolleyballStatService
                 return null;
             }
 
-            if (isset($data['jersey_number'])) {
-                $event->jersey_number = $data['jersey_number'];
-                $lineup = GameLineup::where('game_id', $game->id)
-                    ->where('team_side', $event->team_side)
-                    ->where('jersey_number', $data['jersey_number'])
-                    ->first();
-                if ($lineup) {
-                    $event->player_name = $lineup->player_name;
-                    $event->player_id = $lineup->player_id;
+            if (isset($data['team_side'])) {
+                $event->team_side = $data['team_side'];
+            }
+
+            if (array_key_exists('jersey_number', $data)) {
+                $event->jersey_number = $data['jersey_number'] ? trim((string)$data['jersey_number']) : null;
+                if ($event->jersey_number) {
+                    $lineup = GameLineup::where('game_id', $game->id)
+                        ->where('team_side', $event->team_side)
+                        ->where('jersey_number', $event->jersey_number)
+                        ->first();
+                    if ($lineup) {
+                        $event->player_name = $lineup->player_name;
+                        $event->player_id = $lineup->player_id;
+                    }
                 }
+            }
+
+            if (isset($data['player_name'])) {
+                $event->player_name = $data['player_name'];
             }
 
             if (isset($data['action_code']) && isset(self::ACTIONS[$data['action_code']])) {
@@ -371,20 +562,59 @@ class VolleyballStatService
                 $event->action_code = $data['action_code'];
                 $event->action_name = $actionDef['name'];
                 $event->action_type = $actionDef['type'];
-                $event->points = ($actionDef['point_team'] !== null) ? 1 : 0;
+                $event->points = (isset($actionDef['point_team']) && $actionDef['point_team'] !== null) ? 1 : ($actionDef['points'] ?? 0);
+            }
+
+            if (isset($data['points'])) {
+                $event->points = (int)$data['points'];
             }
 
             if (isset($data['period'])) {
                 $event->period = (int) $data['period'];
             }
 
-            $event->description = strtoupper($event->team_side)." #{$event->jersey_number} {$event->player_name}: {$event->action_name}";
+            if (isset($data['description'])) {
+                $event->description = trim($data['description']);
+            } else {
+                $pts = (int)$event->points;
+                $event->description = strtoupper($event->team_side).($event->jersey_number ? " #{$event->jersey_number} {$event->player_name}" : '').": {$event->action_name}".($pts > 0 ? " (+{$pts} pts)" : '');
+            }
+
             $event->save();
 
             $this->rebuildGameFromEvents($game);
 
             return $event;
         });
+    }
+
+    /**
+     * Advance Set
+     */
+    public function advanceSet(Game $game): void
+    {
+        $game->current_period += 1;
+        $game->home_timeouts_remaining = (int)($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
+        $game->away_timeouts_remaining = (int)($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
+        $game->save();
+
+        $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
+        GameEvent::create([
+            'game_id' => $game->id,
+            'sequence' => $lastSequence + 1,
+            'period' => $game->current_period,
+            'clock_seconds_remaining' => 0,
+            'team_side' => 'home',
+            'player_name' => 'Set Advance',
+            'sport' => 'volleyball',
+            'action_code' => 'PERIOD',
+            'action_type' => 'period_change',
+            'action_name' => "Set {$game->current_period} Started",
+            'points' => 0,
+            'home_score_after' => $game->home_score,
+            'away_score_after' => $game->away_score,
+            'description' => "Set {$game->current_period} Started",
+        ]);
     }
 
     /**
@@ -418,6 +648,7 @@ class VolleyballStatService
                 'game_id' => $game->id,
                 'sequence' => $lastSequence + 1,
                 'period' => $game->current_period,
+                'clock_seconds_remaining' => 0,
                 'team_side' => $teamSide,
                 'jersey_number' => $subInJersey,
                 'player_name' => $subIn?->player_name ?? "#{$subInJersey}",
@@ -430,6 +661,10 @@ class VolleyballStatService
                 'home_score_after' => $game->home_score,
                 'away_score_after' => $game->away_score,
                 'description' => strtoupper($teamSide)." Sub: OUT #{$subOutJersey}, IN #{$subInJersey}",
+                'metadata' => [
+                    'sub_out_jersey' => $subOutJersey,
+                    'sub_in_jersey' => $subInJersey,
+                ],
             ]);
         });
     }
