@@ -99,18 +99,24 @@ test('tracks full vs 30s timeouts distinctly in stat service and game events', f
     $ev1 = $service->callTimeout($game, 'home', 'full');
     expect($ev1->metadata['timeout_type'])->toBe('full');
     expect($ev1->metadata['timeouts_remaining'])->toBe(4);
+    expect($ev1->metadata['full_timeouts_remaining'])->toBe(2);
+    expect($ev1->metadata['thirty_second_timeouts_remaining'])->toBe(2);
     expect($ev1->description)->toContain('Full (60s)');
 
     // Call 1 30s TO for Home
     $ev2 = $service->callTimeout($game, 'home', '30s');
     expect($ev2->metadata['timeout_type'])->toBe('30s');
     expect($ev2->metadata['timeouts_remaining'])->toBe(3);
+    expect($ev2->metadata['full_timeouts_remaining'])->toBe(2);
+    expect($ev2->metadata['thirty_second_timeouts_remaining'])->toBe(1);
     expect($ev2->description)->toContain('30-Second');
 
     // Call 1 30s TO for Away
     $ev3 = $service->callTimeout($game, 'away', '30s');
     expect($ev3->metadata['timeout_type'])->toBe('30s');
     expect($ev3->metadata['timeouts_remaining'])->toBe(4);
+    expect($ev3->metadata['full_timeouts_remaining'])->toBe(3);
+    expect($ev3->metadata['thirty_second_timeouts_remaining'])->toBe(1);
 
     $game->refresh();
     $homeBreakdown = $game->calculateTimeoutsBreakdown('home');

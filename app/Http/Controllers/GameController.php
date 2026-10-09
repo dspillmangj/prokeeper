@@ -57,12 +57,12 @@ class GameController extends Controller
         $homeName = $homeTeam?->name ?? $validated['home_team_name'] ?? 'Home Team';
         $awayName = $awayTeam?->name ?? $validated['away_team_name'] ?? 'Away Team';
 
-        $homeScoreColor = !empty($validated['home_team_score_color']) 
-            ? $validated['home_team_score_color'] 
+        $homeScoreColor = ! empty($validated['home_team_score_color'])
+            ? $validated['home_team_score_color']
             : ($homeTeam?->home_jersey_color && $homeTeam->home_jersey_color !== '#ffffff' ? $homeTeam->home_jersey_color : '#1e40af');
-        
-        $awayScoreColor = !empty($validated['away_team_score_color']) 
-            ? $validated['away_team_score_color'] 
+
+        $awayScoreColor = ! empty($validated['away_team_score_color'])
+            ? $validated['away_team_score_color']
             : ($awayTeam?->away_jersey_color && $awayTeam->away_jersey_color !== '#ffffff' ? $awayTeam->away_jersey_color : '#b91c1c');
 
         $sport = $validated['sport'];
@@ -187,5 +187,15 @@ class GameController extends Controller
             ->setPaper('letter', 'landscape');
 
         return $pdf->download("ProKeeper-Scorebook-{$game->access_code}.pdf");
+    }
+
+    public function destroy(int $id)
+    {
+        $user = Auth::user();
+        $game = Game::where('organization_id', $user->organization_id)->findOrFail($id);
+        $matchup = "{$game->home_display_name} vs {$game->away_display_name}";
+        $game->delete();
+
+        return redirect()->route('dashboard')->with('success', "Game '{$matchup}' deleted successfully.");
     }
 }

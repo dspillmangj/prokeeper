@@ -171,114 +171,299 @@
         </div>
     </div>
 
-    <!-- 2. CENTER TIER: LARGE ACTIVE PLAYERS GRID (50/50 Arena Split, Zero Scroll, Flippable Sides) -->
-    <div class="flex-1 min-h-0 grid grid-cols-2 gap-2 my-1 overflow-hidden">
+    <!-- 2. CENTER TIER: ACTIVE PLAYERS GRID OR FULL-TIER ACTION PAD (Adaptive Left-to-Right Top-to-Bottom) -->
+    <div class="flex-1 min-h-0 relative my-1 overflow-hidden">
         
-        <!-- HOME ACTIVE PLAYERS (6 LARGE BUTTONS) -->
-        <div class="flex flex-col h-full bg-slate-900/90 border border-slate-800 rounded-2xl p-2 overflow-hidden shadow-inner transition-all"
-             :class="isFlipped ? 'order-2' : 'order-1'">
-            <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-800 text-[11px] font-bold">
-                <span class="uppercase tracking-wider truncate flex items-center gap-1.5" :style="{ color: homeTeamColor }">
-                    <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: homeTeamColor }"></span>
-                    <span>{{ $game->home_display_name }} (Court)</span>
-                </span>
-                
-                <div class="flex items-center space-x-1.5">
-                    <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">Order 1-6</span>
-                    <button type="button" @click="@this.openRosterModal('home')" 
-                            class="px-2 py-0.5 rounded-lg bg-slate-950 hover:bg-slate-800 border text-white text-[10px] font-bold transition flex items-center gap-1 shadow-sm"
-                            :style="{ borderColor: homeTeamColor + '60' }"
-                            title="Manage Home Team Roster (Hotkey: R)">
-                        <svg class="w-3 h-3" :style="{ color: homeTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                        <span>Edit Roster</span>
-                        <span class="px-1 py-0.2 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono text-amber-300 ml-0.5">R</span>
-                    </button>
+        <!-- DEFAULT: 2-COLUMN ACTIVE PLAYERS GRID (When no player is selected) -->
+        <div x-show="!selectedPlayer" class="w-full h-full grid grid-cols-2 gap-2 overflow-hidden">
+            <!-- HOME ACTIVE PLAYERS (6 LARGE BUTTONS) -->
+            <div class="flex flex-col h-full bg-slate-900/90 border border-slate-800 rounded-2xl p-2 overflow-hidden shadow-inner transition-all"
+                 :class="isFlipped ? 'order-2' : 'order-1'">
+                <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-800 text-[11px] font-bold">
+                    <span class="uppercase tracking-wider truncate flex items-center gap-1.5" :style="{ color: homeTeamColor }">
+                        <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: homeTeamColor }"></span>
+                        <span>{{ $game->home_display_name }} (Court)</span>
+                    </span>
+                    
+                    <div class="flex items-center space-x-1.5">
+                        <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">Order 1-6</span>
+                        <button type="button" @click="@this.openRosterModal('home')" 
+                                class="px-2 py-0.5 rounded-lg bg-slate-950 hover:bg-slate-800 border text-white text-[10px] font-bold transition flex items-center gap-1 shadow-sm"
+                                :style="{ borderColor: homeTeamColor + '60' }"
+                                title="Manage Home Team Roster (Hotkey: R)">
+                            <svg class="w-3 h-3" :style="{ color: homeTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            <span>Edit Roster</span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono text-amber-300 ml-0.5">R</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 6 Large Touch Buttons Grid (2 cols x 3 rows) -->
+                <div class="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-1.5">
+                    <template x-for="(player, idx) in homeCourt" :key="player.id || idx">
+                        <button @click="openActionPad('home', player.jersey_number, player.player_name, player.id)"
+                                type="button"
+                                class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                                :class="[
+                                    selectedPlayer && selectedPlayer.side === 'home' && selectedPlayer.jersey == player.jersey_number 
+                                        ? 'text-white border-white ring-2 ring-white/50' 
+                                        : 'bg-slate-950/90 hover:bg-slate-900'
+                                ]"
+                                :style="selectedPlayer && selectedPlayer.side === 'home' && selectedPlayer.jersey == player.jersey_number 
+                                    ? { backgroundColor: homeTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + homeTeamColor + '99' } 
+                                    : { borderColor: homeTeamColor + '40' }">
+                            
+                            <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                                <span class="font-bold text-amber-300" x-text="'ORD ' + (idx + 1)"></span>
+                                <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="player.position || 'ATH'"></span>
+                            </div>
+
+                            <!-- Massive Jersey Number -->
+                            <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="'#' + player.jersey_number">
+                            </div>
+
+                            <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="player.player_name">
+                            </div>
+                        </button>
+                    </template>
                 </div>
             </div>
 
-            <!-- 6 Large Touch Buttons Grid (2 cols x 3 rows) -->
-            <div class="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-1.5">
-                <template x-for="(player, idx) in homeCourt" :key="player.id || idx">
-                    <button @click="openActionPad('home', player.jersey_number, player.player_name, player.id)"
-                            type="button"
-                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
-                            :class="[
-                                selectedPlayer && selectedPlayer.side === 'home' && selectedPlayer.jersey == player.jersey_number 
-                                    ? 'text-white border-white ring-2 ring-white/50' 
-                                    : 'bg-slate-950/90 hover:bg-slate-900'
-                            ]"
-                            :style="selectedPlayer && selectedPlayer.side === 'home' && selectedPlayer.jersey == player.jersey_number 
-                                ? { backgroundColor: homeTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + homeTeamColor + '99' } 
-                                : { borderColor: homeTeamColor + '40' }">
-                        
-                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
-                            <span class="font-bold text-amber-300" x-text="'ORD ' + (idx + 1)"></span>
-                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="player.position || 'ATH'"></span>
-                        </div>
+            <!-- AWAY ACTIVE PLAYERS (6 LARGE BUTTONS) -->
+            <div class="flex flex-col h-full bg-slate-900/90 border border-slate-800 rounded-2xl p-2 overflow-hidden shadow-inner transition-all"
+                 :class="isFlipped ? 'order-1' : 'order-2'">
+                <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-800 text-[11px] font-bold">
+                    <span class="uppercase tracking-wider truncate flex items-center gap-1.5" :style="{ color: awayTeamColor }">
+                        <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: awayTeamColor }"></span>
+                        <span>{{ $game->away_display_name }} (Court)</span>
+                    </span>
+                    
+                    <div class="flex items-center space-x-1.5">
+                        <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">Order 1-6</span>
+                        <button type="button" @click="@this.openRosterModal('away')" 
+                                class="px-2 py-0.5 rounded-lg bg-slate-950 hover:bg-slate-800 border text-white text-[10px] font-bold transition flex items-center gap-1 shadow-sm"
+                                :style="{ borderColor: awayTeamColor + '60' }"
+                                title="Manage Away Team Roster (Hotkey: Shift+R)">
+                            <svg class="w-3 h-3" :style="{ color: awayTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            <span>Edit Roster</span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono text-amber-300 ml-0.5">⇧R</span>
+                        </button>
+                    </div>
+                </div>
 
-                        <!-- Massive Jersey Number -->
-                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="'#' + player.jersey_number">
-                        </div>
+                <!-- 6 Large Touch Buttons Grid (2 cols x 3 rows) -->
+                <div class="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-1.5">
+                    <template x-for="(player, idx) in awayCourt" :key="player.id || idx">
+                        <button @click="openActionPad('away', player.jersey_number, player.player_name, player.id)"
+                                type="button"
+                                class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
+                                :class="[
+                                    selectedPlayer && selectedPlayer.side === 'away' && selectedPlayer.jersey == player.jersey_number 
+                                        ? 'text-white border-white ring-2 ring-white/50' 
+                                        : 'bg-slate-950/90 hover:bg-slate-900'
+                                ]"
+                                :style="selectedPlayer && selectedPlayer.side === 'away' && selectedPlayer.jersey == player.jersey_number 
+                                    ? { backgroundColor: awayTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + awayTeamColor + '99' } 
+                                    : { borderColor: awayTeamColor + '40' }">
+                            
+                            <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
+                                <span class="font-bold text-amber-300" x-text="'ORD ' + (idx + 1)"></span>
+                                <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="player.position || 'ATH'"></span>
+                            </div>
 
-                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="player.player_name">
-                        </div>
-                    </button>
-                </template>
+                            <!-- Massive Jersey Number -->
+                            <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="'#' + player.jersey_number">
+                            </div>
+
+                            <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="player.player_name">
+                            </div>
+                        </button>
+                    </template>
+                </div>
             </div>
         </div>
 
-        <!-- AWAY ACTIVE PLAYERS (6 LARGE BUTTONS) -->
-        <div class="flex flex-col h-full bg-slate-900/90 border border-slate-800 rounded-2xl p-2 overflow-hidden shadow-inner transition-all"
-             :class="isFlipped ? 'order-1' : 'order-2'">
-            <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-800 text-[11px] font-bold">
-                <span class="uppercase tracking-wider truncate flex items-center gap-1.5" :style="{ color: awayTeamColor }">
-                    <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: awayTeamColor }"></span>
-                    <span>{{ $game->away_display_name }} (Court)</span>
-                </span>
+        <!-- ACTIVE: FULL ACTION PAD (Takes up 100% of the player card area left-to-right, top-to-bottom) -->
+        <template x-if="selectedPlayer">
+            <div class="w-full h-full bg-slate-900 border-2 rounded-2xl p-2.5 sm:p-3.5 md:p-4 shadow-2xl flex flex-col justify-between overflow-hidden select-none"
+                 :style="{ borderColor: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor, boxShadow: '0 8px 30px -4px ' + (selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor) + '60' }">
                 
-                <div class="flex items-center space-x-1.5">
-                    <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">Order 1-6</span>
-                    <button type="button" @click="@this.openRosterModal('away')" 
-                            class="px-2 py-0.5 rounded-lg bg-slate-950 hover:bg-slate-800 border text-white text-[10px] font-bold transition flex items-center gap-1 shadow-sm"
-                            :style="{ borderColor: awayTeamColor + '60' }"
-                            title="Manage Away Team Roster (Hotkey: Shift+R)">
-                        <svg class="w-3 h-3" :style="{ color: awayTeamColor }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                        <span>Edit Roster</span>
-                        <span class="px-1 py-0.2 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono text-amber-300 ml-0.5">⇧R</span>
+                <!-- Target Player Header -->
+                <div class="flex items-center justify-between pb-1.5 sm:pb-2 border-b border-slate-800 shrink-0">
+                    <div class="flex items-center space-x-2.5 sm:space-x-3">
+                        <span class="px-3 sm:px-4 py-1 rounded-xl text-white font-mono font-black text-xl sm:text-2xl shadow-lg flex items-center justify-center shrink-0"
+                              :style="{ backgroundColor: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor }"
+                              x-text="'#' + selectedPlayer.jersey">
+                        </span>
+                        <div>
+                            <h3 class="text-base sm:text-xl font-black text-white leading-tight" x-text="selectedPlayer.name"></h3>
+                            <span class="text-[10px] sm:text-xs font-mono font-bold uppercase tracking-wider"
+                                  :style="{ color: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor }"
+                                  x-text="(selectedPlayer.side === 'home' ? homeTeamName : awayTeamName).toUpperCase() + ' (' + selectedPlayer.side.toUpperCase() + ')'">
+                            </span>
+                        </div>
+                    </div>
+
+                    <button @click="selectedPlayer = null" class="p-1.5 sm:p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-rose-900/80 hover:border-rose-500 border border-slate-700 transition shadow shrink-0 flex items-center gap-1.5" title="Close (Esc)">
+                        <span class="text-xs font-bold font-mono text-slate-400 hidden sm:inline">Close</span>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+
+                <!-- Structured Action Groups (Fills middle height evenly) -->
+                <div class="flex-1 flex flex-col justify-evenly gap-1.5 sm:gap-2.5 py-1 sm:py-1.5 min-h-0">
+                    
+                    <!-- BLOCK 1: POINTS & ATTACK (+1 PT) -->
+                    <div class="bg-slate-950/70 p-2 sm:p-2.5 rounded-xl border border-slate-800/90 shadow-inner flex flex-col justify-center flex-1 min-h-0">
+                        <div class="flex items-center justify-between px-1 pb-1">
+                            <span class="text-[10px] sm:text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                Point Scoring
+                            </span>
+                            <span class="text-[9px] sm:text-[10px] font-mono text-slate-400 font-medium">+1 Point to Team</span>
+                        </div>
+
+                        <div class="grid grid-cols-4 gap-2 sm:gap-3 flex-1 min-h-0">
+                            <!-- KILL -->
+                            <button @click="executeAction('K')" class="w-full py-2 sm:py-3 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] transition-all text-white border-2 border-emerald-400/80 shadow-md shadow-emerald-950/50 flex flex-col items-center justify-center flex-1">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-xs sm:text-sm md:text-base font-black tracking-wide">+1 KILL</span>
+                                    <span class="px-1.5 py-0.2 rounded bg-emerald-950/80 border border-emerald-300/60 text-[9px] sm:text-[10px] font-mono font-bold text-amber-300 shadow">K</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-90 font-semibold">Attack Point</span>
+                            </button>
+
+                            <!-- ACE -->
+                            <button @click="executeAction('A')" class="w-full py-2 sm:py-3 px-2 rounded-xl bg-teal-600 hover:bg-teal-500 active:scale-[0.98] transition-all text-white border-2 border-teal-400/80 shadow-md shadow-teal-950/50 flex flex-col items-center justify-center flex-1">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-xs sm:text-sm md:text-base font-black tracking-wide">+1 ACE</span>
+                                    <span class="px-1.5 py-0.2 rounded bg-teal-950/80 border border-teal-300/60 text-[9px] sm:text-[10px] font-mono font-bold text-amber-300 shadow">A</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-90 font-semibold">Service Point</span>
+                            </button>
+
+                            <!-- BLK SOLO -->
+                            <button @click="executeAction('B')" class="w-full py-2 sm:py-3 px-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-[0.98] transition-all text-white border-2 border-cyan-400/80 shadow-md shadow-cyan-950/50 flex flex-col items-center justify-center flex-1">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-xs sm:text-sm md:text-base font-black tracking-wide">+1 SOLO</span>
+                                    <span class="px-1.5 py-0.2 rounded bg-cyan-950/80 border border-cyan-300/60 text-[9px] sm:text-[10px] font-mono font-bold text-amber-300 shadow">B</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-90 font-semibold">Solo Stuff</span>
+                            </button>
+
+                            <!-- BLK AST -->
+                            <button @click="executeAction('C')" class="w-full py-2 sm:py-3 px-2 rounded-xl bg-sky-600 hover:bg-sky-500 active:scale-[0.98] transition-all text-white border-2 border-sky-400/80 shadow-md shadow-sky-950/50 flex flex-col items-center justify-center flex-1">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-xs sm:text-sm md:text-base font-black tracking-wide">+1 BLK AST</span>
+                                    <span class="px-1.5 py-0.2 rounded bg-sky-950/80 border border-sky-300/60 text-[9px] sm:text-[10px] font-mono font-bold text-amber-300 shadow">C</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-90 font-semibold">Shared Stuff</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- BLOCK 2: PLAYMAKING / DEFENSE -->
+                    <div class="bg-slate-950/70 p-2 sm:p-2.5 rounded-xl border border-slate-800/90 shadow-inner flex flex-col justify-center">
+                        <div class="flex items-center justify-between px-1 pb-1">
+                            <span class="text-[10px] sm:text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                                Defense & In-Play Actions
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2 sm:gap-3">
+                            <!-- DIG -->
+                            <button @click="executeAction('D')" class="py-2 sm:py-2.5 px-1 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] transition-all text-white border border-blue-400/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] sm:text-xs md:text-sm font-black tracking-wide">DIG</span>
+                                    <span class="px-1 py-0.2 rounded bg-blue-950/80 border border-blue-300/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">D</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-85">Defensive Dig</span>
+                            </button>
+
+                            <!-- SET ASSIST -->
+                            <button @click="executeAction('Z')" class="py-2 sm:py-2.5 px-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] transition-all text-white border border-indigo-400/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] sm:text-xs md:text-sm font-black tracking-wide">ASSIST</span>
+                                    <span class="px-1 py-0.2 rounded bg-indigo-950 border border-indigo-300/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">Z</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-85">Set Assist</span>
+                            </button>
+
+                            <!-- ATTACK ATTEMPT -->
+                            <button @click="executeAction('T')" class="py-2 sm:py-2.5 px-1 rounded-xl bg-slate-700 hover:bg-slate-600 active:scale-[0.98] transition-all text-white border border-slate-500/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] sm:text-xs md:text-sm font-black tracking-wide">ATTACK (0pt)</span>
+                                    <span class="px-1 py-0.2 rounded bg-slate-900 border border-slate-400/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">T</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-85">Attempt / In-Play</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- BLOCK 3: ERRORS (OPPONENT POINT) -->
+                    <div class="bg-slate-950/70 p-2 sm:p-2.5 rounded-xl border border-rose-900/40 shadow-inner flex flex-col justify-center">
+                        <div class="flex items-center justify-between px-1 pb-1">
+                            <span class="text-[10px] sm:text-xs font-mono font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                                Errors (Opponent Point)
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-4 gap-2 sm:gap-2.5">
+                            <!-- ATTACK ERR -->
+                            <button @click="executeAction('E')" class="py-1.5 sm:py-2 px-1 rounded-lg bg-rose-700 hover:bg-rose-600 active:scale-[0.98] transition-all text-white border border-rose-500/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[10px] sm:text-xs font-black">ATTACK ERR</span>
+                                    <span class="px-1 py-0.2 rounded bg-rose-950 border border-rose-300/50 text-[8px] font-mono font-bold text-amber-300">E</span>
+                                </div>
+                                <span class="text-[8px] font-mono opacity-85">Out/Net</span>
+                            </button>
+
+                            <!-- SERVE ERR -->
+                            <button @click="executeAction('S')" class="py-1.5 sm:py-2 px-1 rounded-lg bg-rose-800 hover:bg-rose-700 active:scale-[0.98] transition-all text-white border border-rose-600/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[10px] sm:text-xs font-black">SERVE ERR</span>
+                                    <span class="px-1 py-0.2 rounded bg-rose-950 border border-rose-300/50 text-[8px] font-mono font-bold text-amber-300">S</span>
+                                </div>
+                                <span class="text-[8px] font-mono opacity-85">Fault/Net</span>
+                            </button>
+
+                            <!-- BHE ERR -->
+                            <button @click="executeAction('H')" class="py-1.5 sm:py-2 px-1 rounded-lg bg-red-800 hover:bg-red-700 active:scale-[0.98] transition-all text-white border border-red-600/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[10px] sm:text-xs font-black">BHE (HAND)</span>
+                                    <span class="px-1 py-0.2 rounded bg-red-950 border border-red-300/50 text-[8px] font-mono font-bold text-amber-300">H</span>
+                                </div>
+                                <span class="text-[8px] font-mono opacity-85">Double/Lift</span>
+                            </button>
+
+                            <!-- RECEPTION ERR -->
+                            <button @click="executeAction('R')" class="py-1.5 sm:py-2 px-1 rounded-lg bg-red-900 hover:bg-red-800 active:scale-[0.98] transition-all text-white border border-red-700/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[10px] sm:text-xs font-black">RECEPT ERR</span>
+                                    <span class="px-1 py-0.2 rounded bg-red-950 border border-red-300/50 text-[8px] font-mono font-bold text-amber-300">R</span>
+                                </div>
+                                <span class="text-[8px] font-mono opacity-85">Pass Shank</span>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Footer Bar -->
+                <div class="pt-1.5 sm:pt-2 border-t border-slate-800 flex items-center justify-between shrink-0">
+                    <span class="text-[10px] sm:text-xs text-slate-400 font-medium hidden sm:inline">
+                        Press key on keyboard or tap button • <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[9px] sm:text-[10px] text-slate-300">Esc</kbd> to close
+                    </span>
+
+                    <button @click="openLineupModal()" class="px-3.5 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-cyan-500 text-cyan-300 hover:text-white font-bold text-xs shadow transition flex items-center gap-1.5 ml-auto">
+                        <span>Line Up Subs</span>
+                        <span class="px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-400/50 text-[9px] sm:text-[10px] font-mono font-bold text-amber-300">Tab</span>
                     </button>
                 </div>
             </div>
-
-            <!-- 6 Large Touch Buttons Grid (2 cols x 3 rows) -->
-            <div class="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-1.5">
-                <template x-for="(player, idx) in awayCourt" :key="player.id || idx">
-                    <button @click="openActionPad('away', player.jersey_number, player.player_name, player.id)"
-                            type="button"
-                            class="h-full w-full rounded-xl border-2 transition-all p-2 flex flex-col justify-between items-center text-center touch-active group"
-                            :class="[
-                                selectedPlayer && selectedPlayer.side === 'away' && selectedPlayer.jersey == player.jersey_number 
-                                    ? 'text-white border-white ring-2 ring-white/50' 
-                                    : 'bg-slate-950/90 hover:bg-slate-900'
-                            ]"
-                            :style="selectedPlayer && selectedPlayer.side === 'away' && selectedPlayer.jersey == player.jersey_number 
-                                ? { backgroundColor: awayTeamColor, borderColor: '#ffffff', boxShadow: '0 8px 20px -4px ' + awayTeamColor + '99' } 
-                                : { borderColor: awayTeamColor + '40' }">
-                        
-                        <div class="w-full flex items-center justify-between text-[9px] font-mono text-slate-400">
-                            <span class="font-bold text-amber-300" x-text="'ORD ' + (idx + 1)"></span>
-                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-300 text-[8px] font-bold" x-text="player.position || 'ATH'"></span>
-                        </div>
-
-                        <!-- Massive Jersey Number -->
-                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-none tracking-tight" x-text="'#' + player.jersey_number">
-                        </div>
-
-                        <div class="w-full text-xs font-bold text-slate-200 truncate leading-none" x-text="player.player_name">
-                        </div>
-                    </button>
-                </template>
-            </div>
-        </div>
+        </template>
 
     </div>
 
@@ -418,150 +603,7 @@
         </div>
     </div>
 
-    <!-- INSTANT STAT ACTION MODAL OVERLAY (0ms Client-Side Trigger) -->
-    <template x-if="selectedPlayer">
-        <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 select-none"
-             @click.self="selectedPlayer = null">
-            
-            <div class="bg-slate-900 border-2 rounded-3xl max-w-lg w-full p-4 sm:p-5 shadow-2xl space-y-3"
-                 :style="{ borderColor: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor, boxShadow: '0 20px 50px -10px ' + (selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor) + '50' }">
-                
-                <!-- Target Player Header -->
-                <div class="flex items-center justify-between pb-2 border-b border-slate-800">
-                    <div class="flex items-center space-x-2.5">
-                        <span class="px-2.5 py-1 rounded-xl text-white font-mono font-black text-lg shadow"
-                              :style="{ backgroundColor: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor }"
-                              x-text="'#' + selectedPlayer.jersey">
-                        </span>
-                        <div>
-                            <h3 class="text-sm sm:text-base font-black text-white leading-none" x-text="selectedPlayer.name"></h3>
-                            <span class="text-[10px] font-mono font-bold uppercase"
-                                  :style="{ color: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor }"
-                                  x-text="(selectedPlayer.side === 'home' ? homeTeamName : awayTeamName).toUpperCase() + ' (' + selectedPlayer.side.toUpperCase() + ')'">
-                            </span>
-                        </div>
-                    </div>
 
-                    <button @click="selectedPlayer = null" class="p-1 rounded-xl bg-slate-800 text-slate-400 hover:text-white" title="Close (Esc)">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                </div>
-
-                <!-- Instant Action Grid (Large Finger / Mouse Touch Targets) -->
-                <div class="grid grid-cols-3 gap-2 text-xs font-bold">
-                    
-                    <!-- KILL (+1 POINT) -->
-                    <button @click="executeAction('K')" class="p-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 touch-active text-white border border-emerald-400/80 shadow-lg shadow-emerald-600/30 flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">+1 KILL</span>
-                            <span class="px-1.5 py-0.2 rounded bg-emerald-950 border border-emerald-300/50 text-[9px] font-mono font-bold text-amber-300">K</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Attack Point</span>
-                    </button>
-
-                    <!-- ACE (+1 POINT) -->
-                    <button @click="executeAction('A')" class="p-3.5 rounded-2xl bg-teal-600 hover:bg-teal-500 touch-active text-white border border-teal-400/80 shadow-lg shadow-teal-600/30 flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">+1 ACE</span>
-                            <span class="px-1.5 py-0.2 rounded bg-teal-950 border border-teal-300/50 text-[9px] font-mono font-bold text-amber-300">A</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Service Point</span>
-                    </button>
-
-                    <!-- BLOCK SOLO (+1 POINT) -->
-                    <button @click="executeAction('B')" class="p-3.5 rounded-2xl bg-cyan-600 hover:bg-cyan-500 touch-active text-white border border-cyan-400/80 shadow-lg shadow-cyan-600/30 flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">+1 BLK SOLO</span>
-                            <span class="px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-300/50 text-[9px] font-mono font-bold text-amber-300">B</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Solo Stuff</span>
-                    </button>
-
-                    <!-- BLOCK ASSIST (+1 POINT) -->
-                    <button @click="executeAction('C')" class="p-3.5 rounded-2xl bg-sky-600 hover:bg-sky-500 touch-active text-white border border-sky-400/80 shadow-lg shadow-sky-600/30 flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">+1 BLK AST</span>
-                            <span class="px-1.5 py-0.2 rounded bg-sky-950 border border-sky-300/50 text-[9px] font-mono font-bold text-amber-300">C</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Shared Stuff</span>
-                    </button>
-
-                    <!-- DIG -->
-                    <button @click="executeAction('D')" class="p-3 rounded-2xl bg-blue-600 hover:bg-blue-500 touch-active text-white border border-blue-400/80 shadow flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">DIG</span>
-                            <span class="px-1.5 py-0.2 rounded bg-blue-950 border border-blue-300/50 text-[9px] font-mono font-bold text-amber-300">D</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Defensive Dig</span>
-                    </button>
-
-                    <!-- SET ASSIST -->
-                    <button @click="executeAction('Z')" class="p-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 touch-active text-white border border-indigo-400/80 shadow flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">ASSIST</span>
-                            <span class="px-1.5 py-0.2 rounded bg-indigo-950 border border-indigo-300/50 text-[9px] font-mono font-bold text-amber-300">Z</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Set Assist</span>
-                    </button>
-
-                    <!-- ATTACK ATTEMPT -->
-                    <button @click="executeAction('T')" class="p-3 rounded-2xl bg-slate-700 hover:bg-slate-600 touch-active text-white border border-slate-500 shadow flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">ATTACK (0pt)</span>
-                            <span class="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-400/50 text-[9px] font-mono font-bold text-amber-300">T</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Attempt</span>
-                    </button>
-
-                    <!-- ATTACK ERROR (OPP POINT) -->
-                    <button @click="executeAction('E')" class="p-3 rounded-2xl bg-rose-700 hover:bg-rose-600 touch-active text-white border border-rose-500 shadow flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">ATTACK ERR</span>
-                            <span class="px-1.5 py-0.2 rounded bg-rose-950 border border-rose-300/50 text-[9px] font-mono font-bold text-amber-300">E</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Out/Net</span>
-                    </button>
-
-                    <!-- SERVICE ERROR (OPP POINT) -->
-                    <button @click="executeAction('S')" class="p-3 rounded-2xl bg-rose-800 hover:bg-rose-700 touch-active text-white border border-rose-600 shadow flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">SERVE ERR</span>
-                            <span class="px-1.5 py-0.2 rounded bg-rose-950 border border-rose-300/50 text-[9px] font-mono font-bold text-amber-300">S</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Fault/Net</span>
-                    </button>
-
-                    <!-- BALL HANDLING ERROR -->
-                    <button @click="executeAction('H')" class="p-3 rounded-2xl bg-red-800 hover:bg-red-700 touch-active text-white border border-red-600 shadow flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">BHE (HAND)</span>
-                            <span class="px-1.5 py-0.2 rounded bg-red-950 border border-red-300/50 text-[9px] font-mono font-bold text-amber-300">H</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Double/Lift</span>
-                    </button>
-
-                    <!-- RECEPTION ERROR -->
-                    <button @click="executeAction('R')" class="p-3 rounded-2xl bg-red-900 hover:bg-red-800 touch-active text-white border border-red-700 shadow flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">RECEPTION ERR</span>
-                            <span class="px-1.5 py-0.2 rounded bg-red-950 border border-red-300/50 text-[9px] font-mono font-bold text-amber-300">R</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Pass Shank</span>
-                    </button>
-
-                    <!-- QUICK SUB BUTTON -->
-                    <button @click="openLineupModal()" class="p-3 rounded-2xl bg-cyan-700 hover:bg-cyan-600 touch-active text-white border border-cyan-500 shadow flex flex-col items-center justify-center">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-black">LINE UP SUBS</span>
-                            <span class="px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-400/50 text-[9px] font-mono font-bold text-amber-300">S</span>
-                        </div>
-                        <span class="text-[10px] font-mono opacity-90">Table Queue &rarr;</span>
-                    </button>
-
-                </div>
-            </div>
-        </div>
-    </template>
 
     <!-- 1. DUAL-TEAM TABLE LINE-UP MODAL (CHECK-IN) -->
     <div x-show="showLineupModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none" style="display: none;"

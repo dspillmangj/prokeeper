@@ -1,14 +1,17 @@
 <?php
 
-use App\Models\BasketballStat;
+use App\Livewire\BasketballOperator;
+use App\Livewire\NcaaScorebook;
 use App\Models\Game;
 use App\Models\GameEvent;
 use App\Models\GameLineup;
-use App\Models\Team;
+use App\Models\Organization;
 use App\Models\User;
+use Illuminate\Support\Str;
+use Livewire\Livewire;
 
 beforeEach(function () {
-    $this->org = \App\Models\Organization::create([
+    $this->org = Organization::create([
         'name' => 'LCA Athletics',
         'slug' => 'lca-athletics-scorebook',
     ]);
@@ -37,7 +40,7 @@ beforeEach(function () {
         'away_timeouts_remaining' => 3,
         'access_code' => 'PK2026',
         'slug' => 'eagles-vs-knights-pk2026',
-        'uuid' => (string) \Illuminate\Support\Str::uuid(),
+        'uuid' => (string) Str::uuid(),
     ]);
 
     // Add Starters
@@ -106,17 +109,16 @@ test('operator header displays Share button with escapable modal and all three s
     $response->assertSee('showShareModal');
 });
 
-
 test('scorebook renders 2-page official ledger layout with team sheets and running score', function () {
     $response = $this->get(route('public.scorebook', $this->game->access_code));
     $response->assertStatus(200);
-    
+
     // Page 1 Home & Page 2 Away
     $response->assertSee('PAGE 1 OF 2');
     $response->assertSee('PAGE 2 OF 2');
     $response->assertSee('HOME TEAM SCOREBOOK PAGE');
     $response->assertSee('VISITING TEAM SCOREBOOK PAGE');
-    
+
     // Check Players
     $response->assertSee('Cooper Flagg');
     $response->assertSee('RJ Davis');
@@ -133,8 +135,8 @@ test('scorebook renders 2-page official ledger layout with team sheets and runni
 });
 
 test('operator can configure game-level details including date, venue, officials, and clock', function () {
-    \Livewire\Livewire::actingAs($this->user)
-        ->test(\App\Livewire\BasketballOperator::class, ['gameId' => $this->game->id])
+    Livewire::actingAs($this->user)
+        ->test(BasketballOperator::class, ['gameId' => $this->game->id])
         ->call('openGameDetailsModal')
         ->assertSet('showGameDetailsModal', true)
         ->set('gameVenue', 'Cameron Indoor Stadium')
@@ -179,7 +181,7 @@ test('scorebook PDF export downloads in letter landscape orientation', function 
 test('officials can draw or type signature or initials in scorebook and persist certification', function () {
     $drawnData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
-    \Livewire\Livewire::test(\App\Livewire\NcaaScorebook::class, ['code' => $this->game->access_code])
+    Livewire::test(NcaaScorebook::class, ['code' => $this->game->access_code])
         ->call('openSignatureModal', 'referee')
         ->assertSet('showSignatureModal', true)
         ->assertSet('activeSignRole', 'referee')
@@ -195,7 +197,7 @@ test('officials can draw or type signature or initials in scorebook and persist 
 
     // Test typing a signature for official scorer
     $typedData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-    \Livewire\Livewire::test(\App\Livewire\NcaaScorebook::class, ['code' => $this->game->access_code])
+    Livewire::test(NcaaScorebook::class, ['code' => $this->game->access_code])
         ->call('saveSignature', 'official_scorer', 'type', $typedData, 'Sarah Jenkins', 'SJ', 'dancing_script', '#0f2942');
 
     $this->game->refresh();
@@ -211,11 +213,9 @@ test('officials can draw or type signature or initials in scorebook and persist 
     $response->assertSee('Signatures (2/4)');
 
     // Test clearing a signature
-    \Livewire\Livewire::test(\App\Livewire\NcaaScorebook::class, ['code' => $this->game->access_code])
+    Livewire::test(NcaaScorebook::class, ['code' => $this->game->access_code])
         ->call('clearSignature', 'referee');
 
     $this->game->refresh();
     expect(isset($this->game->settings['signatures']['referee']))->toBeFalse();
 });
-
-

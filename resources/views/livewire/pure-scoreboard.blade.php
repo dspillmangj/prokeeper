@@ -150,11 +150,15 @@
                                 <div class="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Timeouts Left</div>
                                 <div class="flex items-center space-x-2">
                                     <span class="text-xl font-mono font-black text-amber-300">{{ $game->home_timeouts_remaining }}</span>
-                                    <div class="flex space-x-1">
-                                        @for ($i = 0; $i < $game->home_timeouts_remaining; $i++)
-                                            <span class="w-2 h-4 rounded-sm bg-amber-400"></span>
-                                        @endfor
-                                    </div>
+                                    @if ($game->sport === 'basketball')
+                                        <span class="text-[11px] font-mono text-slate-400">({{ $game->home_timeouts_breakdown['rem_full'] }} Full &bull; {{ $game->home_timeouts_breakdown['rem_30s'] }} 30s)</span>
+                                    @else
+                                        <div class="flex space-x-1">
+                                            @for ($i = 0; $i < $game->home_timeouts_remaining; $i++)
+                                                <span class="w-2 h-4 rounded-sm bg-amber-400"></span>
+                                            @endfor
+                                        </div>
+                                    @endif
                                 </div>
                             </div>
                         </div>
@@ -231,11 +235,15 @@
                             <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
                                 <div class="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Timeouts Left</div>
                                 <div class="flex items-center justify-end space-x-2">
-                                    <div class="flex space-x-1">
-                                        @for ($i = 0; $i < $game->away_timeouts_remaining; $i++)
-                                            <span class="w-2 h-4 rounded-sm bg-amber-400"></span>
-                                        @endfor
-                                    </div>
+                                    @if ($game->sport === 'basketball')
+                                        <span class="text-[11px] font-mono text-slate-400">({{ $game->away_timeouts_breakdown['rem_full'] }} Full &bull; {{ $game->away_timeouts_breakdown['rem_30s'] }} 30s)</span>
+                                    @else
+                                        <div class="flex space-x-1">
+                                            @for ($i = 0; $i < $game->away_timeouts_remaining; $i++)
+                                                <span class="w-2 h-4 rounded-sm bg-amber-400"></span>
+                                            @endfor
+                                        </div>
+                                    @endif
                                     <span class="text-xl font-mono font-black text-amber-300">{{ $game->away_timeouts_remaining }}</span>
                                 </div>
                             </div>

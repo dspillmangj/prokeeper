@@ -12,9 +12,13 @@ use Livewire\Component;
 class WatchGame extends Component
 {
     public ?string $code = null;
+
     public string $inputCode = '';
+
     public string $errorMessage = '';
+
     public string $activeTab = 'scoreboard'; // scoreboard, plays, boxscore, summary
+
     public string $pbpFilterTeam = 'all'; // all, home, away
 
     protected $queryString = [
@@ -53,6 +57,7 @@ class WatchGame extends Component
         $clean = strtoupper(trim($this->inputCode));
         if (empty($clean)) {
             $this->errorMessage = 'Please enter a game access code.';
+
             return;
         }
 
@@ -61,8 +66,9 @@ class WatchGame extends Component
             ->orWhere('slug', $clean)
             ->first();
 
-        if (!$game) {
+        if (! $game) {
             $this->errorMessage = "No game found with code '{$clean}'.";
+
             return;
         }
 
@@ -71,7 +77,7 @@ class WatchGame extends Component
 
     public function getGameProperty(): ?Game
     {
-        if (!$this->code) {
+        if (! $this->code) {
             return null;
         }
 
@@ -86,7 +92,7 @@ class WatchGame extends Component
     {
         $game = $this->game;
 
-        if (!$game) {
+        if (! $game) {
             return view('livewire.watch-game', [
                 'game' => null,
             ])->layout('layouts.public');

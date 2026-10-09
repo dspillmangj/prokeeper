@@ -37,10 +37,19 @@
                     </div>
                 </div>
 
-                <div class="mt-6 pt-4 border-t border-slate-800">
-                    <a href="{{ route('teams.show', $team->id) }}" class="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition text-center block border border-slate-700">
+                <div class="mt-6 pt-4 border-t border-slate-800 flex items-center space-x-2">
+                    <a href="{{ route('teams.show', $team->id) }}" class="flex-1 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold transition text-center block border border-slate-700">
                         View & Edit Roster
                     </a>
+                    <form action="{{ route('teams.destroy', $team->id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete {{ addslashes($team->name) }}?');">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="p-2.5 rounded-xl bg-slate-900 hover:bg-rose-950/60 border border-slate-800 hover:border-rose-800/80 text-slate-400 hover:text-rose-400 transition cursor-pointer" title="Delete Team">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </form>
                 </div>
             </div>
         @endforeach

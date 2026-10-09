@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#020617">
@@ -425,7 +426,8 @@
                         &bull; <strong class="text-amber-300">[</strong> / <strong class="text-amber-300">{</strong> : Home Score +1 / -1<br>
                         &bull; <strong class="text-amber-300">]</strong> / <strong class="text-amber-300">}</strong> : Away Score +1 / -1<br>
                         &bull; <strong class="text-amber-300">U</strong> or <strong class="text-amber-300">Ctrl+Z</strong> : Instant Undo<br>
-                        &bull; <strong class="text-amber-300">H</strong> / <strong class="text-amber-300">A</strong> : Home / Away Timeouts<br>
+                        &bull; <strong class="text-amber-300">H</strong> / <strong class="text-amber-300">⇧H</strong> : Home Full / 30s Timeout<br>
+                        &bull; <strong class="text-amber-300">A</strong> / <strong class="text-amber-300">⇧A</strong> : Away Full / 30s Timeout<br>
                         &bull; <strong class="text-amber-300">R</strong> / <strong class="text-amber-300">⇧R</strong> : Home / Away Roster Editor (1-9 jump, 0 empty)<br>
                         &bull; <strong class="text-amber-300">Esc</strong> : Instant Reset / Close Any Modal
                     </p>

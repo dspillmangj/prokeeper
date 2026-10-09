@@ -1,5 +1,6 @@
 <?php
 
+use App\Livewire\NcaaScorebook;
 use App\Livewire\PureScoreboard;
 use App\Livewire\WatchGame;
 use App\Models\Game;
@@ -160,7 +161,7 @@ test('submitting code from prompt navigates directly to game view', function () 
         ->call('submitCode')
         ->assertRedirect(route('public.watch', 'PRO100'));
 
-    Livewire::test(\App\Livewire\NcaaScorebook::class)
+    Livewire::test(NcaaScorebook::class)
         ->set('inputCode', 'PRO100')
         ->call('submitCode')
         ->assertRedirect(route('public.scorebook', 'PRO100'));

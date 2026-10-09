@@ -235,6 +235,16 @@ export function rosterSpreadsheet(config) {
             }
         },
 
+        clearAllRows() {
+            if (confirm('Clear all player entries in this spreadsheet view?')) {
+                this.rows = [];
+                for (let i = 0; i < 15; i++) {
+                    this.rows.push({ id: null, player_id: null, jersey_number: '', name: '' });
+                }
+                this.isDirty = true;
+            }
+        },
+
         handleKeydown(e, rowIndex, fieldName) {
             handleGridKeydown(e, rowIndex, fieldName, this, this.gridId);
         },

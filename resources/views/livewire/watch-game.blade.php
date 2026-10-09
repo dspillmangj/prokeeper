@@ -95,7 +95,7 @@
                             @if ($game->sport === 'basketball')
                                 <div class="flex items-center space-x-3 text-xs text-slate-400 mt-1.5 font-mono">
                                     <span>Fouls: <strong class="text-white">{{ $game->home_fouls_current_period }}</strong></span>
-                                    <span>TO Left: <strong class="text-amber-300">{{ $game->home_timeouts_remaining }}</strong></span>
+                                    <span>TO Left: <strong class="text-amber-300">{{ $game->home_timeouts_remaining }}</strong> <span class="text-[10px] text-slate-400">({{ $game->home_timeouts_breakdown['rem_full'] }}F / {{ $game->home_timeouts_breakdown['rem_30s'] }}s)</span></span>
                                 </div>
                             @endif
                         </div>
@@ -131,7 +131,7 @@
                             <h2 class="text-xl sm:text-2xl font-black text-white mt-1 tracking-tight">{{ $game->away_display_name }}</h2>
                             @if ($game->sport === 'basketball')
                                 <div class="flex items-center justify-end space-x-3 text-xs text-slate-400 mt-1.5 font-mono">
-                                    <span>TO Left: <strong class="text-amber-300">{{ $game->away_timeouts_remaining }}</strong></span>
+                                    <span>TO Left: <strong class="text-amber-300">{{ $game->away_timeouts_remaining }}</strong> <span class="text-[10px] text-slate-400">({{ $game->away_timeouts_breakdown['rem_full'] }}F / {{ $game->away_timeouts_breakdown['rem_30s'] }}s)</span></span>
                                     <span>Fouls: <strong class="text-white">{{ $game->away_fouls_current_period }}</strong></span>
                                 </div>
                             @endif

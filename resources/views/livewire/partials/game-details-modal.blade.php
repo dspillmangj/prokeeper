@@ -304,10 +304,21 @@
 
                 <!-- Footer Actions -->
                 <div class="pt-2 border-t border-slate-800 flex items-center justify-between shrink-0">
-                    <button wire:click="closeGameDetailsModal" type="button" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center gap-1.5 transition">
-                        <span>Cancel</span>
-                        <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-700 text-[9px] font-mono text-slate-400">Esc</span>
-                    </button>
+                    <div class="flex items-center space-x-2">
+                        <button wire:click="closeGameDetailsModal" type="button" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center gap-1.5 transition">
+                            <span>Cancel</span>
+                            <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-700 text-[9px] font-mono text-slate-400">Esc</span>
+                        </button>
+                        <button type="button" 
+                                wire:click="deleteGame" 
+                                wire:confirm="Are you sure you want to permanently delete this game? All recorded statistics, rosters, lineups, and play logs will be removed."
+                                class="px-3.5 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-800/80 text-rose-300 hover:text-rose-200 font-semibold text-xs flex items-center gap-1.5 transition">
+                            <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span>Delete Game</span>
+                        </button>
+                    </div>
                     <button type="submit" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 transition">
                         <span>Save Game Setup</span>
                         <span class="px-1.5 py-0.2 rounded bg-indigo-950 border border-indigo-400 text-[9px] font-mono text-amber-300 font-bold">↵ Enter</span>

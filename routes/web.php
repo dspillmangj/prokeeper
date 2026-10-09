@@ -18,7 +18,6 @@ use Illuminate\Support\Facades\Route;
 Route::get('/install', [InstallController::class, 'index'])->name('install');
 Route::get('/manifest.json', [InstallController::class, 'manifest'])->name('manifest');
 
-
 /*
 |--------------------------------------------------------------------------
 | Public Live Spectator & Scoreboard Routes (Accessible via Code / Prompt)
@@ -72,12 +71,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/teams/create', [TeamController::class, 'create'])->name('teams.create');
     Route::post('/teams', [TeamController::class, 'store'])->name('teams.store');
     Route::get('/teams/{id}', [TeamController::class, 'show'])->name('teams.show');
+    Route::delete('/teams/{id}', [TeamController::class, 'destroy'])->name('teams.destroy');
     Route::post('/teams/{id}/players', [TeamController::class, 'addPlayer'])->name('teams.players.add');
     Route::post('/teams/{id}/roster/batch', [TeamController::class, 'batchUpdateRoster'])->name('teams.roster.batch');
+    Route::delete('/teams/{id}/roster', [TeamController::class, 'clearRoster'])->name('teams.roster.clear');
     Route::delete('/teams/{id}/players/{playerId}', [TeamController::class, 'removePlayer'])->name('teams.players.remove');
 
     // Games & Operator
     Route::get('/games/create', [GameController::class, 'create'])->name('games.create');
     Route::post('/games', [GameController::class, 'store'])->name('games.store');
     Route::get('/operator/{uuid}', [GameController::class, 'operator'])->name('games.operator');
+    Route::delete('/games/{id}', [GameController::class, 'destroy'])->name('games.destroy');
 });

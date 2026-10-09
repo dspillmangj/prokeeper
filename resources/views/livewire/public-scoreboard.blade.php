@@ -37,7 +37,7 @@
                     @if ($game->sport === 'basketball')
                         <div class="flex items-center space-x-3 text-xs text-slate-400 mt-2 font-mono">
                             <span>Fouls: <strong class="text-white">{{ $game->home_fouls_current_period }}</strong></span>
-                            <span>Timeouts: <strong class="text-white">{{ $game->home_timeouts_remaining }}</strong></span>
+                            <span>Timeouts: <strong class="text-white">{{ $game->home_timeouts_remaining }}</strong> <span class="text-[11px] text-slate-400">({{ $game->home_timeouts_breakdown['rem_full'] }} Full &bull; {{ $game->home_timeouts_breakdown['rem_30s'] }} 30s)</span></span>
                         </div>
                     @endif
                 </div>
@@ -76,7 +76,7 @@
 
                     @if ($game->sport === 'basketball')
                         <div class="flex items-center justify-end space-x-3 text-xs text-slate-400 mt-2 font-mono">
-                            <span>Timeouts: <strong class="text-white">{{ $game->away_timeouts_remaining }}</strong></span>
+                            <span>Timeouts: <strong class="text-white">{{ $game->away_timeouts_remaining }}</strong> <span class="text-[11px] text-slate-400">({{ $game->away_timeouts_breakdown['rem_full'] }} Full &bull; {{ $game->away_timeouts_breakdown['rem_30s'] }} 30s)</span></span>
                             <span>Fouls: <strong class="text-white">{{ $game->away_fouls_current_period }}</strong></span>
                         </div>
                     @endif

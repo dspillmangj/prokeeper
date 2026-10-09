@@ -37,8 +37,8 @@
             </div>
         </div>
 
-        <!-- Header Actions: Total count & Quick Save -->
-        <div class="flex items-center space-x-3">
+        <!-- Header Actions: Total count, Clear Roster, Delete Team & Quick Save -->
+        <div class="flex flex-wrap items-center gap-2.5">
             <template x-if="jumpFeedback">
                 <span class="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold animate-pulse flex items-center gap-1" x-text="'Jump: ' + jumpFeedback"></span>
             </template>
@@ -54,6 +54,30 @@
                     <span x-text="saveSuccessMessage"></span>
                 </span>
             </template>
+
+            <!-- Clear Roster Action Form -->
+            <form action="{{ route('teams.roster.clear', $team->id) }}" method="POST" onsubmit="return confirm('Are you sure you want to completely clear the roster for {{ addslashes($team->name) }}? All roster player links will be removed.');" class="inline">
+                @csrf
+                @method('DELETE')
+                <button type="submit" class="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-amber-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer" title="Clear all players from this roster">
+                    <svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span>Clear Roster</span>
+                </button>
+            </form>
+
+            <!-- Delete Team Action Form -->
+            <form action="{{ route('teams.destroy', $team->id) }}" method="POST" onsubmit="return confirm('Are you sure you want to permanently delete team \'{{ addslashes($team->name) }}\'? This cannot be undone.');" class="inline">
+                @csrf
+                @method('DELETE')
+                <button type="submit" class="px-3 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/50 hover:border-rose-700 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer" title="Delete team">
+                    <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span>Delete Team</span>
+                </button>
+            </form>
 
             <button type="button" @click="saveRoster()" :disabled="isSaving"
                     class="px-5 py-2 rounded-xl font-bold text-xs text-white shadow transition flex items-center space-x-2 cursor-pointer"

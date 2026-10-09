@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Game;
+use App\Models\GameEvent;
 use App\Models\GameLineup;
 use App\Models\Organization;
 use App\Models\VolleyballStat;
@@ -70,24 +71,24 @@ test('records kills, aces, and automatic side-out rotations', function () {
 
 test('records audit event for volleyball timeouts', function () {
     $res = $this->service->callTimeout($this->game, 'home');
-    expect($res)->toBeInstanceOf(\App\Models\GameEvent::class);
+    expect($res)->toBeInstanceOf(GameEvent::class);
 
     $this->game->refresh();
     expect($this->game->home_timeouts_remaining)->toBe(4); // default 5 - 1
 
-    $event = \App\Models\GameEvent::where('game_id', $this->game->id)->where('action_code', 'TIMEOUT')->first();
+    $event = GameEvent::where('game_id', $this->game->id)->where('action_code', 'TIMEOUT')->first();
     expect($event)->not->toBeNull();
     expect($event->team_side)->toBe('home');
 });
 
 test('records audit event for manual score adjustments and recalculates', function () {
     $res = $this->service->adjustScore($this->game, 'away', 2, 'Referee awarded points after review');
-    expect($res)->toBeInstanceOf(\App\Models\GameEvent::class);
+    expect($res)->toBeInstanceOf(GameEvent::class);
 
     $this->game->refresh();
     expect($this->game->away_score)->toBe(2);
 
-    $event = \App\Models\GameEvent::where('game_id', $this->game->id)->where('action_code', 'SCORE_ADJ')->first();
+    $event = GameEvent::where('game_id', $this->game->id)->where('action_code', 'SCORE_ADJ')->first();
     expect($event)->not->toBeNull();
     expect($event->points)->toBe(2);
 });
@@ -115,7 +116,7 @@ test('creates manual event and updates event with rebuild', function () {
         'period' => 1,
         'description' => 'Changed to Ace',
     ]);
-    expect($updated)->toBeInstanceOf(\App\Models\GameEvent::class);
+    expect($updated)->toBeInstanceOf(GameEvent::class);
 
     $this->game->refresh();
     expect($this->game->home_score)->toBe(1);
@@ -124,6 +125,3 @@ test('creates manual event and updates event with rebuild', function () {
     expect($stat04->service_aces)->toBe(1);
     expect($stat04->kills)->toBe(0);
 });
-
-
-

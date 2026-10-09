@@ -117,7 +117,7 @@ class TeamController extends Controller
             $submittedRosterPlayerIds = [];
 
             foreach ($validated['players'] as $row) {
-                $jerseyNumber = trim((string)($row['jersey_number'] ?? ''));
+                $jerseyNumber = trim((string) ($row['jersey_number'] ?? ''));
                 $fullName = trim($row['name'] ?? '');
 
                 if ($fullName === '') {
@@ -133,11 +133,11 @@ class TeamController extends Controller
                 $nameParts = preg_split('/\s+/', $fullName, 2);
                 $firstName = $nameParts[0] ?? '';
                 $lastName = $nameParts[1] ?? '';
-                $position = !empty($row['position']) ? strtoupper(trim($row['position'])) : null;
+                $position = ! empty($row['position']) ? strtoupper(trim($row['position'])) : null;
                 $isStarter = filter_var($row['is_starter'] ?? false, FILTER_VALIDATE_BOOLEAN);
                 $isLibero = filter_var($row['is_libero'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-                $rosterPlayerId = !empty($row['id']) ? (int)$row['id'] : null;
+                $rosterPlayerId = ! empty($row['id']) ? (int) $row['id'] : null;
 
                 if ($rosterPlayerId) {
                     $rosterPlayer = RosterPlayer::where('team_id', $team->id)->where('id', $rosterPlayerId)->first();
@@ -157,6 +157,7 @@ class TeamController extends Controller
                             'is_libero' => $isLibero,
                         ]);
                         $submittedRosterPlayerIds[] = $rosterPlayer->id;
+
                         continue;
                     }
                 }
@@ -179,6 +180,7 @@ class TeamController extends Controller
                         'is_libero' => $isLibero,
                     ]);
                     $submittedRosterPlayerIds[] = $existingRp->id;
+
                     continue;
                 }
 
@@ -226,5 +228,29 @@ class TeamController extends Controller
         $rp->delete();
 
         return back()->with('success', 'Player removed from roster.');
+    }
+
+    public function clearRoster(int $id)
+    {
+        $user = Auth::user();
+        $team = Team::where('organization_id', $user->organization_id)->findOrFail($id);
+        $count = $team->rosterPlayers()->count();
+        $team->rosterPlayers()->delete();
+
+        return redirect()->route('teams.show', $team->id)->with('success', "Cleared {$count} player(s) from {$team->name} roster.");
+    }
+
+    public function destroy(int $id)
+    {
+        $user = Auth::user();
+        $team = Team::where('organization_id', $user->organization_id)->findOrFail($id);
+        $teamName = $team->name;
+
+        DB::transaction(function () use ($team) {
+            $team->rosterPlayers()->delete();
+            $team->delete();
+        });
+
+        return redirect()->route('teams.index')->with('success', "Team '{$teamName}' deleted successfully.");
     }
 }

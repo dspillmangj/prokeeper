@@ -294,8 +294,8 @@ class VolleyballStatService
             $game = Game::where('id', $game->id)->lockForUpdate()->first();
 
             $teamSide = $data['team_side'] ?? 'home';
-            $jersey = isset($data['jersey_number']) ? trim((string)$data['jersey_number']) : null;
-            $period = (int)($data['period'] ?? $game->current_period);
+            $jersey = isset($data['jersey_number']) ? trim((string) $data['jersey_number']) : null;
+            $period = (int) ($data['period'] ?? $game->current_period);
             $actionCode = $data['action_code'] ?? 'NOTE';
             $actionDef = self::ACTIONS[$actionCode] ?? ['name' => $actionCode, 'type' => 'custom', 'point_team' => null];
 
@@ -314,7 +314,7 @@ class VolleyballStatService
                 }
             }
 
-            $points = isset($data['points']) ? (int)$data['points'] : (isset($actionDef['point_team']) && $actionDef['point_team'] !== null ? 1 : 0);
+            $points = isset($data['points']) ? (int) $data['points'] : (isset($actionDef['point_team']) && $actionDef['point_team'] !== null ? 1 : 0);
             $actionName = $actionDef['name'] ?? $actionCode;
             $description = $data['description'] ?? (
                 $jersey
@@ -428,7 +428,7 @@ class VolleyballStatService
         ]);
 
         foreach ($events as $event) {
-            $period = (int)$event->period;
+            $period = (int) $event->period;
             while (count($homePeriodScores) < $period) {
                 $homePeriodScores[] = 0;
             }
@@ -436,7 +436,7 @@ class VolleyballStatService
                 $awayPeriodScores[] = 0;
             }
 
-            $points = (int)$event->points;
+            $points = (int) $event->points;
             if ($points > 0) {
                 if ($event->team_side === 'home') {
                     $homeScore += $points;
@@ -448,15 +448,19 @@ class VolleyballStatService
             }
 
             if ($event->action_code === 'TIMEOUT') {
-                if ($event->team_side === 'home') $homeTimeoutsUsed++;
-                if ($event->team_side === 'away') $awayTimeoutsUsed++;
+                if ($event->team_side === 'home') {
+                    $homeTimeoutsUsed++;
+                }
+                if ($event->team_side === 'away') {
+                    $awayTimeoutsUsed++;
+                }
             }
 
             $event->home_score_after = $homeScore;
             $event->away_score_after = $awayScore;
             $event->saveQuietly();
 
-            if (isset(self::ACTIONS[$event->action_code]) && !empty($event->jersey_number)) {
+            if (isset(self::ACTIONS[$event->action_code]) && ! empty($event->jersey_number)) {
                 $this->applyStatToPlayer(
                     $game->id,
                     $event->team_side,
@@ -473,7 +477,7 @@ class VolleyballStatService
         $game->home_period_scores = $homePeriodScores;
         $game->away_period_scores = $awayPeriodScores;
 
-        $maxTimeouts = (int)($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
+        $maxTimeouts = (int) ($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
         $game->home_timeouts_remaining = max(0, $maxTimeouts - $homeTimeoutsUsed);
         $game->away_timeouts_remaining = max(0, $maxTimeouts - $awayTimeoutsUsed);
 
@@ -540,7 +544,7 @@ class VolleyballStatService
             }
 
             if (array_key_exists('jersey_number', $data)) {
-                $event->jersey_number = $data['jersey_number'] ? trim((string)$data['jersey_number']) : null;
+                $event->jersey_number = $data['jersey_number'] ? trim((string) $data['jersey_number']) : null;
                 if ($event->jersey_number) {
                     $lineup = GameLineup::where('game_id', $game->id)
                         ->where('team_side', $event->team_side)
@@ -566,7 +570,7 @@ class VolleyballStatService
             }
 
             if (isset($data['points'])) {
-                $event->points = (int)$data['points'];
+                $event->points = (int) $data['points'];
             }
 
             if (isset($data['period'])) {
@@ -576,7 +580,7 @@ class VolleyballStatService
             if (isset($data['description'])) {
                 $event->description = trim($data['description']);
             } else {
-                $pts = (int)$event->points;
+                $pts = (int) $event->points;
                 $event->description = strtoupper($event->team_side).($event->jersey_number ? " #{$event->jersey_number} {$event->player_name}" : '').": {$event->action_name}".($pts > 0 ? " (+{$pts} pts)" : '');
             }
 
@@ -594,8 +598,8 @@ class VolleyballStatService
     public function advanceSet(Game $game): void
     {
         $game->current_period += 1;
-        $game->home_timeouts_remaining = (int)($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
-        $game->away_timeouts_remaining = (int)($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
+        $game->home_timeouts_remaining = (int) ($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
+        $game->away_timeouts_remaining = (int) ($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
         $game->save();
 
         $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;

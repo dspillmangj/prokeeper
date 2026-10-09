@@ -16,6 +16,10 @@
          possession: '{{ $game->possession_arrow ?? 'home' }}',
          homeFouls: {{ (int)$game->home_fouls_current_period }},
          awayFouls: {{ (int)$game->away_fouls_current_period }},
+         homeFullTimeouts: {{ (int)($game->home_timeouts_breakdown['rem_full'] ?? 3) }},
+         home30sTimeouts: {{ (int)($game->home_timeouts_breakdown['rem_30s'] ?? 2) }},
+         awayFullTimeouts: {{ (int)($game->away_timeouts_breakdown['rem_full'] ?? 3) }},
+         away30sTimeouts: {{ (int)($game->away_timeouts_breakdown['rem_30s'] ?? 2) }},
          homeTimeouts: {{ (int)$game->home_timeouts_remaining }},
          awayTimeouts: {{ (int)$game->away_timeouts_remaining }},
          homeCourt: @js($homeLineupOnCourt),
@@ -48,7 +52,7 @@
                     <div class="flex items-center space-x-2 text-[10px] text-slate-400 font-mono">
                         <span>FOULS: <strong class="text-white" x-text="homeFouls"></strong></span>
                         <span x-show="homeFouls >= {{ $game->bonus_threshold }}" class="px-1 rounded bg-rose-950 text-rose-300 font-bold border border-rose-800 text-[9px] animate-pulse" x-text="homeFouls >= {{ $game->double_bonus_threshold }} ? 'DOUBLE BONUS' : 'BONUS'"></span>
-                        <span>TO: <strong class="text-white" x-text="homeTimeouts"></strong></span>
+                        <span>TO: <strong class="text-white" x-text="homeTimeouts"></strong> <span class="text-[9px] text-slate-400 font-mono">(<span x-text="homeFullTimeouts"></span>F / <span x-text="home30sTimeouts"></span>s)</span></span>
                     </div>
                 </div>
 
@@ -163,7 +167,7 @@
                     </div>
                     <h2 class="text-sm sm:text-base font-black text-white truncate leading-tight">{{ $game->away_display_name }}</h2>
                     <div class="flex items-center justify-end space-x-2 text-[10px] text-slate-400 font-mono">
-                        <span>TO: <strong class="text-white" x-text="awayTimeouts"></strong></span>
+                        <span>TO: <strong class="text-white" x-text="awayTimeouts"></strong> <span class="text-[9px] text-slate-400 font-mono">(<span x-text="awayFullTimeouts"></span>F / <span x-text="away30sTimeouts"></span>s)</span></span>
                         <span x-show="awayFouls >= {{ $game->bonus_threshold }}" class="px-1 rounded bg-rose-950 text-rose-300 font-bold border border-rose-800 text-[9px] animate-pulse" x-text="awayFouls >= {{ $game->double_bonus_threshold }} ? 'DOUBLE BONUS' : 'BONUS'"></span>
                         <span>FOULS: <strong class="text-white" x-text="awayFouls"></strong></span>
                     </div>
@@ -173,8 +177,11 @@
         </div>
     </div>
 
-    <!-- 2. CENTER TIER: LARGE ACTIVE PLAYERS GRID (50/50 Arena Split, Zero Scroll, Flippable Sides) -->
-    <div class="flex-1 min-h-0 grid grid-cols-2 gap-2 my-1 overflow-hidden">
+    <!-- 2. CENTER TIER: ACTIVE PLAYERS GRID OR FULL-TIER ACTION PAD (Adaptive Left-to-Right Top-to-Bottom) -->
+    <div class="flex-1 min-h-0 relative my-1 overflow-hidden">
+        
+        <!-- DEFAULT: 2-COLUMN ACTIVE PLAYERS GRID (When no player is selected) -->
+        <div x-show="!selectedPlayer" class="w-full h-full grid grid-cols-2 gap-2 overflow-hidden">
         
         <!-- HOME ACTIVE PLAYERS (5 BUTTONS + 1 TEAM ACTIONS SLOT) -->
         <div class="flex flex-col h-full bg-slate-900/90 border border-slate-800 rounded-2xl p-2 overflow-hidden shadow-inner transition-all"
@@ -232,7 +239,7 @@
                             <span class="text-xs font-black uppercase text-white tracking-tight truncate">Full TO</span>
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
-                            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white" :style="{ backgroundColor: homeTeamColor + '40', border: '1px solid ' + homeTeamColor }" x-text="homeTimeouts + ' left'"></span>
+                            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white" :style="{ backgroundColor: homeTeamColor + '40', border: '1px solid ' + homeTeamColor }" x-text="homeFullTimeouts + ' left'"></span>
                             <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">H</span>
                         </div>
                     </button>
@@ -242,12 +249,15 @@
                             @click="callTimeoutFast('home', '30s')" 
                             class="h-full w-full rounded-xl border-2 bg-slate-950/90 hover:bg-slate-900 p-1.5 sm:p-2 flex items-center justify-between touch-active transition-all group"
                             :style="{ borderColor: homeTeamColor + '40' }"
-                            title="Home 30-Second Timeout">
+                            title="Home 30-Second Timeout (Hotkey: Shift+H)">
                         <div class="flex items-center gap-1.5 min-w-0">
                             <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                             <span class="text-xs font-black uppercase text-white tracking-tight truncate">30s TO</span>
                         </div>
-                        <span class="px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/80 text-[9px] font-mono font-bold shrink-0">30s</span>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/80 text-[9px] font-mono font-bold" x-text="home30sTimeouts + ' left'"></span>
+                            <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">⇧H</span>
+                        </div>
                     </button>
 
                     <!-- 3. Edit Roster -->
@@ -325,7 +335,7 @@
                             <span class="text-xs font-black uppercase text-white tracking-tight truncate">Full TO</span>
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
-                            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white" :style="{ backgroundColor: awayTeamColor + '40', border: '1px solid ' + awayTeamColor }" x-text="awayTimeouts + ' left'"></span>
+                            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-white" :style="{ backgroundColor: awayTeamColor + '40', border: '1px solid ' + awayTeamColor }" x-text="awayFullTimeouts + ' left'"></span>
                             <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">A</span>
                         </div>
                     </button>
@@ -335,12 +345,15 @@
                             @click="callTimeoutFast('away', '30s')" 
                             class="h-full w-full rounded-xl border-2 bg-slate-950/90 hover:bg-slate-900 p-1.5 sm:p-2 flex items-center justify-between touch-active transition-all group"
                             :style="{ borderColor: awayTeamColor + '40' }"
-                            title="Away 30-Second Timeout">
+                            title="Away 30-Second Timeout (Hotkey: Shift+A)">
                         <div class="flex items-center gap-1.5 min-w-0">
                             <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                             <span class="text-xs font-black uppercase text-white tracking-tight truncate">30s TO</span>
                         </div>
-                        <span class="px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/80 text-[9px] font-mono font-bold shrink-0">30s</span>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/80 text-[9px] font-mono font-bold" x-text="away30sTimeouts + ' left'"></span>
+                            <span class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-amber-300">⇧A</span>
+                        </div>
                     </button>
 
                     <!-- 3. Edit Roster -->
@@ -360,6 +373,255 @@
                 </div>
             </div>
         </div>
+        </div>
+
+        <!-- ACTIVE: FULL ACTION PAD (Takes up 100% of the player card area left-to-right, top-to-bottom) -->
+        <template x-if="selectedPlayer">
+            <div class="w-full h-full bg-slate-900 border-2 rounded-2xl p-2.5 sm:p-3.5 md:p-4 shadow-2xl flex flex-col justify-between overflow-hidden select-none"
+                 :style="{ borderColor: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor, boxShadow: '0 8px 30px -4px ' + (selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor) + '60' }">
+                
+                <!-- Target Player Header -->
+                <div class="flex items-center justify-between pb-1.5 sm:pb-2 border-b border-slate-800 shrink-0">
+                    <div class="flex items-center space-x-2.5 sm:space-x-3">
+                        <span class="px-3 sm:px-4 py-1 rounded-xl text-white font-mono font-black text-xl sm:text-2xl shadow-lg flex items-center justify-center shrink-0"
+                              :style="{ backgroundColor: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor }"
+                              x-text="'#' + selectedPlayer.jersey">
+                        </span>
+                        <div>
+                            <h3 class="text-base sm:text-xl font-black text-white leading-tight" x-text="selectedPlayer.name"></h3>
+                            <span class="text-[10px] sm:text-xs font-mono font-bold uppercase tracking-wider"
+                                  :style="{ color: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor }"
+                                  x-text="(selectedPlayer.side === 'home' ? homeTeamName : awayTeamName).toUpperCase() + ' (' + selectedPlayer.side.toUpperCase() + ')'">
+                            </span>
+                        </div>
+                    </div>
+
+                    <button @click="selectedPlayer = null" class="p-1.5 sm:p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-rose-900/80 hover:border-rose-500 border border-slate-700 transition shadow shrink-0 flex items-center gap-1.5" title="Close (Esc)">
+                        <span class="text-xs font-bold font-mono text-slate-400 hidden sm:inline">Close</span>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+
+                <!-- Structured Action Groups (Fills middle height evenly) -->
+                <div class="flex-1 flex flex-col justify-evenly gap-1.5 sm:gap-2.5 py-1 sm:py-1.5 min-h-0">
+                    
+                    <!-- BLOCK 1: SCORING & SHOOTING -->
+                    <div class="bg-slate-950/70 p-2 sm:p-2.5 rounded-xl border border-slate-800/90 shadow-inner flex flex-col justify-center flex-1 min-h-0">
+                        <div class="flex items-center justify-between px-1 pb-1">
+                            <span class="text-[10px] sm:text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                Scoring & Shooting
+                            </span>
+                            <span class="text-[9px] sm:text-[10px] font-mono text-slate-400 font-medium">Makes (+pts) / Misses (att)</span>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2 sm:gap-3 flex-1 min-h-0">
+                            <!-- 2PT COLUMN -->
+                            <div class="flex flex-col gap-1 sm:gap-1.5 h-full">
+                                <button @click="executeAction('X')" class="w-full py-2 sm:py-3 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] transition-all text-white border-2 border-emerald-400/80 shadow-md shadow-emerald-950/50 flex flex-col items-center justify-center flex-1">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-sm sm:text-base md:text-lg font-black tracking-wide">+2 MADE</span>
+                                        <span class="px-1.5 py-0.2 rounded bg-emerald-950/80 border border-emerald-300/60 text-[9px] sm:text-[10px] font-mono font-bold text-amber-300 shadow">X</span>
+                                    </div>
+                                    <span class="text-[9px] sm:text-[10px] font-mono opacity-90 font-semibold">2pt Field Goal</span>
+                                </button>
+                                <button @click="executeAction('Z')" class="w-full py-1 sm:py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-[0.98] transition-all text-slate-200 border border-slate-700 hover:border-slate-500 shadow flex flex-col items-center justify-center">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-xs sm:text-sm font-bold">2PT MISS</span>
+                                        <span class="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-600 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">Z</span>
+                                    </div>
+                                    <span class="text-[8px] sm:text-[9px] font-mono text-slate-400">2pt Miss</span>
+                                </button>
+                            </div>
+
+                            <!-- 3PT COLUMN -->
+                            <div class="flex flex-col gap-1 sm:gap-1.5 h-full">
+                                <button @click="executeAction('M')" class="w-full py-2 sm:py-3 px-2 rounded-xl bg-teal-600 hover:bg-teal-500 active:scale-[0.98] transition-all text-white border-2 border-teal-400/80 shadow-md shadow-teal-950/50 flex flex-col items-center justify-center flex-1">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-sm sm:text-base md:text-lg font-black tracking-wide">+3 MADE</span>
+                                        <span class="px-1.5 py-0.2 rounded bg-teal-950/80 border border-teal-300/60 text-[9px] sm:text-[10px] font-mono font-bold text-amber-300 shadow">M</span>
+                                    </div>
+                                    <span class="text-[9px] sm:text-[10px] font-mono opacity-90 font-semibold">3pt Shot</span>
+                                </button>
+                                <button @click="executeAction('N')" class="w-full py-1 sm:py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-[0.98] transition-all text-slate-200 border border-slate-700 hover:border-slate-500 shadow flex flex-col items-center justify-center">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-xs sm:text-sm font-bold">3PT MISS</span>
+                                        <span class="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-600 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">N</span>
+                                    </div>
+                                    <span class="text-[8px] sm:text-[9px] font-mono text-slate-400">3pt Miss</span>
+                                </button>
+                            </div>
+
+                            <!-- FT COLUMN -->
+                            <div class="flex flex-col gap-1 sm:gap-1.5 h-full">
+                                <button @click="executeAction('B')" class="w-full py-2 sm:py-3 px-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-[0.98] transition-all text-white border-2 border-cyan-400/80 shadow-md shadow-cyan-950/50 flex flex-col items-center justify-center flex-1">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-sm sm:text-base md:text-lg font-black tracking-wide">+1 FT MAKE</span>
+                                        <span class="px-1.5 py-0.2 rounded bg-cyan-950/80 border border-cyan-300/60 text-[9px] sm:text-[10px] font-mono font-bold text-amber-300 shadow">B</span>
+                                    </div>
+                                    <span class="text-[9px] sm:text-[10px] font-mono opacity-90 font-semibold">Free Throw</span>
+                                </button>
+                                <button @click="executeAction('V')" class="w-full py-1 sm:py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-[0.98] transition-all text-slate-200 border border-slate-700 hover:border-slate-500 shadow flex flex-col items-center justify-center">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-xs sm:text-sm font-bold">FT MISS</span>
+                                        <span class="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-600 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">V</span>
+                                    </div>
+                                    <span class="text-[8px] sm:text-[9px] font-mono text-slate-400">FT Miss</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BLOCK 2: REBOUNDS & DEFENSE / PLAYMAKING -->
+                    <div class="bg-slate-950/70 p-2 sm:p-2.5 rounded-xl border border-slate-800/90 shadow-inner flex flex-col justify-center">
+                        <div class="flex items-center justify-between px-1 pb-1">
+                            <span class="text-[10px] sm:text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                                Rebounds & Defense / Playmaking
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-6 gap-1.5 sm:gap-2">
+                            <!-- DEF REBOUND -->
+                            <button @click="executeAction('D')" class="py-2 sm:py-2.5 px-1 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] transition-all text-white border border-blue-400/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] sm:text-xs md:text-sm font-black tracking-wide">DEF REB</span>
+                                    <span class="px-1 py-0.2 rounded bg-blue-950/80 border border-blue-300/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">D</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-85">Defensive</span>
+                            </button>
+
+                            <!-- OFF REBOUND -->
+                            <button @click="executeAction('O')" class="py-2 sm:py-2.5 px-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] transition-all text-white border border-indigo-400/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] sm:text-xs md:text-sm font-black tracking-wide">OFF REB</span>
+                                    <span class="px-1 py-0.2 rounded bg-indigo-950 border border-indigo-300/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">O</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-85">Offensive</span>
+                            </button>
+
+                            <!-- ASSIST -->
+                            <button @click="executeAction('A')" class="py-2 sm:py-2.5 px-1 rounded-xl bg-amber-600 hover:bg-amber-500 active:scale-[0.98] transition-all text-white border border-amber-400/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] sm:text-xs md:text-sm font-black tracking-wide">ASSIST</span>
+                                    <span class="px-1 py-0.2 rounded bg-amber-950 border border-amber-300/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">A</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-85">Pass Ast</span>
+                            </button>
+
+                            <!-- STEAL -->
+                            <button @click="executeAction('S')" class="py-2 sm:py-2.5 px-1 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-[0.98] transition-all text-white border border-purple-400/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] sm:text-xs md:text-sm font-black tracking-wide">STEAL</span>
+                                    <span class="px-1 py-0.2 rounded bg-purple-950 border border-purple-300/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">S</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-85">Takeaway</span>
+                            </button>
+
+                            <!-- BLOCK -->
+                            <button @click="executeAction('K')" class="py-2 sm:py-2.5 px-1 rounded-xl bg-fuchsia-700 hover:bg-fuchsia-600 active:scale-[0.98] transition-all text-white border border-fuchsia-500/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] sm:text-xs md:text-sm font-black tracking-wide">BLOCK</span>
+                                    <span class="px-1 py-0.2 rounded bg-fuchsia-950 border border-fuchsia-300/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">K</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-85">Block</span>
+                            </button>
+
+                            <!-- SWAT -->
+                            <button @click="executeAction('W')" class="py-2 sm:py-2.5 px-1 rounded-xl bg-violet-700 hover:bg-violet-600 active:scale-[0.98] transition-all text-white border border-violet-500/80 shadow flex flex-col items-center justify-center">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-[11px] sm:text-xs md:text-sm font-black tracking-wide">SWAT</span>
+                                    <span class="px-1 py-0.2 rounded bg-violet-950 border border-violet-300/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">W</span>
+                                </div>
+                                <span class="text-[8px] sm:text-[9px] font-mono opacity-85">Swat</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- BLOCK 3: TURNOVERS & FOULS (SIDE BY SIDE) -->
+                    <div class="grid grid-cols-2 gap-2 sm:gap-3">
+                        <!-- TURNOVERS BLOCK -->
+                        <div class="bg-slate-950/70 p-2 sm:p-2.5 rounded-xl border border-rose-900/40 space-y-1">
+                            <div class="flex items-center justify-between px-1">
+                                <span class="text-[10px] sm:text-xs font-mono font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                                    Turnovers
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-1 sm:gap-1.5">
+                                <button @click="executeAction('P')" class="py-1.5 sm:py-2 px-1 rounded-lg bg-rose-700 hover:bg-rose-600 active:scale-[0.98] transition-all text-white border border-rose-500/80 shadow flex flex-col items-center justify-center">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-[10px] sm:text-xs font-black">PASS TO</span>
+                                        <span class="px-1 py-0.2 rounded bg-rose-950 border border-rose-300/50 text-[8px] font-mono font-bold text-amber-300">P</span>
+                                    </div>
+                                    <span class="text-[8px] font-mono opacity-85">Passing TO</span>
+                                </button>
+                                <button @click="executeAction('U')" class="py-1.5 sm:py-2 px-1 rounded-lg bg-rose-800 hover:bg-rose-700 active:scale-[0.98] transition-all text-white border border-rose-600/80 shadow flex flex-col items-center justify-center">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-[10px] sm:text-xs font-black">FUMBLE</span>
+                                        <span class="px-1 py-0.2 rounded bg-rose-950 border border-rose-400/50 text-[8px] font-mono font-bold text-amber-300">U</span>
+                                    </div>
+                                    <span class="text-[8px] font-mono opacity-85">Fumble TO</span>
+                                </button>
+                                <button @click="executeAction('I')" class="py-1.5 sm:py-2 px-1 rounded-lg bg-rose-900 hover:bg-rose-800 active:scale-[0.98] transition-all text-white border border-rose-700/80 shadow flex flex-col items-center justify-center">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-[10px] sm:text-xs font-black">VIOLATION</span>
+                                        <span class="px-1 py-0.2 rounded bg-rose-950 border border-rose-400/50 text-[8px] font-mono font-bold text-amber-300">I</span>
+                                    </div>
+                                    <span class="text-[8px] font-mono opacity-85">Violation TO</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- FOULS BLOCK -->
+                        <div class="bg-slate-950/70 p-2 sm:p-2.5 rounded-xl border border-red-900/40 space-y-1">
+                            <div class="flex items-center justify-between px-1">
+                                <span class="text-[10px] sm:text-xs font-mono font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                                    Fouls
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-1 sm:gap-1.5">
+                                <button @click="executeAction('F')" class="py-1.5 sm:py-2 px-1 rounded-lg bg-red-700 hover:bg-red-600 active:scale-[0.98] transition-all text-white border border-red-500/80 shadow flex flex-col items-center justify-center">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-[10px] sm:text-xs font-black">PERS FOUL</span>
+                                        <span class="px-1 py-0.2 rounded bg-red-950 border border-red-300/50 text-[8px] font-mono font-bold text-amber-300">F</span>
+                                    </div>
+                                    <span class="text-[8px] font-mono opacity-85">Personal</span>
+                                </button>
+                                <button @click="executeAction('R')" class="py-1.5 sm:py-2 px-1 rounded-lg bg-red-800 hover:bg-red-700 active:scale-[0.98] transition-all text-white border border-red-600/80 shadow flex flex-col items-center justify-center">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-[10px] sm:text-xs font-black">OFF FOUL</span>
+                                        <span class="px-1 py-0.2 rounded bg-red-950 border border-red-400/50 text-[8px] font-mono font-bold text-amber-300">R</span>
+                                    </div>
+                                    <span class="text-[8px] font-mono opacity-85">Offensive</span>
+                                </button>
+                                <button @click="executeAction('T')" class="py-1.5 sm:py-2 px-1 rounded-lg bg-amber-800 hover:bg-amber-700 active:scale-[0.98] transition-all text-white border border-amber-500/80 shadow flex flex-col items-center justify-center">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-[10px] sm:text-xs font-black">TECH FOUL</span>
+                                        <span class="px-1 py-0.2 rounded bg-amber-950 border border-amber-400/50 text-[8px] font-mono font-bold text-amber-300">T</span>
+                                    </div>
+                                    <span class="text-[8px] font-mono opacity-85">Technical</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Footer Bar -->
+                <div class="pt-1.5 sm:pt-2 border-t border-slate-800 flex items-center justify-between shrink-0">
+                    <span class="text-[10px] sm:text-xs text-slate-400 font-medium hidden sm:inline">
+                        Press key on keyboard or tap button • <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[9px] sm:text-[10px] text-slate-300">Esc</kbd> to close
+                    </span>
+
+                    <button @click="openLineupModal()" class="px-3.5 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-cyan-500 text-cyan-300 hover:text-white font-bold text-xs shadow transition flex items-center gap-1.5 ml-auto">
+                        <span>Line Up Subs</span>
+                        <span class="px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-400/50 text-[9px] sm:text-[10px] font-mono font-bold text-amber-300">Tab</span>
+                    </button>
+                </div>
+            </div>
+        </template>
 
     </div>
 
@@ -452,269 +714,7 @@
         </div>
     </div>
 
-    <!-- INSTANT STAT ACTION MODAL OVERLAY (0ms Client-Side Trigger) -->
-    <template x-if="selectedPlayer">
-        <div class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-3 select-none"
-             @click.self="selectedPlayer = null">
-            
-            <div class="bg-slate-900 border-2 rounded-3xl max-w-2xl w-full p-4 sm:p-5 shadow-2xl space-y-3.5"
-                 :style="{ borderColor: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor, boxShadow: '0 20px 50px -10px ' + (selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor) + '50' }">
-                
-                <!-- Target Player Header -->
-                <div class="flex items-center justify-between pb-2.5 border-b border-slate-800">
-                    <div class="flex items-center space-x-3">
-                        <span class="px-3 py-1 rounded-xl text-white font-mono font-black text-xl shadow"
-                              :style="{ backgroundColor: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor }"
-                              x-text="'#' + selectedPlayer.jersey">
-                        </span>
-                        <div>
-                            <h3 class="text-base sm:text-lg font-black text-white leading-none" x-text="selectedPlayer.name"></h3>
-                            <span class="text-[11px] font-mono font-bold uppercase tracking-wider"
-                                  :style="{ color: selectedPlayer.side === 'home' ? homeTeamColor : awayTeamColor }"
-                                  x-text="(selectedPlayer.side === 'home' ? homeTeamName : awayTeamName).toUpperCase() + ' (' + selectedPlayer.side.toUpperCase() + ')'">
-                            </span>
-                        </div>
-                    </div>
 
-                    <button @click="selectedPlayer = null" class="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition" title="Close (Esc)">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                </div>
-
-                <!-- Structured Action Groups -->
-                <div class="space-y-3">
-                    
-                    <!-- BLOCK 1: SCORING & SHOOTING -->
-                    <div class="bg-slate-950/60 p-2.5 sm:p-3 rounded-2xl border border-slate-800/80 space-y-2">
-                        <div class="flex items-center justify-between px-1">
-                            <span class="text-[10px] sm:text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                                Scoring & Shooting
-                            </span>
-                            <span class="text-[10px] font-mono text-slate-500">Makes (+pts) / Misses (att)</span>
-                        </div>
-
-                        <div class="grid grid-cols-3 gap-2 sm:gap-2.5">
-                            <!-- 2PT COLUMN -->
-                            <div class="space-y-1.5">
-                                <button @click="executeAction('X')" class="w-full p-2.5 sm:p-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition-all text-white border border-emerald-400/80 shadow-md shadow-emerald-600/20 flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="text-xs sm:text-sm font-black">+2 MADE</span>
-                                        <span class="px-1.5 py-0.2 rounded bg-emerald-950 border border-emerald-300/50 text-[9px] font-mono font-bold text-amber-300">X</span>
-                                    </div>
-                                    <span class="text-[9px] sm:text-[10px] font-mono opacity-90">2pt Field Goal</span>
-                                </button>
-                                <button @click="executeAction('Z')" class="w-full p-2 sm:p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all text-slate-200 border border-slate-700 hover:border-slate-500 shadow-sm flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="text-xs font-bold">2PT MISS</span>
-                                        <span class="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-600 text-[9px] font-mono font-bold text-amber-300">Z</span>
-                                    </div>
-                                    <span class="text-[9px] font-mono text-slate-400">2pt Miss</span>
-                                </button>
-                            </div>
-
-                            <!-- 3PT COLUMN -->
-                            <div class="space-y-1.5">
-                                <button @click="executeAction('M')" class="w-full p-2.5 sm:p-3 rounded-xl bg-teal-600 hover:bg-teal-500 active:scale-95 transition-all text-white border border-teal-400/80 shadow-md shadow-teal-600/20 flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="text-xs sm:text-sm font-black">+3 MADE</span>
-                                        <span class="px-1.5 py-0.2 rounded bg-teal-950 border border-teal-300/50 text-[9px] font-mono font-bold text-amber-300">M</span>
-                                    </div>
-                                    <span class="text-[9px] sm:text-[10px] font-mono opacity-90">3pt Shot</span>
-                                </button>
-                                <button @click="executeAction('N')" class="w-full p-2 sm:p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all text-slate-200 border border-slate-700 hover:border-slate-500 shadow-sm flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="text-xs font-bold">3PT MISS</span>
-                                        <span class="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-600 text-[9px] font-mono font-bold text-amber-300">N</span>
-                                    </div>
-                                    <span class="text-[9px] font-mono text-slate-400">3pt Miss</span>
-                                </button>
-                            </div>
-
-                            <!-- FT COLUMN -->
-                            <div class="space-y-1.5">
-                                <button @click="executeAction('B')" class="w-full p-2.5 sm:p-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-95 transition-all text-white border border-cyan-400/80 shadow-md shadow-cyan-600/20 flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="text-xs sm:text-sm font-black">+1 FT MAKE</span>
-                                        <span class="px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-300/50 text-[9px] font-mono font-bold text-amber-300">B</span>
-                                    </div>
-                                    <span class="text-[9px] sm:text-[10px] font-mono opacity-90">Free Throw</span>
-                                </button>
-                                <button @click="executeAction('V')" class="w-full p-2 sm:p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all text-slate-200 border border-slate-700 hover:border-slate-500 shadow-sm flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="text-xs font-bold">FT MISS</span>
-                                        <span class="px-1.5 py-0.2 rounded bg-slate-900 border border-slate-600 text-[9px] font-mono font-bold text-amber-300">V</span>
-                                    </div>
-                                    <span class="text-[9px] font-mono text-slate-400">FT Miss</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- BLOCK 2: REBOUNDS & DEFENSE / PLAYMAKING -->
-                    <div class="bg-slate-950/60 p-2.5 sm:p-3 rounded-2xl border border-slate-800/80 space-y-2">
-                        <div class="flex items-center justify-between px-1">
-                            <span class="text-[10px] sm:text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                <span class="w-2 h-2 rounded-full bg-blue-400"></span>
-                                Rebounds & Defense / Playmaking
-                            </span>
-                        </div>
-
-                        <div class="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                            <!-- DEF REBOUND -->
-                            <button @click="executeAction('D')" class="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all text-white border border-blue-400/80 shadow flex flex-col items-center justify-center">
-                                <div class="flex items-center gap-1">
-                                    <span class="text-xs font-black">DEF REB</span>
-                                    <span class="px-1.5 py-0.2 rounded bg-blue-950 border border-blue-300/50 text-[9px] font-mono font-bold text-amber-300">D</span>
-                                </div>
-                                <span class="text-[9px] font-mono opacity-85">Defensive</span>
-                            </button>
-
-                            <!-- OFF REBOUND -->
-                            <button @click="executeAction('O')" class="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all text-white border border-indigo-400/80 shadow flex flex-col items-center justify-center">
-                                <div class="flex items-center gap-1">
-                                    <span class="text-xs font-black">OFF REB</span>
-                                    <span class="px-1.5 py-0.2 rounded bg-indigo-950 border border-indigo-300/50 text-[9px] font-mono font-bold text-amber-300">O</span>
-                                </div>
-                                <span class="text-[9px] font-mono opacity-85">Offensive</span>
-                            </button>
-
-                            <!-- ASSIST -->
-                            <button @click="executeAction('A')" class="p-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 active:scale-95 transition-all text-white border border-amber-400/80 shadow flex flex-col items-center justify-center">
-                                <div class="flex items-center gap-1">
-                                    <span class="text-xs font-black">ASSIST</span>
-                                    <span class="px-1.5 py-0.2 rounded bg-amber-950 border border-amber-300/50 text-[9px] font-mono font-bold text-amber-300">A</span>
-                                </div>
-                                <span class="text-[9px] font-mono opacity-85">Pass Ast</span>
-                            </button>
-
-                            <!-- STEAL -->
-                            <button @click="executeAction('S')" class="p-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 transition-all text-white border border-purple-400/80 shadow flex flex-col items-center justify-center">
-                                <div class="flex items-center gap-1">
-                                    <span class="text-xs font-black">STEAL</span>
-                                    <span class="px-1.5 py-0.2 rounded bg-purple-950 border border-purple-300/50 text-[9px] font-mono font-bold text-amber-300">S</span>
-                                </div>
-                                <span class="text-[9px] font-mono opacity-85">Takeaway</span>
-                            </button>
-
-                            <!-- BLOCK -->
-                            <button @click="executeAction('K')" class="p-2.5 rounded-xl bg-fuchsia-700 hover:bg-fuchsia-600 active:scale-95 transition-all text-white border border-fuchsia-500/80 shadow flex flex-col items-center justify-center">
-                                <div class="flex items-center gap-1">
-                                    <span class="text-xs font-black">BLOCK</span>
-                                    <span class="px-1.5 py-0.2 rounded bg-fuchsia-950 border border-fuchsia-300/50 text-[9px] font-mono font-bold text-amber-300">K</span>
-                                </div>
-                                <span class="text-[9px] font-mono opacity-85">Block</span>
-                            </button>
-
-                            <!-- SWAT -->
-                            <button @click="executeAction('W')" class="p-2.5 rounded-xl bg-violet-700 hover:bg-violet-600 active:scale-95 transition-all text-white border border-violet-500/80 shadow flex flex-col items-center justify-center">
-                                <div class="flex items-center gap-1">
-                                    <span class="text-xs font-black">SWAT</span>
-                                    <span class="px-1.5 py-0.2 rounded bg-violet-950 border border-violet-300/50 text-[9px] font-mono font-bold text-amber-300">W</span>
-                                </div>
-                                <span class="text-[9px] font-mono opacity-85">Swat</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- BLOCK 3: TURNOVERS & FOULS (SIDE BY SIDE) -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        
-                        <!-- TURNOVERS BLOCK -->
-                        <div class="bg-slate-950/60 p-2.5 sm:p-3 rounded-2xl border border-rose-900/40 space-y-2">
-                            <div class="flex items-center justify-between px-1">
-                                <span class="text-[10px] sm:text-[11px] font-mono font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
-                                    <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-                                    Turnovers
-                                </span>
-                            </div>
-                            <div class="grid grid-cols-3 gap-1.5 sm:gap-2">
-                                <!-- PASSING TO -->
-                                <button @click="executeAction('P')" class="p-2 sm:p-2.5 rounded-xl bg-rose-700 hover:bg-rose-600 active:scale-95 transition-all text-white border border-rose-500/80 shadow flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1">
-                                        <span class="text-[11px] sm:text-xs font-black">PASS TO</span>
-                                        <span class="px-1 py-0.2 rounded bg-rose-950 border border-rose-300/50 text-[9px] font-mono font-bold text-amber-300">P</span>
-                                    </div>
-                                    <span class="text-[9px] font-mono opacity-85">Passing TO</span>
-                                </button>
-
-                                <!-- FUMBLE TO -->
-                                <button @click="executeAction('U')" class="p-2 sm:p-2.5 rounded-xl bg-rose-800 hover:bg-rose-700 active:scale-95 transition-all text-white border border-rose-600/80 shadow flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1">
-                                        <span class="text-[11px] sm:text-xs font-black">FUMBLE</span>
-                                        <span class="px-1 py-0.2 rounded bg-rose-950 border border-rose-400/50 text-[9px] font-mono font-bold text-amber-300">U</span>
-                                    </div>
-                                    <span class="text-[9px] font-mono opacity-85">Fumble TO</span>
-                                </button>
-
-                                <!-- VIOLATION TO -->
-                                <button @click="executeAction('I')" class="p-2 sm:p-2.5 rounded-xl bg-rose-900 hover:bg-rose-800 active:scale-95 transition-all text-white border border-rose-700/80 shadow flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1">
-                                        <span class="text-[11px] sm:text-xs font-black">VIOLATION</span>
-                                        <span class="px-1 py-0.2 rounded bg-rose-950 border border-rose-400/50 text-[9px] font-mono font-bold text-amber-300">I</span>
-                                    </div>
-                                    <span class="text-[9px] font-mono opacity-85">Violation TO</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- FOULS BLOCK -->
-                        <div class="bg-slate-950/60 p-2.5 sm:p-3 rounded-2xl border border-red-900/40 space-y-2">
-                            <div class="flex items-center justify-between px-1">
-                                <span class="text-[10px] sm:text-[11px] font-mono font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
-                                    <span class="w-2 h-2 rounded-full bg-red-500"></span>
-                                    Fouls
-                                </span>
-                            </div>
-                            <div class="grid grid-cols-3 gap-1.5 sm:gap-2">
-                                <!-- PERSONAL FOUL -->
-                                <button @click="executeAction('F')" class="p-2 sm:p-2.5 rounded-xl bg-red-700 hover:bg-red-600 active:scale-95 transition-all text-white border border-red-500/80 shadow flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1">
-                                        <span class="text-[11px] sm:text-xs font-black">PERS FOUL</span>
-                                        <span class="px-1 py-0.2 rounded bg-red-950 border border-red-300/50 text-[9px] font-mono font-bold text-amber-300">F</span>
-                                    </div>
-                                    <span class="text-[9px] font-mono opacity-85">Personal</span>
-                                </button>
-
-                                <!-- OFFENSIVE FOUL -->
-                                <button @click="executeAction('R')" class="p-2 sm:p-2.5 rounded-xl bg-red-800 hover:bg-red-700 active:scale-95 transition-all text-white border border-red-600/80 shadow flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1">
-                                        <span class="text-[11px] sm:text-xs font-black">OFF FOUL</span>
-                                        <span class="px-1 py-0.2 rounded bg-red-950 border border-red-400/50 text-[9px] font-mono font-bold text-amber-300">R</span>
-                                    </div>
-                                    <span class="text-[9px] font-mono opacity-85">Offensive</span>
-                                </button>
-
-                                <!-- TECHNICAL FOUL -->
-                                <button @click="executeAction('T')" class="p-2 sm:p-2.5 rounded-xl bg-amber-800 hover:bg-amber-700 active:scale-95 transition-all text-white border border-amber-500/80 shadow flex flex-col items-center justify-center">
-                                    <div class="flex items-center gap-1">
-                                        <span class="text-[11px] sm:text-xs font-black">TECH FOUL</span>
-                                        <span class="px-1 py-0.2 rounded bg-amber-950 border border-amber-400/50 text-[9px] font-mono font-bold text-amber-300">T</span>
-                                    </div>
-                                    <span class="text-[9px] font-mono opacity-85">Technical</span>
-                                </button>
-                            </div>
-                        </div>
-
-                    </div>
-
-                </div>
-
-                <!-- Footer Bar -->
-                <div class="pt-2.5 border-t border-slate-800 flex items-center justify-between">
-                    <span class="text-[10px] sm:text-[11px] text-slate-400 font-medium hidden sm:inline">
-                        Press key on keyboard or tap button • <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] text-slate-300">Esc</kbd> to close
-                    </span>
-
-                    <!-- SUBSTITUTE THIS PLAYER -->
-                    <button @click="openLineupModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-cyan-500 text-cyan-300 hover:text-white font-bold text-xs shadow transition flex items-center gap-1.5 ml-auto">
-                        <span>Line Up Subs</span>
-                        <span class="px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-400/50 text-[9px] font-mono font-bold text-amber-300">Tab</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </template>
 
     <!-- 1. DUAL-TEAM TABLE LINE-UP MODAL (CHECK-IN) -->
     <div x-show="showLineupModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none" style="display: none;"

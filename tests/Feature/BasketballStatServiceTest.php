@@ -2,6 +2,7 @@
 
 use App\Models\BasketballStat;
 use App\Models\Game;
+use App\Models\GameEvent;
 use App\Models\GameLineup;
 use App\Models\Organization;
 use App\Models\Team;
@@ -111,12 +112,12 @@ test('undoes plays with mathematical consistency', function () {
 
 test('records audit event for timeouts and decreases remaining timeouts', function () {
     $res = $this->service->callTimeout($this->game, 'home', 'full', 450);
-    expect($res)->toBeInstanceOf(\App\Models\GameEvent::class);
+    expect($res)->toBeInstanceOf(GameEvent::class);
 
     $this->game->refresh();
     expect($this->game->home_timeouts_remaining)->toBe(4); // default 5 - 1
 
-    $event = \App\Models\GameEvent::where('game_id', $this->game->id)->where('action_code', 'TIMEOUT')->first();
+    $event = GameEvent::where('game_id', $this->game->id)->where('action_code', 'TIMEOUT')->first();
     expect($event)->not->toBeNull();
     expect($event->team_side)->toBe('home');
     expect($event->action_name)->toContain('Timeout');
@@ -124,12 +125,12 @@ test('records audit event for timeouts and decreases remaining timeouts', functi
 
 test('records audit event for score adjustments and updates game score', function () {
     $res = $this->service->adjustScore($this->game, 'away', 3, 400, 'Score correction by referee table');
-    expect($res)->toBeInstanceOf(\App\Models\GameEvent::class);
+    expect($res)->toBeInstanceOf(GameEvent::class);
 
     $this->game->refresh();
     expect($this->game->away_score)->toBe(3);
 
-    $event = \App\Models\GameEvent::where('game_id', $this->game->id)->where('action_code', 'SCORE_ADJ')->first();
+    $event = GameEvent::where('game_id', $this->game->id)->where('action_code', 'SCORE_ADJ')->first();
     expect($event)->not->toBeNull();
     expect($event->points)->toBe(3);
     expect($event->description)->toContain('Score correction');
@@ -158,7 +159,7 @@ test('creates manual event and edits existing event with full mathematical rebui
         'period' => 1,
         'description' => 'Upgraded to 3pt Make after review',
     ]);
-    expect($updated)->toBeInstanceOf(\App\Models\GameEvent::class);
+    expect($updated)->toBeInstanceOf(GameEvent::class);
 
     $this->game->refresh();
     expect($this->game->home_score)->toBe(3);
@@ -169,6 +170,3 @@ test('creates manual event and edits existing event with full mathematical rebui
     expect($stat23->fgm)->toBe(1);
     expect($stat23->fga)->toBe(1);
 });
-
-
-

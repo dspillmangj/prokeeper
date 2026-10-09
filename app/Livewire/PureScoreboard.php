@@ -4,13 +4,14 @@ namespace App\Livewire;
 
 use App\Models\Game;
 use App\Models\GameEvent;
-use App\Models\GameLineup;
 use Livewire\Component;
 
 class PureScoreboard extends Component
 {
     public ?string $code = null;
+
     public string $inputCode = '';
+
     public string $errorMessage = '';
 
     public function mount(?string $code = null)
@@ -26,6 +27,7 @@ class PureScoreboard extends Component
         $clean = strtoupper(trim($this->inputCode));
         if (empty($clean)) {
             $this->errorMessage = 'Please enter a game access code.';
+
             return;
         }
 
@@ -34,8 +36,9 @@ class PureScoreboard extends Component
             ->orWhere('slug', $clean)
             ->first();
 
-        if (!$game) {
+        if (! $game) {
             $this->errorMessage = "No game found with code '{$clean}'.";
+
             return;
         }
 
@@ -44,7 +47,7 @@ class PureScoreboard extends Component
 
     public function getGameProperty(): ?Game
     {
-        if (!$this->code) {
+        if (! $this->code) {
             return null;
         }
 
@@ -59,7 +62,7 @@ class PureScoreboard extends Component
     {
         $game = $this->game;
 
-        if (!$game) {
+        if (! $game) {
             return view('livewire.pure-scoreboard', [
                 'game' => null,
             ])->layout('layouts.public');

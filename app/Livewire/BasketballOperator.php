@@ -6,7 +6,11 @@ use App\Models\BasketballStat;
 use App\Models\Game;
 use App\Models\GameEvent;
 use App\Models\GameLineup;
+use App\Models\Player;
+use App\Models\RosterPlayer;
+use App\Models\Team;
 use App\Services\BasketballStatService;
+use Carbon\Carbon;
 use Exception;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -226,11 +230,11 @@ class BasketballOperator extends Component
         $game = $this->game;
 
         $scheduledAt = null;
-        if (!empty($this->gameScheduledDate)) {
-            $timeStr = !empty($this->gameScheduledTime) ? $this->gameScheduledTime : '00:00';
+        if (! empty($this->gameScheduledDate)) {
+            $timeStr = ! empty($this->gameScheduledTime) ? $this->gameScheduledTime : '00:00';
             try {
-                $scheduledAt = \Carbon\Carbon::parse("{$this->gameScheduledDate} {$timeStr}");
-            } catch (\Exception $e) {
+                $scheduledAt = Carbon::parse("{$this->gameScheduledDate} {$timeStr}");
+            } catch (Exception $e) {
                 $scheduledAt = $game->scheduled_at;
             }
         }
@@ -273,14 +277,14 @@ class BasketballOperator extends Component
         $game->clock_seconds_remaining = $totalClockSeconds;
         $game->home_timeouts_remaining = max(0, $this->homeTimeoutsRemaining);
         $game->away_timeouts_remaining = max(0, $this->awayTimeoutsRemaining);
-        $game->home_team_score_color = !empty($this->homeScoreColor) ? $this->homeScoreColor : '#1e40af';
-        $game->away_team_score_color = !empty($this->awayScoreColor) ? $this->awayScoreColor : '#b91c1c';
+        $game->home_team_score_color = ! empty($this->homeScoreColor) ? $this->homeScoreColor : '#1e40af';
+        $game->away_team_score_color = ! empty($this->awayScoreColor) ? $this->awayScoreColor : '#b91c1c';
         $game->settings = $settings;
 
-        if (!empty($this->gameHomeName)) {
+        if (! empty($this->gameHomeName)) {
             $game->home_team_name = trim($this->gameHomeName);
         }
-        if (!empty($this->gameAwayName)) {
+        if (! empty($this->gameAwayName)) {
             $game->away_team_name = trim($this->gameAwayName);
         }
 
@@ -295,6 +299,17 @@ class BasketballOperator extends Component
         $this->showGameDetailsModal = false;
         $this->feedbackMessage = 'Game details, team colors, rules, and officials updated.';
         $this->feedbackType = 'success';
+    }
+
+    public function deleteGame()
+    {
+        $game = $this->game;
+        $name = "{$game->home_display_name} vs {$game->away_display_name}";
+        $game->delete();
+
+        session()->flash('success', "Game '{$name}' deleted successfully.");
+
+        return redirect()->route('dashboard');
     }
 
     public function setRosterModalTeam(string $team)
@@ -319,7 +334,7 @@ class BasketballOperator extends Component
 
     protected function syncLineupPlayerToTeamRoster(GameLineup $lineup, ?string $oldJersey = null): void
     {
-        if (!$this->syncWithTeamRoster) {
+        if (! $this->syncWithTeamRoster) {
             return;
         }
 
@@ -327,10 +342,10 @@ class BasketballOperator extends Component
         $teamSide = $lineup->team_side;
         $teamId = ($teamSide === 'home') ? $game->home_team_id : $game->away_team_id;
 
-        if (!$teamId) {
+        if (! $teamId) {
             $teamName = ($teamSide === 'home') ? $game->home_team_name : $game->away_team_name;
-            if (!empty($teamName) && $game->organization_id) {
-                $foundTeam = \App\Models\Team::where('organization_id', $game->organization_id)
+            if (! empty($teamName) && $game->organization_id) {
+                $foundTeam = Team::where('organization_id', $game->organization_id)
                     ->where('sport', $game->sport)
                     ->where('name', $teamName)
                     ->first();
@@ -346,18 +361,18 @@ class BasketballOperator extends Component
             }
         }
 
-        if (!$teamId) {
+        if (! $teamId) {
             return;
         }
 
-        $team = \App\Models\Team::find($teamId);
-        if (!$team) {
+        $team = Team::find($teamId);
+        if (! $team) {
             return;
         }
 
-        $jersey = trim((string)$lineup->jersey_number);
-        $fullName = trim((string)$lineup->player_name);
-        $pos = !empty($lineup->position) ? strtoupper(trim($lineup->position)) : null;
+        $jersey = trim((string) $lineup->jersey_number);
+        $fullName = trim((string) $lineup->player_name);
+        $pos = ! empty($lineup->position) ? strtoupper(trim($lineup->position)) : null;
 
         if (empty($jersey) || empty($fullName)) {
             return;
@@ -369,17 +384,17 @@ class BasketballOperator extends Component
 
         $player = null;
         if ($lineup->player_id) {
-            $player = \App\Models\Player::find($lineup->player_id);
+            $player = Player::find($lineup->player_id);
         }
 
-        if (!$player) {
+        if (! $player) {
             $searchJerseys = array_filter([$oldJersey, $jersey]);
-            $existingRp = \App\Models\RosterPlayer::where('team_id', $teamId)
+            $existingRp = RosterPlayer::where('team_id', $teamId)
                 ->whereIn('jersey_number', $searchJerseys)
                 ->first();
 
             if ($existingRp && $existingRp->player_id) {
-                $player = \App\Models\Player::find($existingRp->player_id);
+                $player = Player::find($existingRp->player_id);
                 $lineup->player_id = $existingRp->player_id;
                 $lineup->save();
             }
@@ -393,7 +408,7 @@ class BasketballOperator extends Component
                 'position' => $pos ?: $player->position,
             ]);
         } else {
-            $player = \App\Models\Player::create([
+            $player = Player::create([
                 'organization_id' => $game->organization_id ?? $team->organization_id,
                 'first_name' => $firstName,
                 'last_name' => $lastName,
@@ -405,12 +420,12 @@ class BasketballOperator extends Component
             $lineup->save();
         }
 
-        $rosterPlayer = \App\Models\RosterPlayer::where('team_id', $teamId)
+        $rosterPlayer = RosterPlayer::where('team_id', $teamId)
             ->where('player_id', $player->id)
             ->first();
 
-        if (!$rosterPlayer && $oldJersey) {
-            $rosterPlayer = \App\Models\RosterPlayer::where('team_id', $teamId)
+        if (! $rosterPlayer && $oldJersey) {
+            $rosterPlayer = RosterPlayer::where('team_id', $teamId)
                 ->where('jersey_number', $oldJersey)
                 ->first();
         }
@@ -420,17 +435,17 @@ class BasketballOperator extends Component
                 'player_id' => $player->id,
                 'jersey_number' => $jersey,
                 'position' => $pos ?: $rosterPlayer->position,
-                'is_starter' => (bool)$lineup->is_starter,
-                'is_libero' => (bool)($lineup->is_libero ?? false),
+                'is_starter' => (bool) $lineup->is_starter,
+                'is_libero' => (bool) ($lineup->is_libero ?? false),
             ]);
         } else {
-            \App\Models\RosterPlayer::create([
+            RosterPlayer::create([
                 'team_id' => $teamId,
                 'player_id' => $player->id,
                 'jersey_number' => $jersey,
                 'position' => $pos,
-                'is_starter' => (bool)$lineup->is_starter,
-                'is_libero' => (bool)($lineup->is_libero ?? false),
+                'is_starter' => (bool) $lineup->is_starter,
+                'is_libero' => (bool) ($lineup->is_libero ?? false),
             ]);
         }
     }
@@ -439,11 +454,12 @@ class BasketballOperator extends Component
     {
         $jersey = trim($this->newJersey);
         $name = trim($this->newName);
-        $pos = !empty($this->newPosition) ? strtoupper(trim($this->newPosition)) : null;
+        $pos = ! empty($this->newPosition) ? strtoupper(trim($this->newPosition)) : null;
 
         if (empty($jersey) || empty($name)) {
             $this->feedbackMessage = 'Jersey number and player name are required.';
             $this->feedbackType = 'error';
+
             return;
         }
 
@@ -457,6 +473,7 @@ class BasketballOperator extends Component
         if ($existing) {
             $this->feedbackMessage = "Player with Jersey #{$jersey} already exists in this lineup.";
             $this->feedbackType = 'error';
+
             return;
         }
 
@@ -466,7 +483,7 @@ class BasketballOperator extends Component
             ->count();
 
         $isOnCourt = $this->newIsOnCourt;
-        if (!$isOnCourt && $courtCount < 5) {
+        if (! $isOnCourt && $courtCount < 5) {
             $isOnCourt = true;
         }
 
@@ -484,7 +501,7 @@ class BasketballOperator extends Component
         $this->syncLineupPlayerToTeamRoster($newLineup);
 
         $this->resetNewPlayerFields();
-        $this->feedbackMessage = "Added #{$jersey} {$name} to ".strtoupper($this->rosterModalTeam)." roster!";
+        $this->feedbackMessage = "Added #{$jersey} {$name} to ".strtoupper($this->rosterModalTeam).' roster!';
         $this->feedbackType = 'success';
         $this->rosterModalTab = 'list';
     }
@@ -493,11 +510,11 @@ class BasketballOperator extends Component
     {
         $lineup = GameLineup::where('game_id', $this->gameId)->findOrFail($id);
         $this->editingLineupId = $lineup->id;
-        $this->editJersey = (string)$lineup->jersey_number;
+        $this->editJersey = (string) $lineup->jersey_number;
         $this->editName = $lineup->player_name;
-        $this->editPosition = (string)$lineup->position;
-        $this->editIsOnCourt = (bool)$lineup->is_on_court;
-        $this->editIsStarter = (bool)$lineup->is_starter;
+        $this->editPosition = (string) $lineup->position;
+        $this->editIsOnCourt = (bool) $lineup->is_on_court;
+        $this->editIsStarter = (bool) $lineup->is_starter;
     }
 
     public function cancelEditingLineup()
@@ -507,16 +524,19 @@ class BasketballOperator extends Component
 
     public function saveEditedLineup()
     {
-        if (!$this->editingLineupId) return;
+        if (! $this->editingLineupId) {
+            return;
+        }
 
         $lineup = GameLineup::where('game_id', $this->gameId)->findOrFail($this->editingLineupId);
         $newJersey = trim($this->editJersey);
         $newName = trim($this->editName);
-        $newPos = !empty($this->editPosition) ? strtoupper(trim($this->editPosition)) : null;
+        $newPos = ! empty($this->editPosition) ? strtoupper(trim($this->editPosition)) : null;
 
         if (empty($newJersey) || empty($newName)) {
             $this->feedbackMessage = 'Jersey number and player name cannot be blank.';
             $this->feedbackType = 'error';
+
             return;
         }
 
@@ -558,7 +578,7 @@ class BasketballOperator extends Component
     public function toggleLineupCourtStatus(int $id)
     {
         $lineup = GameLineup::where('game_id', $this->gameId)->findOrFail($id);
-        $lineup->is_on_court = !$lineup->is_on_court;
+        $lineup->is_on_court = ! $lineup->is_on_court;
         $lineup->save();
 
         $this->feedbackMessage = "Player #{$lineup->jersey_number} moved to ".($lineup->is_on_court ? 'Court' : 'Bench').'.';
@@ -579,7 +599,9 @@ class BasketballOperator extends Component
     public function importBulkRosterToGame()
     {
         $text = trim($this->bulkRosterInput);
-        if (empty($text)) return;
+        if (empty($text)) {
+            return;
+        }
 
         $game = $this->game;
         $teamSide = $this->rosterModalTeam;
@@ -595,17 +617,21 @@ class BasketballOperator extends Component
 
         foreach ($lines as $line) {
             $line = trim($line);
-            if (empty($line)) continue;
+            if (empty($line)) {
+                continue;
+            }
 
             if (str_contains($line, "\t")) {
                 $parts = array_map('trim', explode("\t", $line));
-            } elseif (str_contains($line, ",") && !preg_match('/^[0-9]+$/', $line)) {
-                $parts = array_map('trim', explode(",", $line));
+            } elseif (str_contains($line, ',') && ! preg_match('/^[0-9]+$/', $line)) {
+                $parts = array_map('trim', explode(',', $line));
             } else {
                 $parts = array_values(array_filter(preg_split('/\s+/', $line)));
             }
 
-            if (empty($parts)) continue;
+            if (empty($parts)) {
+                continue;
+            }
 
             $jersey = '';
             $name = '';
@@ -626,16 +652,18 @@ class BasketballOperator extends Component
                 $name = array_shift($parts);
             }
 
-            while (!empty($parts)) {
+            while (! empty($parts)) {
                 $p = array_shift($parts);
                 if (in_array(strtolower($p), ['starter', 'start'])) {
                     $isStarter = true;
-                } elseif (!$pos && strlen($p) <= 5) {
+                } elseif (! $pos && strlen($p) <= 5) {
                     $pos = strtoupper($p);
                 }
             }
 
-            if (empty($jersey) || empty($name)) continue;
+            if (empty($jersey) || empty($name)) {
+                continue;
+            }
 
             $existing = GameLineup::where('game_id', $game->id)
                 ->where('team_side', $teamSide)
@@ -676,7 +704,7 @@ class BasketballOperator extends Component
         }
 
         $this->bulkRosterInput = '';
-        $this->feedbackMessage = "Imported {$importedCount} players into ".strtoupper($teamSide)." roster.";
+        $this->feedbackMessage = "Imported {$importedCount} players into ".strtoupper($teamSide).' roster.';
         $this->feedbackType = 'success';
         $this->rosterModalTab = 'list';
     }
@@ -687,18 +715,18 @@ class BasketballOperator extends Component
         $submittedLineupIds = [];
 
         foreach ($players as $index => $row) {
-            $jersey = trim((string)($row['jersey_number'] ?? ''));
+            $jersey = trim((string) ($row['jersey_number'] ?? ''));
             $name = trim($row['name'] ?? ($row['player_name'] ?? ''));
 
             if ($jersey === '' || $name === '') {
                 continue;
             }
 
-            $lineupId = !empty($row['id']) ? (int)$row['id'] : null;
+            $lineupId = ! empty($row['id']) ? (int) $row['id'] : null;
             $isOnCourt = filter_var($row['is_on_court'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
             // Default first 5 players to on-court if court status not specified
-            if (!isset($row['is_on_court']) && count($submittedLineupIds) < 5) {
+            if (! isset($row['is_on_court']) && count($submittedLineupIds) < 5) {
                 $isOnCourt = true;
             }
 
@@ -710,7 +738,7 @@ class BasketballOperator extends Component
                     ->first();
             }
 
-            if (!$lineup) {
+            if (! $lineup) {
                 $lineup = GameLineup::where('game_id', $game->id)
                     ->where('team_side', $teamSide)
                     ->where('jersey_number', $jersey)
@@ -766,7 +794,7 @@ class BasketballOperator extends Component
             ->whereNotIn('id', $submittedLineupIds)
             ->delete();
 
-        $this->feedbackMessage = "Updated ".strtoupper($teamSide)." roster spreadsheet.";
+        $this->feedbackMessage = 'Updated '.strtoupper($teamSide).' roster spreadsheet.';
         $this->feedbackType = 'success';
     }
 
@@ -818,8 +846,9 @@ class BasketballOperator extends Component
     {
         $game = $this->game;
         if ($game->current_period >= 6) {
-            $this->feedbackMessage = "Already at maximum period (2nd Overtime / Period 6).";
+            $this->feedbackMessage = 'Already at maximum period (2nd Overtime / Period 6).';
             $this->feedbackType = 'error';
+
             return;
         }
         $game->current_period += 1;
@@ -852,8 +881,9 @@ class BasketballOperator extends Component
     public function setPeriod(int $period)
     {
         if ($period < 1 || $period > 6) {
-            $this->feedbackMessage = "Period must be between 1 and 6.";
+            $this->feedbackMessage = 'Period must be between 1 and 6.';
             $this->feedbackType = 'error';
+
             return;
         }
         $game = $this->game;
@@ -947,10 +977,18 @@ class BasketballOperator extends Component
             'action_code' => $actionCode,
             'period' => $period,
         ];
-        if (!is_null($description)) $payload['description'] = $description;
-        if (!is_null($points)) $payload['points'] = $points;
-        if (!is_null($teamSide)) $payload['team_side'] = $teamSide;
-        if (!is_null($clockSeconds)) $payload['clock_seconds_remaining'] = $clockSeconds;
+        if (! is_null($description)) {
+            $payload['description'] = $description;
+        }
+        if (! is_null($points)) {
+            $payload['points'] = $points;
+        }
+        if (! is_null($teamSide)) {
+            $payload['team_side'] = $teamSide;
+        }
+        if (! is_null($clockSeconds)) {
+            $payload['clock_seconds_remaining'] = $clockSeconds;
+        }
 
         $updated = $this->statService->updateEvent($this->game, $eventId, $payload);
         if ($updated) {
@@ -958,7 +996,6 @@ class BasketballOperator extends Component
             $this->feedbackType = 'success';
         }
     }
-
 
     public function render()
     {

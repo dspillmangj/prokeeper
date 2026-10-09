@@ -194,6 +194,15 @@ class BasketballStatService
             $remaining = $game->$field;
             $typeLabel = ($timeoutType === '30s') ? '30-Second' : 'Full (60s)';
 
+            $breakdown = $game->calculateTimeoutsBreakdown($teamSide);
+            $remFull = $breakdown['rem_full'];
+            $rem30s = $breakdown['rem_30s'];
+            if ($timeoutType === '30s') {
+                $rem30s = max(0, $rem30s - 1);
+            } else {
+                $remFull = max(0, $remFull - 1);
+            }
+
             return GameEvent::create([
                 'game_id' => $game->id,
                 'sequence' => $lastSequence + 1,
@@ -211,10 +220,12 @@ class BasketballStatService
                 'home_score_after' => $game->home_score,
                 'away_score_after' => $game->away_score,
                 'is_undone' => false,
-                'description' => strtoupper($teamSide)." {$typeLabel} Timeout Called ({$remaining} remaining)",
+                'description' => strtoupper($teamSide)." {$typeLabel} Timeout Called ({$remFull} Full, {$rem30s} 30s remaining)",
                 'metadata' => [
                     'timeout_type' => $timeoutType,
                     'timeouts_remaining' => $remaining,
+                    'full_timeouts_remaining' => $remFull,
+                    'thirty_second_timeouts_remaining' => $rem30s,
                 ],
             ]);
         });
@@ -289,9 +300,9 @@ class BasketballStatService
             $game = Game::where('id', $game->id)->lockForUpdate()->first();
 
             $teamSide = $data['team_side'] ?? 'home';
-            $jersey = isset($data['jersey_number']) ? trim((string)$data['jersey_number']) : null;
-            $period = (int)($data['period'] ?? $game->current_period);
-            $clock = isset($data['clock_seconds_remaining']) ? (int)$data['clock_seconds_remaining'] : $game->clock_seconds_remaining;
+            $jersey = isset($data['jersey_number']) ? trim((string) $data['jersey_number']) : null;
+            $period = (int) ($data['period'] ?? $game->current_period);
+            $clock = isset($data['clock_seconds_remaining']) ? (int) $data['clock_seconds_remaining'] : $game->clock_seconds_remaining;
             $actionCode = $data['action_code'] ?? 'NOTE';
             $actionDef = self::ACTIONS[$actionCode] ?? ['name' => $actionCode, 'type' => 'custom', 'points' => 0];
 
@@ -310,7 +321,7 @@ class BasketballStatService
                 }
             }
 
-            $points = isset($data['points']) ? (int)$data['points'] : ($actionDef['points'] ?? 0);
+            $points = isset($data['points']) ? (int) $data['points'] : ($actionDef['points'] ?? 0);
             $actionName = $actionDef['name'] ?? $actionCode;
             $description = $data['description'] ?? (
                 $jersey
@@ -475,8 +486,8 @@ class BasketballStatService
         ]);
 
         foreach ($events as $event) {
-            $points = (int)$event->points;
-            $period = (int)$event->period;
+            $points = (int) $event->points;
+            $period = (int) $event->period;
 
             while (count($homePeriodScores) < $period) {
                 $homePeriodScores[] = 0;
@@ -510,7 +521,7 @@ class BasketballStatService
             $event->away_score_after = $awayScore;
             $event->saveQuietly();
 
-            if (isset(self::ACTIONS[$event->action_code]) && !empty($event->jersey_number)) {
+            if (isset(self::ACTIONS[$event->action_code]) && ! empty($event->jersey_number)) {
                 $this->applyStatToPlayer(
                     $game->id,
                     $event->team_side,
@@ -625,7 +636,7 @@ class BasketballStatService
             }
 
             if (array_key_exists('jersey_number', $data)) {
-                $event->jersey_number = $data['jersey_number'] ? trim((string)$data['jersey_number']) : null;
+                $event->jersey_number = $data['jersey_number'] ? trim((string) $data['jersey_number']) : null;
                 if ($event->jersey_number) {
                     $lineup = GameLineup::where('game_id', $game->id)
                         ->where('team_side', $event->team_side)
@@ -651,7 +662,7 @@ class BasketballStatService
             }
 
             if (isset($data['points'])) {
-                $event->points = (int)$data['points'];
+                $event->points = (int) $data['points'];
             }
 
             if (isset($data['period'])) {
@@ -665,7 +676,7 @@ class BasketballStatService
             if (isset($data['description'])) {
                 $event->description = trim($data['description']);
             } else {
-                $pts = (int)$event->points;
+                $pts = (int) $event->points;
                 $event->description = strtoupper($event->team_side).($event->jersey_number ? " #{$event->jersey_number} {$event->player_name}" : '').": {$event->action_name}".($pts > 0 ? " (+{$pts} pts)" : '');
             }
 
@@ -677,4 +688,3 @@ class BasketballStatService
         });
     }
 }
-
