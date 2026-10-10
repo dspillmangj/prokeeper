@@ -53,6 +53,9 @@
     isFullscreen: false,
     showHelpModal: false,
     showShareModal: false,
+    showConflictDrawer: false,
+    activeDeviceCount: 1,
+    activeConflicts: [],
     copiedKey: null,
     audioCtx: null,
 
@@ -148,7 +151,7 @@
             }
         }
     }
-}" @play-sound.window="playSound($event.detail)" @close-all-modals.window="showHelpModal = false; showShareModal = false">
+}" @play-sound.window="playSound($event.detail)" @presence-updated.window="activeDeviceCount = $event.detail.activeDeviceCount || activeDeviceCount; activeConflicts = $event.detail.conflicts || activeConflicts;" @conflicts-updated.window="activeConflicts = $event.detail.conflicts || []; if (activeConflicts.length > 0) playSound('error');" @open-conflict-drawer.window="showConflictDrawer = true" @close-all-modals.window="showHelpModal = false; showShareModal = false; showConflictDrawer = false">
 
     <!-- Ultra-Compact Stadium App Header Bar -->
     <header class="bg-slate-900/95 border-b border-slate-800/90 px-3 py-1.5 sm:px-4 flex items-center justify-between shrink-0 h-11 select-none z-30">
@@ -168,6 +171,25 @@
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                     LIVE
                 </span>
+                
+                <!-- Multi-Device Presence Counter -->
+                <span x-show="activeDeviceCount > 1" class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-[10px] font-bold border border-sky-500/40 flex items-center gap-1 shadow-sm" :title="activeDeviceCount + ' devices connected to this game'">
+                    <svg class="w-3 h-3 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    <span x-text="activeDeviceCount + ' DEVICES'"></span>
+                </span>
+
+                <!-- Conflict Notification Badge (Yellow 'i' in Header) -->
+                <button type="button" 
+                        x-show="activeConflicts && activeConflicts.length > 0" 
+                        @click="showConflictDrawer = true; if(soundEnabled) playSound('tap');" 
+                        class="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/60 font-mono text-[10px] font-black flex items-center gap-1.5 animate-pulse shadow-sm cursor-pointer" 
+                        title="Review Multi-Device Sync Conflicts">
+                    <span class="w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center font-black text-[9px]">i</span>
+                    <span x-text="activeConflicts.length + (activeConflicts.length === 1 ? ' CONFLICT' : ' CONFLICTS')"></span>
+                </button>
+
                 <span class="hidden md:inline text-[10px] text-slate-400 font-mono">
                     {{ strtoupper($game->sport ?? 'Sport') }} &bull; CODE: {{ $game->access_code ?? '------' }}
                 </span>
@@ -230,7 +252,7 @@
 
     <!-- Share & Instant Mobile QR Modal -->
     <div x-show="showShareModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 select-none" style="display: none;" @keydown.escape.window="showShareModal = false">
-        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] flex flex-col overflow-hidden" @click.outside="showShareModal = false">
+        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] flex flex-col overflow-hidden" @click.outside="showShareModal = false">
             <!-- Modal Header -->
             <div class="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
                 <div class="flex items-center gap-2.5">
@@ -283,8 +305,8 @@
                     </button>
                 </div>
 
-                <!-- Three QR Code Cards Grid -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                <!-- Four QR Code Cards Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                     <!-- 1. Pure Stadium Scoreboard -->
                     <div class="rounded-xl bg-slate-950 border border-slate-800 p-3.5 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
                         <div>
@@ -301,7 +323,7 @@
                         </div>
 
                         <!-- QR Code Container -->
-                        <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-36 h-36 flex items-center justify-center border border-slate-200">
+                        <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-32 h-32 flex items-center justify-center border border-slate-200">
                             <div class="w-full h-full" x-html="getQr('{{ route('public.scoreboard', $game->access_code ?? '') }}')"></div>
                         </div>
 
@@ -317,7 +339,39 @@
                         </div>
                     </div>
 
-                    <!-- 2. Official Scorebook -->
+                    <!-- 2. Coach Live Stats -->
+                    <div class="rounded-xl bg-slate-950 border border-slate-800 p-3.5 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
+                        <div>
+                            <div class="flex items-center justify-between gap-1 mb-2">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+                                    <h4 class="text-xs font-black uppercase tracking-wider text-indigo-300">Coach Stats</h4>
+                                </div>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-950/80 border border-indigo-800/80 text-[8px] font-mono text-indigo-300 font-bold uppercase">Bench</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 leading-snug min-h-[32px]">
+                                Quarter-by-quarter player box stats & analytics for coaches during the game.
+                            </p>
+                        </div>
+
+                        <!-- QR Code Container -->
+                        <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-32 h-32 flex items-center justify-center border border-slate-200">
+                            <div class="w-full h-full" x-html="getQr('{{ route('public.stats', $game->access_code ?? '') }}')"></div>
+                        </div>
+
+                        <!-- Card Action Buttons -->
+                        <div class="flex items-center gap-1.5 pt-1">
+                            <button type="button" @click="copy('{{ route('public.stats', $game->access_code ?? '') }}', 'stats')" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white transition flex items-center justify-center gap-1">
+                                <span x-text="copiedKey === 'stats' ? 'Copied!' : 'Copy Link'"></span>
+                            </button>
+                            <a href="{{ route('public.stats', $game->access_code ?? '') }}" target="_blank" class="py-1.5 px-2.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-[10px] font-black text-indigo-300 transition flex items-center gap-1" title="Open Coach Stats in new tab">
+                                <span>Open</span>
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- 3. Official Scorebook -->
                     <div class="rounded-xl bg-slate-950 border border-slate-800 p-3.5 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
                         <div>
                             <div class="flex items-center justify-between gap-1 mb-2">
@@ -333,7 +387,7 @@
                         </div>
 
                         <!-- QR Code Container -->
-                        <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-36 h-36 flex items-center justify-center border border-slate-200">
+                        <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-32 h-32 flex items-center justify-center border border-slate-200">
                             <div class="w-full h-full" x-html="getQr('{{ route('public.scorebook', $game->access_code ?? '') }}')"></div>
                         </div>
 
@@ -349,7 +403,7 @@
                         </div>
                     </div>
 
-                    <!-- 3. Watch Live / Fan Experience -->
+                    <!-- 4. Watch Live / Fan Experience -->
                     <div class="rounded-xl bg-slate-950 border border-slate-800 p-3.5 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
                         <div>
                             <div class="flex items-center justify-between gap-1 mb-2">
@@ -365,7 +419,7 @@
                         </div>
 
                         <!-- QR Code Container -->
-                        <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-36 h-36 flex items-center justify-center border border-slate-200">
+                        <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-32 h-32 flex items-center justify-center border border-slate-200">
                             <div class="w-full h-full" x-html="getQr('{{ route('public.live', $game->access_code ?? '') }}')"></div>
                         </div>
 
@@ -443,7 +497,103 @@
         </div>
     </div>
 
+    <!-- Conflict Resolution Modal / Drawer -->
+    <div x-show="showConflictDrawer" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 select-none" style="display: none;" @keydown.escape.window="showConflictDrawer = false">
+        <div class="bg-slate-900 border border-amber-500/40 rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden" @click.outside="showConflictDrawer = false">
+            <!-- Header -->
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-sm font-black">
+                        i
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
+                            <span>Sync Conflict Review</span>
+                            <span class="px-2 py-0.5 rounded bg-amber-950 border border-amber-800 text-[9px] font-mono text-amber-300 font-bold" x-text="activeConflicts.length + ' Item(s)'"></span>
+                        </h3>
+                        <p class="text-xs text-slate-400 font-medium">Two devices made concurrent changes on the same player or game event. Review and choose the action to keep.</p>
+                    </div>
+                </div>
+
+                <button @click="showConflictDrawer = false" class="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition" title="Close (Esc)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <!-- Conflicts List -->
+            <div class="flex-1 overflow-y-auto pr-1 space-y-3">
+                <template x-if="!activeConflicts || activeConflicts.length === 0">
+                    <div class="p-8 text-center text-slate-400 font-mono text-xs space-y-2">
+                        <div class="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                        </div>
+                        <p class="font-bold text-slate-300">All sync conflicts resolved!</p>
+                        <p class="text-[11px] text-slate-500">Both devices are fully in sync with zero discrepancies.</p>
+                    </div>
+                </template>
+
+                <template x-for="(conflict, cIdx) in activeConflicts" :key="conflict.id || cIdx">
+                    <div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-200" x-text="conflict.description || 'Concurrent Action Collision'"></span>
+                            <span class="text-[10px] font-mono text-slate-500" x-text="conflict.created_at ? new Date(conflict.created_at * 1000).toLocaleTimeString() : ''"></span>
+                        </div>
+
+                        <!-- Diff Comparison Cards -->
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div class="p-2.5 rounded-lg bg-slate-900 border border-blue-500/30 space-y-1">
+                                <div class="text-[10px] font-mono font-bold text-blue-400 uppercase flex items-center justify-between">
+                                    <span>Local Device (Mine)</span>
+                                    <span class="text-[9px] text-slate-400" x-text="conflict.device_a?.label || 'Device A'"></span>
+                                </div>
+                                <div class="font-mono text-xs text-slate-200 font-bold" x-text="conflict.device_a?.description || conflict.device_a?.value || 'Local Mutation'"></div>
+                            </div>
+
+                            <div class="p-2.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-1">
+                                <div class="text-[10px] font-mono font-bold text-amber-400 uppercase flex items-center justify-between">
+                                    <span>Assisting Device</span>
+                                    <span class="text-[9px] text-slate-400" x-text="conflict.device_b?.label || 'Device B'"></span>
+                                </div>
+                                <div class="font-mono text-xs text-slate-200 font-bold" x-text="conflict.device_b?.description || conflict.device_b?.value || 'Remote Mutation'"></div>
+                            </div>
+                        </div>
+
+                        <!-- One-Click Decision Buttons -->
+                        <div class="flex items-center justify-end gap-2 pt-1 border-t border-slate-900">
+                            <button type="button" 
+                                    @click="if (window._activeOperator && typeof window._activeOperator.resolveConflict === 'function') window._activeOperator.resolveConflict(conflict.id, 'mine'); else if ($wire && typeof $wire.resolveConflict === 'function') $wire.resolveConflict(conflict.id, 'mine')" 
+                                    class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition cursor-pointer">
+                                Keep Mine
+                            </button>
+                            <button type="button" 
+                                    @click="if (window._activeOperator && typeof window._activeOperator.resolveConflict === 'function') window._activeOperator.resolveConflict(conflict.id, 'other'); else if ($wire && typeof $wire.resolveConflict === 'function') $wire.resolveConflict(conflict.id, 'other')" 
+                                    class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition cursor-pointer">
+                                Accept Other
+                            </button>
+                            <button type="button" 
+                                    @click="if (window._activeOperator && typeof window._activeOperator.resolveConflict === 'function') window._activeOperator.resolveConflict(conflict.id, 'both'); else if ($wire && typeof $wire.resolveConflict === 'function') $wire.resolveConflict(conflict.id, 'both')" 
+                                    class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer">
+                                Keep Both
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
     @livewireScripts
+
+    <!-- Service Worker Registration for PWA Client-Side UI Storage -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').catch((err) => {
+                    console.warn('Service Worker registration skipped:', err);
+                });
+            });
+        }
+    </script>
 </body>
 </html>
 

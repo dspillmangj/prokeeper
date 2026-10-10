@@ -66,11 +66,17 @@
                 </p>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
                 <a href="{{ route('install') }}" class="p-5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-900/90 transition group">
                     <div class="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider mb-1">Mobile & Desktop</div>
                     <div class="text-base font-bold text-white group-hover:text-emerald-300 transition">Install App PWA &rarr;</div>
                     <div class="text-xs text-slate-400 mt-1">Pick your theme icon and install for instant fullscreen access.</div>
+                </a>
+
+                <a href="{{ route('public.stats.prompt') }}" class="p-5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-900/90 transition group">
+                    <div class="text-xs font-mono font-bold text-indigo-400 uppercase tracking-wider mb-1">Bench & Coach</div>
+                    <div class="text-base font-bold text-white group-hover:text-indigo-300 transition">Coach Live Stats &rarr;</div>
+                    <div class="text-xs text-slate-400 mt-1">Quarter-by-quarter player box stats & PDF reports.</div>
                 </a>
 
                 <a href="{{ route('public.scoreboard.prompt') }}" class="p-5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-blue-500/50 hover:bg-slate-900/90 transition group">

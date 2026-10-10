@@ -5,6 +5,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\InstallController;
 use App\Http\Controllers\TeamController;
+use App\Livewire\CoachStats;
 use App\Livewire\NcaaScorebook;
 use App\Livewire\PureScoreboard;
 use App\Livewire\WatchGame;
@@ -35,7 +36,12 @@ Route::get('/watch/{code}', WatchGame::class)->name('public.watch');
 Route::get('/live', WatchGame::class)->name('public.live.prompt');
 Route::get('/live/{code}', WatchGame::class)->name('public.live');
 
-// 3. Official Digital Scorebook & PDF Export
+// 3. Coach Live Stats & Full Box Score (Period-by-period coach monitoring)
+Route::get('/stats', CoachStats::class)->name('public.stats.prompt');
+Route::get('/stats/{code}', CoachStats::class)->name('public.stats');
+Route::get('/export/stats/{code}.pdf', [GameController::class, 'exportCoachStatsPdf'])->name('games.stats.pdf');
+
+// 4. Official Digital Scorebook & PDF Export
 Route::get('/scorebook', NcaaScorebook::class)->name('public.scorebook.prompt');
 Route::get('/scorebook/{code}', NcaaScorebook::class)->name('public.scorebook');
 Route::get('/export/scorebook/{code}.pdf', [GameController::class, 'exportNcaaPdf'])->name('games.pdf');

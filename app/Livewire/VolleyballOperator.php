@@ -12,6 +12,7 @@ use App\Models\VolleyballStat;
 use App\Services\VolleyballStatService;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Str;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -107,6 +108,14 @@ class VolleyballOperator extends Component
     public bool $editIsStarter = false;
 
     public bool $editIsLibero = false;
+
+    public int $activeDeviceCount = 1;
+
+    public array $activeDevices = [];
+
+    public array $activeConflicts = [];
+
+    public bool $showConflictDrawer = false;
 
     protected VolleyballStatService $statService;
 
@@ -1078,6 +1087,234 @@ class VolleyballOperator extends Component
             $this->feedbackType = 'success';
             $this->dispatchGameStateUpdate();
         }
+    }
+
+    public function heartbeatDevice(string $deviceId, string $deviceLabel = '', ?string $currentDomain = null): void
+    {
+        $game = Game::find($this->gameId);
+        if (! $game) {
+            return;
+        }
+
+        $settings = $game->settings ?? [];
+        $activeDevices = $settings['active_devices'] ?? [];
+        $now = time();
+
+        $cleaned = [];
+        foreach ($activeDevices as $id => $info) {
+            if (($now - ($info['last_seen'] ?? 0)) < 20) {
+                $cleaned[$id] = $info;
+            }
+        }
+
+        $cleaned[$deviceId] = [
+            'id' => $deviceId,
+            'label' => $deviceLabel ?: ('Device '.(count($cleaned) + 1)),
+            'domain' => $currentDomain ?: 'general',
+            'last_seen' => $now,
+        ];
+
+        $settings['active_devices'] = $cleaned;
+        $game->settings = $settings;
+        $game->save();
+
+        $this->activeDeviceCount = max(1, count($cleaned));
+        $this->activeDevices = array_values($cleaned);
+        $this->activeConflicts = $settings['conflicts'] ?? [];
+
+        $this->dispatch('presence-updated', [
+            'activeDeviceCount' => $this->activeDeviceCount,
+            'devices' => $this->activeDevices,
+            'conflicts' => $this->activeConflicts,
+        ]);
+    }
+
+    public function recordConflict(string $entityType, string $entityId, array $deviceA, array $deviceB, string $description): void
+    {
+        $game = Game::find($this->gameId);
+        if (! $game) {
+            return;
+        }
+
+        $settings = $game->settings ?? [];
+        $conflicts = $settings['conflicts'] ?? [];
+
+        $conflictId = 'conf_'.time().'_'.Str::random(5);
+        $conflicts[] = [
+            'id' => $conflictId,
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'description' => $description,
+            'device_a' => $deviceA,
+            'device_b' => $deviceB,
+            'created_at' => time(),
+        ];
+
+        $settings['conflicts'] = $conflicts;
+        $game->settings = $settings;
+        $game->save();
+
+        $this->activeConflicts = $conflicts;
+        $this->dispatch('conflicts-updated', ['conflicts' => $conflicts]);
+    }
+
+    public function resolveConflict(string $conflictId, string $resolution, ?array $customData = null): void
+    {
+        $game = Game::find($this->gameId);
+        if (! $game) {
+            return;
+        }
+
+        $settings = $game->settings ?? [];
+        $conflicts = $settings['conflicts'] ?? [];
+
+        $resolvedIndex = null;
+        foreach ($conflicts as $idx => $conflict) {
+            if (($conflict['id'] ?? '') === $conflictId) {
+                $resolvedIndex = $idx;
+                break;
+            }
+        }
+
+        if ($resolvedIndex !== null) {
+            $targetConflict = $conflicts[$resolvedIndex];
+            if ($resolution === 'mine' && ! empty($targetConflict['device_a']['payload'])) {
+                $this->applyConflictPayload($game, $targetConflict['entity_type'], $targetConflict['device_a']['payload']);
+            } elseif ($resolution === 'other' && ! empty($targetConflict['device_b']['payload'])) {
+                $this->applyConflictPayload($game, $targetConflict['entity_type'], $targetConflict['device_b']['payload']);
+            } elseif ($resolution === 'both' && ! empty($customData)) {
+                $this->applyConflictPayload($game, $targetConflict['entity_type'], $customData);
+            }
+
+            array_splice($conflicts, $resolvedIndex, 1);
+            $settings['conflicts'] = array_values($conflicts);
+            $game->settings = $settings;
+            $game->save();
+
+            $this->activeConflicts = $conflicts;
+            $this->dispatch('conflicts-updated', ['conflicts' => $conflicts]);
+            $this->dispatchGameStateUpdate();
+            $this->dispatchLineupUpdate();
+        }
+    }
+
+    protected function applyConflictPayload(Game $game, string $entityType, array $payload): void
+    {
+        if ($entityType === 'roster_player') {
+            $jersey = $payload['jersey_number'] ?? null;
+            $teamSide = $payload['team_side'] ?? 'home';
+            if ($jersey) {
+                $lineup = GameLineup::where('game_id', $game->id)
+                    ->where('team_side', $teamSide)
+                    ->where('jersey_number', $jersey)
+                    ->first();
+                if ($lineup) {
+                    if (isset($payload['player_name'])) {
+                        $lineup->player_name = $payload['player_name'];
+                    }
+                    if (isset($payload['position'])) {
+                        $lineup->position = $payload['position'];
+                    }
+                    if (isset($payload['is_starter'])) {
+                        $lineup->is_starter = (bool) $payload['is_starter'];
+                    }
+                    if (isset($payload['is_on_court'])) {
+                        $lineup->is_on_court = (bool) $payload['is_on_court'];
+                    }
+                    $lineup->save();
+                    $this->syncLineupPlayerToTeamRoster($lineup);
+                }
+            }
+        } elseif ($entityType === 'score') {
+            if (isset($payload['home_score'])) {
+                $game->home_score = (int) $payload['home_score'];
+            }
+            if (isset($payload['away_score'])) {
+                $game->away_score = (int) $payload['away_score'];
+            }
+            $game->save();
+        }
+    }
+
+    public function forceClientState(array $snapshot, array $meta = []): void
+    {
+        $game = Game::find($this->gameId);
+        if (! $game) {
+            return;
+        }
+
+        $domain = $meta['domain'] ?? null;
+
+        if ($domain === 'score' || $domain === 'stats') {
+            if (isset($snapshot['homeScore'])) {
+                $game->home_score = max(0, (int) $snapshot['homeScore']);
+            }
+            if (isset($snapshot['awayScore'])) {
+                $game->away_score = max(0, (int) $snapshot['awayScore']);
+            }
+            if (isset($snapshot['homePeriodScores']) && is_array($snapshot['homePeriodScores'])) {
+                $game->home_period_scores = array_map('intval', $snapshot['homePeriodScores']);
+            }
+            if (isset($snapshot['awayPeriodScores']) && is_array($snapshot['awayPeriodScores'])) {
+                $game->away_period_scores = array_map('intval', $snapshot['awayPeriodScores']);
+            }
+        } elseif ($domain === 'rotation') {
+            if (isset($snapshot['homeRotation'])) {
+                $game->home_rotation = max(1, min(6, (int) $snapshot['homeRotation']));
+            }
+            if (isset($snapshot['awayRotation'])) {
+                $game->away_rotation = max(1, min(6, (int) $snapshot['awayRotation']));
+            }
+            if (isset($snapshot['server']) && in_array($snapshot['server'], ['home', 'away'])) {
+                $game->current_server = $snapshot['server'];
+            }
+        } elseif ($domain === 'timeouts') {
+            if (isset($snapshot['homeTimeouts'])) {
+                $game->home_timeouts_remaining = max(0, (int) $snapshot['homeTimeouts']);
+            }
+            if (isset($snapshot['awayTimeouts'])) {
+                $game->away_timeouts_remaining = max(0, (int) $snapshot['awayTimeouts']);
+            }
+        } elseif ($domain === 'period') {
+            if (isset($snapshot['currentPeriod'])) {
+                $game->current_period = (int) $snapshot['currentPeriod'];
+            }
+        } elseif ($domain === 'roster') {
+            return;
+        } else {
+            if (isset($snapshot['homeScore'])) {
+                $game->home_score = max(0, (int) $snapshot['homeScore']);
+            }
+            if (isset($snapshot['awayScore'])) {
+                $game->away_score = max(0, (int) $snapshot['awayScore']);
+            }
+            if (isset($snapshot['homePeriodScores']) && is_array($snapshot['homePeriodScores'])) {
+                $game->home_period_scores = array_map('intval', $snapshot['homePeriodScores']);
+            }
+            if (isset($snapshot['awayPeriodScores']) && is_array($snapshot['awayPeriodScores'])) {
+                $game->away_period_scores = array_map('intval', $snapshot['awayPeriodScores']);
+            }
+            if (isset($snapshot['currentPeriod'])) {
+                $game->current_period = (int) $snapshot['currentPeriod'];
+            }
+            if (isset($snapshot['server']) && in_array($snapshot['server'], ['home', 'away'])) {
+                $game->current_server = $snapshot['server'];
+            }
+            if (isset($snapshot['homeRotation'])) {
+                $game->home_rotation = max(1, min(6, (int) $snapshot['homeRotation']));
+            }
+            if (isset($snapshot['awayRotation'])) {
+                $game->away_rotation = max(1, min(6, (int) $snapshot['awayRotation']));
+            }
+            if (isset($snapshot['homeTimeouts'])) {
+                $game->home_timeouts_remaining = max(0, (int) $snapshot['homeTimeouts']);
+            }
+            if (isset($snapshot['awayTimeouts'])) {
+                $game->away_timeouts_remaining = max(0, (int) $snapshot['awayTimeouts']);
+            }
+        }
+
+        $game->save();
     }
 
     public function render()

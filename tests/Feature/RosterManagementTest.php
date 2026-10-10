@@ -551,5 +551,3 @@ test('batch roster update and in-game spreadsheet save preserve position and sta
     expect($rodmanLineup->position)->toBe('PF');
     expect($rodmanLineup->is_starter)->toBeTrue();
 });
-
-

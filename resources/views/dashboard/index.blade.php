@@ -95,9 +95,12 @@
                         </div>
 
                         <!-- Action Buttons -->
-                        <div class="pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                        <div class="pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
                             <a href="{{ route('games.operator', $game->uuid) }}" class="py-2 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold text-white transition shadow-md shadow-blue-600/30 flex items-center justify-center">
-                                Stat Operator
+                                Operator
+                            </a>
+                            <a href="{{ route('public.stats', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-indigo-950/80 hover:bg-indigo-900/80 text-indigo-300 font-bold transition border border-indigo-700/60 flex items-center justify-center">
+                                Coach Stats
                             </a>
                             <a href="{{ route('public.scoreboard', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
                                 Scoreboard
@@ -221,16 +224,22 @@
                             <div class="text-xs text-slate-500">{{ $game->updated_at->format('M j, Y') }} &bull; {{ $game->venue ?: 'Main Court' }}</div>
                         </div>
 
-                        <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-semibold">
+                        <div class="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold">
                             <a href="{{ route('games.operator', $game->uuid) }}" class="text-slate-400 hover:text-slate-200">
                                 Operator
+                            </a>
+                            <a href="{{ route('public.stats', $game->access_code) }}" target="_blank" class="text-indigo-400 hover:text-indigo-300">
+                                Coach Stats
                             </a>
                             @if ($game->sport === 'basketball')
                                 <a href="{{ route('public.scorebook', $game->access_code) }}" target="_blank" class="text-amber-400 hover:text-amber-300">
                                     Scorebook
                                 </a>
-                                <a href="{{ route('games.pdf', $game->access_code) }}" class="text-blue-400 hover:text-blue-300">
-                                    Export PDF
+                                <a href="{{ route('games.stats.pdf', $game->access_code) }}" class="text-blue-400 hover:text-blue-300">
+                                    Stats PDF
+                                </a>
+                                <a href="{{ route('games.pdf', $game->access_code) }}" class="text-slate-400 hover:text-slate-200">
+                                    Official PDF
                                 </a>
                             @else
                                 <a href="{{ route('public.watch', $game->access_code) }}?tab=boxscore" target="_blank" class="text-blue-400 hover:text-blue-300">

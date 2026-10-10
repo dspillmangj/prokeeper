@@ -310,7 +310,7 @@ window.ProKeeperEngine = {
                     points: points,
                     clock_seconds_remaining: clock,
                     description: desc,
-                }]);
+                }], 'stats');
             },
 
             filteredRecentEvents() {
@@ -359,7 +359,7 @@ window.ProKeeperEngine = {
 
                 // Asynchronously sync to backend
                 if (typeof event.id === 'number' || !String(event.id).startsWith('local_')) {
-                    this.enqueueSync('deleteGameEvent', [Number(event.id)]);
+                    this.enqueueSync('deleteGameEvent', [Number(event.id)], 'stats');
                 }
             },
 
@@ -448,7 +448,7 @@ window.ProKeeperEngine = {
                         newPts,
                         newTeamSide,
                         newClock
-                    ]);
+                    ], 'stats');
                 }
             },
 
@@ -596,7 +596,7 @@ window.ProKeeperEngine = {
                             benchList[benchIdx] = { ...courtP, is_on_court: false };
 
                             executedPairs.push({ side, outJ, inJ, outName: courtP.player_name, inName: benchP.player_name });
-                            this.enqueueSync('setAndExecuteSub', [side, outJ, inJ]);
+                            this.enqueueSync('setAndExecuteSub', [side, outJ, inJ], 'lineup');
                         }
                     }
                 });
@@ -632,14 +632,179 @@ window.ProKeeperEngine = {
                 return true;
             },
 
-            // Background Async Sync Queue
+            // Client is God State Tracking & Async Background Sync Pipeline
+            deviceId: (function() {
+                try {
+                    let id = sessionStorage.getItem('prokeeper_device_id');
+                    if (!id) {
+                        id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
+                        sessionStorage.setItem('prokeeper_device_id', id);
+                    }
+                    return id;
+                } catch (e) {
+                    return 'dev_' + Date.now().toString(36);
+                }
+            })(),
+            deviceLabel: (function() {
+                try {
+                    const isMobile = window.innerWidth < 768;
+                    return isMobile ? 'Mobile Device' : 'Main Console';
+                } catch (e) {
+                    return 'Device';
+                }
+            })(),
+            activeDeviceCount: 1,
+            activeDevices: [],
+            activeConflicts: [],
+            showConflictDrawer: false,
+            lastLocalActionTime: 0,
+            localRevision: 0,
             syncQueue: [],
             syncStatus: 'synced', // 'synced' | 'syncing' | 'offline'
             isSyncing: false,
 
+            isQueuePending() {
+                return (this.syncQueue && this.syncQueue.length > 0) || (Date.now() - (this.lastLocalActionTime || 0) < 4000);
+            },
+
+            getAuthoritativeSnapshot() {
+                return {
+                    homeScore: Number(this.homeScore || 0),
+                    awayScore: Number(this.awayScore || 0),
+                    homePeriodScores: Array.isArray(this.homePeriodScores) ? [...this.homePeriodScores] : [],
+                    awayPeriodScores: Array.isArray(this.awayPeriodScores) ? [...this.awayPeriodScores] : [],
+                    currentPeriod: Number(this.currentPeriod || 1),
+                    possession: this.possession || 'home',
+                    server: this.server || 'home',
+                    homeFouls: Number(this.homeFouls || 0),
+                    awayFouls: Number(this.awayFouls || 0),
+                    homeTimeouts: Number(this.homeTimeouts || 0),
+                    awayTimeouts: Number(this.awayTimeouts || 0),
+                    homeFullTimeouts: Number(this.homeFullTimeouts || 0),
+                    home30sTimeouts: Number(this.home30sTimeouts || 0),
+                    awayFullTimeouts: Number(this.awayFullTimeouts || 0),
+                    away30sTimeouts: Number(this.away30sTimeouts || 0),
+                    homeRotation: Number(this.homeRotation || 1),
+                    awayRotation: Number(this.awayRotation || 1),
+                };
+            },
+
+            hotPatchLineups(data) {
+                if (!data) return;
+
+                const mergeList = (targetList, sourceList) => {
+                    if (!Array.isArray(targetList) || !Array.isArray(sourceList)) return;
+                    sourceList.forEach(src => {
+                        const found = targetList.find(p => (p.id && src.id && Number(p.id) === Number(src.id)) || (String(p.jersey_number) === String(src.jersey_number)));
+                        if (found) {
+                            if (typeof src.player_name !== 'undefined') found.player_name = src.player_name;
+                            if (typeof src.jersey_number !== 'undefined') found.jersey_number = src.jersey_number;
+                            if (typeof src.position !== 'undefined') found.position = src.position;
+                        }
+                    });
+                };
+
+                if (this.isQueuePending()) {
+                    // Hot-patch player metadata (names, jerseys, positions, new bench players) without blowing away court lineup state or typing focus
+                    if (data.homeCourt) mergeList(this.homeCourt, data.homeCourt);
+                    if (data.awayCourt) mergeList(this.awayCourt, data.awayCourt);
+                    if (data.homeBench) {
+                        mergeList(this.homeBench, data.homeBench);
+                        data.homeBench.forEach(src => {
+                            const exists = (this.homeBench || []).some(p => (p.id && src.id && Number(p.id) === Number(src.id)) || (String(p.jersey_number) === String(src.jersey_number))) ||
+                                           (this.homeCourt || []).some(p => (p.id && src.id && Number(p.id) === Number(src.id)) || (String(p.jersey_number) === String(src.jersey_number)));
+                            if (!exists) this.homeBench.push(JSON.parse(JSON.stringify(src)));
+                        });
+                    }
+                    if (data.awayBench) {
+                        mergeList(this.awayBench, data.awayBench);
+                        data.awayBench.forEach(src => {
+                            const exists = (this.awayBench || []).some(p => (p.id && src.id && Number(p.id) === Number(src.id)) || (String(p.jersey_number) === String(src.jersey_number))) ||
+                                           (this.awayCourt || []).some(p => (p.id && src.id && Number(p.id) === Number(src.id)) || (String(p.jersey_number) === String(src.jersey_number)));
+                            if (!exists) this.awayBench.push(JSON.parse(JSON.stringify(src)));
+                        });
+                    }
+                } else {
+                    if (data.homeCourt) this.homeCourt = JSON.parse(JSON.stringify(data.homeCourt));
+                    if (data.awayCourt) this.awayCourt = JSON.parse(JSON.stringify(data.awayCourt));
+                    if (data.homeBench) this.homeBench = JSON.parse(JSON.stringify(data.homeBench));
+                    if (data.awayBench) this.awayBench = JSON.parse(JSON.stringify(data.awayBench));
+                }
+                this.saveLocalState();
+            },
+
+            sendHeartbeat() {
+                if (this.$wire && typeof this.$wire.heartbeatDevice === 'function') {
+                    const domain = (this.isEditingRoster || this.showRosterModal) ? 'roster' : (this.statInput ? 'stat' : 'general');
+                    this.$wire.heartbeatDevice(this.deviceId, this.deviceLabel, domain).catch(() => {});
+                }
+            },
+
+            async resolveConflict(conflictId, resolution) {
+                if (this.$wire && typeof this.$wire.resolveConflict === 'function') {
+                    await this.$wire.resolveConflict(conflictId, resolution);
+                }
+                this.activeConflicts = (this.activeConflicts || []).filter(c => c.id !== conflictId);
+                if (this.activeConflicts.length === 0) {
+                    this.showConflictDrawer = false;
+                }
+            },
+
+            saveLocalState() {
+                try {
+                    const payload = {
+                        version: this.localRevision,
+                        savedAt: Date.now(),
+                        snapshot: this.getAuthoritativeSnapshot(),
+                        homeCourt: this.homeCourt,
+                        awayCourt: this.awayCourt,
+                        homeBench: this.homeBench,
+                        awayBench: this.awayBench,
+                        recentEvents: (this.recentEvents || []).slice(0, 50),
+                    };
+                    localStorage.setItem(`prokeeper_state_${this.gameId}`, JSON.stringify(payload));
+                } catch (e) {}
+            },
+
+            loadLocalState() {
+                try {
+                    const saved = localStorage.getItem(`prokeeper_state_${this.gameId}`);
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        if (parsed && parsed.snapshot && (Date.now() - parsed.savedAt < 86400000)) { // within 24h
+                            const s = parsed.snapshot;
+                            if (typeof s.homeScore !== 'undefined') this.homeScore = s.homeScore;
+                            if (typeof s.awayScore !== 'undefined') this.awayScore = s.awayScore;
+                            if (Array.isArray(s.homePeriodScores) && s.homePeriodScores.length > 0) this.homePeriodScores = [...s.homePeriodScores];
+                            if (Array.isArray(s.awayPeriodScores) && s.awayPeriodScores.length > 0) this.awayPeriodScores = [...s.awayPeriodScores];
+                            if (typeof s.currentPeriod !== 'undefined') this.currentPeriod = s.currentPeriod;
+                            if (s.possession) this.possession = s.possession;
+                            if (s.server) this.server = s.server;
+                            if (typeof s.homeFouls !== 'undefined') this.homeFouls = s.homeFouls;
+                            if (typeof s.awayFouls !== 'undefined') this.awayFouls = s.awayFouls;
+                            if (typeof s.homeTimeouts !== 'undefined') this.homeTimeouts = s.homeTimeouts;
+                            if (typeof s.awayTimeouts !== 'undefined') this.awayTimeouts = s.awayTimeouts;
+                            if (typeof s.homeFullTimeouts !== 'undefined') this.homeFullTimeouts = s.homeFullTimeouts;
+                            if (typeof s.home30sTimeouts !== 'undefined') this.home30sTimeouts = s.home30sTimeouts;
+                            if (typeof s.awayFullTimeouts !== 'undefined') this.awayFullTimeouts = s.awayFullTimeouts;
+                            if (typeof s.away30sTimeouts !== 'undefined') this.away30sTimeouts = s.away30sTimeouts;
+                            if (typeof s.homeRotation !== 'undefined') this.homeRotation = s.homeRotation;
+                            if (typeof s.awayRotation !== 'undefined') this.awayRotation = s.awayRotation;
+                            if (parsed.homeCourt && Array.isArray(parsed.homeCourt) && parsed.homeCourt.length > 0) this.homeCourt = parsed.homeCourt;
+                            if (parsed.awayCourt && Array.isArray(parsed.awayCourt) && parsed.awayCourt.length > 0) this.awayCourt = parsed.awayCourt;
+                            if (parsed.homeBench && Array.isArray(parsed.homeBench)) this.homeBench = parsed.homeBench;
+                            if (parsed.awayBench && Array.isArray(parsed.awayBench)) this.awayBench = parsed.awayBench;
+                            if (parsed.recentEvents && Array.isArray(parsed.recentEvents) && parsed.recentEvents.length > 0) this.recentEvents = parsed.recentEvents;
+                            this.localRevision = parsed.version || 0;
+                        }
+                    }
+                } catch (e) {}
+            },
+
             init() {
                 window._activeOperator = this;
                 this.updateCssVariables();
+                this.loadLocalState();
                 this.loadQueue();
 
                 this._colorsListener = (event) => {
@@ -656,17 +821,45 @@ window.ProKeeperEngine = {
                 this._lineupsListener = (event) => {
                     const data = event.detail?.[0] || event.detail;
                     if (data) {
-                        if (data.homeCourt) this.homeCourt = JSON.parse(JSON.stringify(data.homeCourt));
-                        if (data.awayCourt) this.awayCourt = JSON.parse(JSON.stringify(data.awayCourt));
-                        if (data.homeBench) this.homeBench = JSON.parse(JSON.stringify(data.homeBench));
-                        if (data.awayBench) this.awayBench = JSON.parse(JSON.stringify(data.awayBench));
+                        this.hotPatchLineups(data);
                     }
                 };
                 window.addEventListener('lineups-updated', this._lineupsListener);
 
+                this._presenceListener = (event) => {
+                    const data = event.detail?.[0] || event.detail;
+                    if (data) {
+                        if (typeof data.activeDeviceCount !== 'undefined') this.activeDeviceCount = data.activeDeviceCount;
+                        if (data.devices) this.activeDevices = data.devices;
+                        if (data.conflicts) this.activeConflicts = data.conflicts;
+                    }
+                };
+                window.addEventListener('presence-updated', this._presenceListener);
+
+                this._conflictsListener = (event) => {
+                    const data = event.detail?.[0] || event.detail;
+                    if (data && data.conflicts) {
+                        this.activeConflicts = data.conflicts;
+                    }
+                };
+                window.addEventListener('conflicts-updated', this._conflictsListener);
+
                 this._gameStateListener = (event) => {
                     const data = event.detail?.[0] || event.detail;
                     if (data) {
+                        if (data.conflicts) this.activeConflicts = data.conflicts;
+                        if (typeof data.activeDeviceCount !== 'undefined') this.activeDeviceCount = data.activeDeviceCount;
+
+                        // CLIENT IS GOD: If client has pending sync mutations or recent user actions,
+                        // NEVER allow server roundtrips or delayed responses to overwrite local client scores.
+                        if (this.isQueuePending()) {
+                            // Still hot-patch lineups/metadata if provided
+                            if (data.homeCourt || data.awayCourt || data.homeBench || data.awayBench) {
+                                this.hotPatchLineups(data);
+                            }
+                            return;
+                        }
+
                         if (typeof data.homeScore !== 'undefined') this.homeScore = Number(data.homeScore);
                         if (typeof data.awayScore !== 'undefined') this.awayScore = Number(data.awayScore);
                         if (data.homePeriodScores) this.homePeriodScores = JSON.parse(JSON.stringify(data.homePeriodScores));
@@ -683,11 +876,13 @@ window.ProKeeperEngine = {
                         if (typeof data.home30sTimeouts !== 'undefined') this.home30sTimeouts = Number(data.home30sTimeouts);
                         if (typeof data.awayFullTimeouts !== 'undefined') this.awayFullTimeouts = Number(data.awayFullTimeouts);
                         if (typeof data.away30sTimeouts !== 'undefined') this.away30sTimeouts = Number(data.away30sTimeouts);
+                        if (typeof data.homeRotation !== 'undefined') this.homeRotation = Number(data.homeRotation);
+                        if (typeof data.awayRotation !== 'undefined') this.awayRotation = Number(data.awayRotation);
                         if (data.recentEvents) this.recentEvents = JSON.parse(JSON.stringify(data.recentEvents));
-                        if (data.homeCourt) this.homeCourt = JSON.parse(JSON.stringify(data.homeCourt));
-                        if (data.awayCourt) this.awayCourt = JSON.parse(JSON.stringify(data.awayCourt));
-                        if (data.homeBench) this.homeBench = JSON.parse(JSON.stringify(data.homeBench));
-                        if (data.awayBench) this.awayBench = JSON.parse(JSON.stringify(data.awayBench));
+                        if (data.homeCourt || data.awayCourt || data.homeBench || data.awayBench) {
+                            this.hotPatchLineups(data);
+                        }
+                        this.saveLocalState();
                     }
                 };
                 window.addEventListener('game-state-updated', this._gameStateListener);
@@ -697,7 +892,13 @@ window.ProKeeperEngine = {
                     if (this.syncQueue.length > 0 && !this.isSyncing) {
                         this.flushQueue();
                     }
-                }, 3000);
+                }, 2000);
+
+                this.sendHeartbeat();
+                if (window._operatorHeartbeatInterval) clearInterval(window._operatorHeartbeatInterval);
+                window._operatorHeartbeatInterval = setInterval(() => {
+                    this.sendHeartbeat();
+                }, 5000);
             },
 
             destroy() {
@@ -710,11 +911,20 @@ window.ProKeeperEngine = {
                 if (this._lineupsListener) {
                     window.removeEventListener('lineups-updated', this._lineupsListener);
                 }
+                if (this._presenceListener) {
+                    window.removeEventListener('presence-updated', this._presenceListener);
+                }
+                if (this._conflictsListener) {
+                    window.removeEventListener('conflicts-updated', this._conflictsListener);
+                }
                 if (this._gameStateListener) {
                     window.removeEventListener('game-state-updated', this._gameStateListener);
                 }
                 if (window._operatorSyncInterval) {
                     clearInterval(window._operatorSyncInterval);
+                }
+                if (window._operatorHeartbeatInterval) {
+                    clearInterval(window._operatorHeartbeatInterval);
                 }
             },
 
@@ -1450,7 +1660,7 @@ window.ProKeeperEngine = {
                 this.selectedPlayer = null;
 
                 // Queue mutation for non-blocking asynchronous sync
-                this.enqueueSync('recordQuickStat', [side, jersey, actionCode]);
+                this.enqueueSync('recordQuickStat', [side, jersey, actionCode], 'stats');
             },
 
             // 0ms Direct Score Adjustment (+1, +2, +3, -1)
@@ -1490,7 +1700,7 @@ window.ProKeeperEngine = {
                 this.feedbackMessage = `${side.toUpperCase()} Score ${ptsText}`;
                 this.feedbackType = 'info';
 
-                this.enqueueSync('adjustScore', [side, delta]);
+                this.enqueueSync('adjustScore', [side, delta], 'score');
             },
 
             updateCurrentPeriodScore(side, delta) {
@@ -1570,7 +1780,7 @@ window.ProKeeperEngine = {
                 this.subOutJersey = '';
                 this.subInJersey = '';
 
-                this.enqueueSync('setAndExecuteSub', [side, outJ, inJ]);
+                this.enqueueSync('setAndExecuteSub', [side, outJ, inJ], 'lineup');
             },
 
             // 0ms Volleyball Rotation (P1-P6 order shift)
@@ -1596,7 +1806,7 @@ window.ProKeeperEngine = {
                 this.feedbackMessage = `Rotated ${side.toUpperCase()} to P${side === 'home' ? this.homeRotation : this.awayRotation}`;
                 this.feedbackType = 'info';
 
-                this.enqueueSync('rotateTeam', [side]);
+                this.enqueueSync('rotateTeam', [side], 'rotation');
             },
 
             // 0ms Toggle Possession Arrow
@@ -1607,7 +1817,7 @@ window.ProKeeperEngine = {
                 this.possession = (this.possession === 'home') ? 'away' : 'home';
                 this.playSound('tap');
                 this.feedbackMessage = `Possession: ${this.possession.toUpperCase()}`;
-                this.enqueueSync('togglePossession', []);
+                this.enqueueSync('togglePossession', [], 'possession');
             },
 
             // 0ms Toggle Volleyball Server
@@ -1618,7 +1828,7 @@ window.ProKeeperEngine = {
                 this.server = (this.server === 'home') ? 'away' : 'home';
                 this.playSound('tap');
                 this.feedbackMessage = `Server: ${this.server.toUpperCase()}`;
-                this.enqueueSync('toggleServer', []);
+                this.enqueueSync('toggleServer', [], 'rotation');
             },
 
             // 0ms Timeout Charge (Full vs 30s tracking)
@@ -1725,7 +1935,7 @@ window.ProKeeperEngine = {
                 this.feedbackMessage = this.sport === 'basketball'
                     ? `${typeLabel} Timeout charged to ${side.toUpperCase()} (${remFull} Full, ${rem30s} 30s remaining)`
                     : `Timeout charged to ${side.toUpperCase()} (${remaining} remaining)`;
-                this.enqueueSync('callTimeout', [side, type]);
+                this.enqueueSync('callTimeout', [side, type], 'timeouts');
             },
 
             // 0ms Advance Period / Set
@@ -1771,7 +1981,7 @@ window.ProKeeperEngine = {
 
                 this.playSound('tap');
                 this.feedbackMessage = `Advanced to ${this.periodName}`;
-                this.enqueueSync(this.sport === 'volleyball' ? 'nextSet' : 'nextPeriod', []);
+                this.enqueueSync(this.sport === 'volleyball' ? 'nextSet' : 'nextPeriod', [], 'period');
             },
 
 
@@ -1808,7 +2018,7 @@ window.ProKeeperEngine = {
                 this.feedbackMessage = `Switched to ${this.periodName}`;
                 this.feedbackType = 'info';
 
-                this.enqueueSync(this.sport === 'volleyball' ? 'setSet' : 'setPeriod', [target]);
+                this.enqueueSync(this.sport === 'volleyball' ? 'setSet' : 'setPeriod', [target], 'period');
             },
 
             // 0ms Local Undo Execution
@@ -1839,7 +2049,7 @@ window.ProKeeperEngine = {
                 this.playSound('tap');
 
                 // Queue undo on server
-                this.enqueueSync('undo', []);
+                this.enqueueSync('undo', [], 'stats');
             },
 
             pushUndoSnapshot(type, meta) {
@@ -1901,11 +2111,16 @@ window.ProKeeperEngine = {
             },
 
             // Asynchronous Background Sync Pipeline (Zero UI blocking)
-            enqueueSync(method, args) {
+            enqueueSync(method, args, domain = 'general') {
+                this.lastLocalActionTime = Date.now();
+                this.localRevision++;
+                this.saveLocalState();
+
                 this.syncQueue.push({
                     id: 'mut_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
                     method,
                     args,
+                    domain,
                     createdAt: Date.now(),
                 });
                 this.saveQueue();
@@ -1934,9 +2149,11 @@ window.ProKeeperEngine = {
                 if (this.isSyncing || this.syncQueue.length === 0) return;
                 this.isSyncing = true;
                 this.syncStatus = 'syncing';
+                let lastDomain = 'general';
 
                 while (this.syncQueue.length > 0) {
                     const item = this.syncQueue[0];
+                    if (item.domain) lastDomain = item.domain;
                     try {
                         if (this.$wire) {
                             if (item.method === 'setAndExecuteSub') {
@@ -1961,8 +2178,23 @@ window.ProKeeperEngine = {
                     }
                 }
 
+                // CLIENT IS GOD: Once mutations are flushed, force client's authoritative state snapshot onto server with domain scoping
+                try {
+                    if (this.$wire && typeof this.$wire.forceClientState === 'function') {
+                        const meta = {
+                            domain: lastDomain,
+                            deviceId: this.deviceId,
+                            timestamp: Date.now()
+                        };
+                        await this.$wire.forceClientState(this.getAuthoritativeSnapshot(), meta);
+                    }
+                } catch (err) {
+                    console.warn('Authoritative state sync deferred:', err);
+                }
+
                 this.syncStatus = 'synced';
                 this.isSyncing = false;
+                this.saveLocalState();
             }
         };
     }
