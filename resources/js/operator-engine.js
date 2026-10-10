@@ -215,7 +215,14 @@ window.ProKeeperEngine = {
                 let currentAwayFouls = 0;
 
                 for (const ev of chronological) {
-                    const pts = Number(ev.points) || 0;
+                    let pts = (typeof ev.points === 'number' && !isNaN(ev.points)) ? ev.points : null;
+                    if (pts === null) {
+                        const def = this.sport === 'basketball'
+                            ? ProKeeperEngine.basketballActions[ev.action_code]
+                            : ProKeeperEngine.volleyballActions[ev.action_code];
+                        pts = Number(def?.points || 0);
+                        ev.points = pts;
+                    }
                     const p = Number(ev.period) || 1;
                     const pIdx = Math.max(0, p - 1);
                     const side = ev.team_side || 'home';
@@ -1637,6 +1644,7 @@ window.ProKeeperEngine = {
                 }
 
                 // Add instant play entry to local recent events list
+                const pts = actionDef.points || 0;
                 const eventDesc = `${side.toUpperCase()} #${jersey} ${name}: ${actionDef.name}`;
                 this.recentEvents.unshift({
                     id: 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
@@ -1647,6 +1655,7 @@ window.ProKeeperEngine = {
                     player_name: name,
                     action_code: actionCode,
                     action_name: actionDef.name,
+                    points: pts,
                     description: eventDesc,
                     home_score_after: this.homeScore,
                     away_score_after: this.awayScore,
@@ -2031,20 +2040,24 @@ window.ProKeeperEngine = {
                     return;
                 }
 
-                const snapshot = this.undoStack.pop();
-                if (snapshot) {
-                    this.restoreSnapshot(snapshot);
-                }
-
-                // Remove top play from recent events
-                if (this.recentEvents.length > 0) {
+                if (this.undoStack.length > 0) {
+                    const snapshot = this.undoStack.pop();
+                    if (snapshot) {
+                        this.restoreSnapshot(snapshot);
+                    }
+                    if (this.recentEvents.length > 0) {
+                        const undone = this.recentEvents.shift();
+                        this.feedbackMessage = `Reverted: ${undone.description || 'Last play'}`;
+                    } else {
+                        this.feedbackMessage = 'Last action reverted';
+                    }
+                } else if (this.recentEvents.length > 0) {
                     const undone = this.recentEvents.shift();
                     this.recalculateLocalEventsAndScores();
                     this.feedbackMessage = `Reverted: ${undone.description || 'Last play'}`;
-                } else {
-                    this.feedbackMessage = 'Last action reverted';
                 }
 
+                this.saveLocalState();
                 this.feedbackType = 'info';
                 this.playSound('tap');
 

@@ -261,4 +261,59 @@ class MultiDeviceSyncTest extends TestCase
         $this->assertEquals(16, $game->away_score);
         $this->assertEquals(1, $game->home_rotation);
     }
+
+    public function test_undo_reverts_exact_previous_score_accurately(): void
+    {
+        $org = Organization::create(['name' => 'Athletics Org', 'slug' => 'athletics-org']);
+        $user = User::factory()->create(['organization_id' => $org->id]);
+        $homeTeam = Team::create(['organization_id' => $org->id, 'name' => 'Lions', 'sport' => 'basketball']);
+        $awayTeam = Team::create(['organization_id' => $org->id, 'name' => 'Tigers', 'sport' => 'basketball']);
+
+        $game = Game::create([
+            'organization_id' => $org->id,
+            'created_by_user_id' => $user->id,
+            'access_code' => 'BSK106',
+            'home_team_id' => $homeTeam->id,
+            'home_team_name' => 'Lions',
+            'away_team_id' => $awayTeam->id,
+            'away_team_name' => 'Tigers',
+            'sport' => 'basketball',
+            'status' => 'in_progress',
+            'home_score' => 0,
+            'away_score' => 0,
+            'current_period' => 1,
+        ]);
+
+        GameLineup::create([
+            'game_id' => $game->id,
+            'team_side' => 'home',
+            'jersey_number' => '10',
+            'player_name' => 'Shooter',
+            'is_on_court' => true,
+        ]);
+
+        $this->actingAs($user);
+
+        // Record a 2pt make -> score becomes 2
+        $operator = Livewire::test(BasketballOperator::class, ['gameId' => $game->id])
+            ->call('recordQuickStat', 'home', '10', 'X');
+
+        $game->refresh();
+        $this->assertEquals(2, $game->home_score);
+
+        // Record another 2pt make -> score becomes 4
+        $operator->call('recordQuickStat', 'home', '10', 'X');
+        $game->refresh();
+        $this->assertEquals(4, $game->home_score);
+
+        // Record another 2pt make -> score becomes 6
+        $operator->call('recordQuickStat', 'home', '10', 'X');
+        $game->refresh();
+        $this->assertEquals(6, $game->home_score);
+
+        // Undo the last 2pt make -> score MUST revert to 4, NOT 0!
+        $operator->call('undo');
+        $game->refresh();
+        $this->assertEquals(4, $game->home_score);
+    }
 }
