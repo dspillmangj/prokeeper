@@ -447,7 +447,7 @@ class VolleyballStatService
                 }
             }
 
-            if ($event->action_code === 'TIMEOUT') {
+            if ($event->action_code === 'TIMEOUT' && (int) $event->period === (int) $game->current_period) {
                 if ($event->team_side === 'home') {
                     $homeTimeoutsUsed++;
                 }
@@ -482,6 +482,11 @@ class VolleyballStatService
         $game->away_timeouts_remaining = max(0, $maxTimeouts - $awayTimeoutsUsed);
 
         $game->save();
+    }
+
+    public function recalculateGameTotals(Game $game): void
+    {
+        $this->rebuildGameFromEvents($game);
     }
 
     /**

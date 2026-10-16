@@ -159,7 +159,11 @@ class Game extends Model
             return (int) ($this->rules['timeouts_per_set'] ?? 2);
         }
 
-        return $this->full_timeouts_allowed + $this->thirty_second_timeouts_allowed;
+        $base = $this->full_timeouts_allowed + $this->thirty_second_timeouts_allowed;
+        $regPeriods = ($this->period_format === 'halves') ? 2 : 4;
+        $otPeriods = max(0, (int) $this->current_period - $regPeriods);
+
+        return $base + ($otPeriods * $this->ot_timeouts_allowed);
     }
 
     public function getPeriodFormatAttribute(): string
@@ -222,7 +226,10 @@ class Game extends Model
     public function calculateTimeoutsBreakdown(string $teamSide): array
     {
         $allowedFull = $this->full_timeouts_allowed;
-        $allowed30s = $this->thirty_second_timeouts_allowed;
+        $regPeriods = ($this->period_format === 'halves') ? 2 : 4;
+        $otPeriods = max(0, (int) $this->current_period - $regPeriods);
+        $otTimeouts = $otPeriods * $this->ot_timeouts_allowed;
+        $allowed30s = $this->thirty_second_timeouts_allowed + $otTimeouts;
 
         $timeoutEvents = $this->events()
             ->where('team_side', $teamSide)
@@ -245,11 +252,13 @@ class Game extends Model
         // If extra timeouts were used beyond allowed due to legacy data
         $remFull = max(0, $allowedFull - $usedFull);
         $rem30s = max(0, $allowed30s - $used30s);
-        $remTotal = ($teamSide === 'home') ? $this->home_timeouts_remaining : $this->away_timeouts_remaining;
+        $remTotal = ($teamSide === 'home') ? (int) $this->home_timeouts_remaining : (int) $this->away_timeouts_remaining;
 
         return [
             'allowed_full' => $allowedFull,
             'allowed_30s' => $allowed30s,
+            'allowed_ot' => $this->ot_timeouts_allowed,
+            'ot_periods' => $otPeriods,
             'used_full' => $usedFull,
             'used_30s' => $used30s,
             'rem_full' => $remFull,

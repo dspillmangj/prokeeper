@@ -274,3 +274,81 @@ test('operator livewire can call 30s timeout specifically', function () {
     expect($lastEvent->action_code)->toBe('TIMEOUT');
     expect($lastEvent->metadata['timeout_type'])->toBe('30s');
 });
+
+test('awards additional timeout in overtime according to ncaa rules', function () {
+    $game = Game::create([
+        'access_code' => 'NCAA01',
+        'slug' => 'ncaa-ot-timeout-test',
+        'organization_id' => $this->org->id,
+        'created_by_user_id' => $this->user->id,
+        'sport' => 'basketball',
+        'current_period' => 4,
+        'home_team_name' => 'Home',
+        'away_team_name' => 'Away',
+        'home_timeouts_remaining' => 1,
+        'away_timeouts_remaining' => 1,
+        'settings' => [
+            'rules' => [
+                'period_format' => 'quarters',
+                'timeouts_full' => 3,
+                'timeouts_30s' => 2,
+                'timeouts_ot' => 1,
+            ],
+        ],
+    ]);
+
+    expect($game->total_timeouts_allowed)->toBe(5); // 3 full + 2 30s in regulation
+
+    // Advance to OT1 (Period 5) via Operator
+    Livewire::test(BasketballOperator::class, ['gameId' => $game->id])
+        ->call('nextPeriod')
+        ->assertHasNoErrors();
+
+    $game->refresh();
+    expect($game->current_period)->toBe(5);
+    expect($game->total_timeouts_allowed)->toBe(6); // 5 + 1 OT timeout
+    $breakdown = $game->calculateTimeoutsBreakdown('home');
+    expect($breakdown['allowed_30s'])->toBe(3); // 2 regulation + 1 OT
+    expect($breakdown['allowed_full'])->toBe(3);
+    expect($game->home_timeouts_remaining)->toBe(6); // recalculateGameTotals gives 6 total allowed - 0 used in event log
+});
+
+test('volleyball timeouts reset to set allowance and isolation per set works', function () {
+    $vGame = Game::create([
+        'access_code' => 'VB001',
+        'slug' => 'vb-timeout-test',
+        'organization_id' => $this->org->id,
+        'created_by_user_id' => $this->user->id,
+        'sport' => 'volleyball',
+        'current_period' => 1,
+        'home_team_name' => 'Volley Eagles',
+        'away_team_name' => 'Spikers',
+        'home_timeouts_remaining' => 2,
+        'away_timeouts_remaining' => 2,
+        'settings' => [
+            'rules' => [
+                'timeouts_per_set' => 2,
+            ],
+        ],
+    ]);
+
+    $vbService = new \App\Services\VolleyballStatService;
+
+    // Use 2 timeouts in Set 1
+    $vbService->callTimeout($vGame, 'home');
+    $vbService->callTimeout($vGame, 'home');
+    $vGame->refresh();
+    expect($vGame->home_timeouts_remaining)->toBe(0);
+
+    // Advance to Set 2
+    $vbService->advanceSet($vGame);
+    $vGame->refresh();
+    expect($vGame->current_period)->toBe(2);
+    expect($vGame->home_timeouts_remaining)->toBe(2); // Fresh 2 timeouts for Set 2
+
+    // Run recalculateGameTotals - timeouts should remain 2 for Set 2 despite 2 used in Set 1
+    $vbService->recalculateGameTotals($vGame);
+    $vGame->refresh();
+    expect($vGame->home_timeouts_remaining)->toBe(2);
+});
+

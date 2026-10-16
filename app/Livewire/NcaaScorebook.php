@@ -303,7 +303,7 @@ class NcaaScorebook extends Component
                 $ot_pts = $pEvents->where('period', '>=', 5)->sum('points');
             }
 
-            $fouls = $pEvents->whereIn('action_code', ['F', 'R', 'T'])->values();
+            $fouls = $pEvents->whereIn('action_code', ['F', 'R', 'T', 'G', 'FL', 'FLAG'])->values();
             $pfCount = $fouls->where('action_code', '!=', 'T')->count();
             $tfCount = $fouls->where('action_code', 'T')->count();
 

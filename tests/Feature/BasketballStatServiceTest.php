@@ -170,3 +170,112 @@ test('creates manual event and edits existing event with full mathematical rebui
     expect($stat23->fgm)->toBe(1);
     expect($stat23->fga)->toBe(1);
 });
+
+test('records 2pt and 3pt shots with assists and undoes them accurately', function () {
+    GameLineup::create([
+        'game_id' => $this->game->id,
+        'team_side' => 'home',
+        'jersey_number' => '10',
+        'player_name' => 'Steve Kerr',
+        'is_on_court' => true,
+    ]);
+
+    // Record 2pt make by #23 with assist by #10
+    $res = $this->service->recordStat($this->game, 'home', '23', 'X', null, 400, '10');
+    expect($res['success'])->toBeTrue();
+    expect($res['message'])->toContain('Ast: #10');
+
+    $this->game->refresh();
+    expect($this->game->home_score)->toBe(2);
+
+    $event = GameEvent::where('game_id', $this->game->id)->where('action_code', 'X')->first();
+    expect($event->assist_jersey_number)->toBe('10');
+    expect($event->description)->toContain('Ast: #10 Steve Kerr');
+
+    $stat23 = BasketballStat::where('game_id', $this->game->id)->where('jersey_number', '23')->first();
+    expect($stat23->points)->toBe(2);
+    expect($stat23->fgm)->toBe(1);
+
+    $stat10 = BasketballStat::where('game_id', $this->game->id)->where('jersey_number', '10')->first();
+    expect($stat10->ast)->toBe(1);
+
+    // Keyboard entry with assist: 23-M:10
+    $res2 = $this->service->processKeyboardInput($this->game, '23-M:10');
+    expect($res2['success'])->toBeTrue();
+
+    $this->game->refresh();
+    expect($this->game->home_score)->toBe(5);
+
+    $stat10->refresh();
+    expect($stat10->ast)->toBe(2);
+
+    // Undo the 3pt make with assist
+    $undone = $this->service->undoLastEvent($this->game);
+    expect($undone)->not->toBeNull();
+
+    $this->game->refresh();
+    expect($this->game->home_score)->toBe(2);
+
+    $stat10->refresh();
+    expect($stat10->ast)->toBe(1);
+});
+
+test('audits fouls system: personal, offensive, and flagrant count as team fouls while technical does not', function () {
+    // 1. Personal foul on jersey 23 ('F')
+    $res1 = $this->service->processKeyboardInput($this->game, '23-F');
+    expect($res1['success'])->toBeTrue();
+
+    $this->game->refresh();
+    expect($this->game->home_fouls_current_period)->toBe(1);
+
+    $stat23 = BasketballStat::where('game_id', $this->game->id)->where('jersey_number', '23')->first();
+    expect($stat23->fouls_pers)->toBe(1);
+    expect($stat23->total_fouls)->toBe(1);
+
+    // 2. Offensive foul on jersey 23 ('R')
+    $res2 = $this->service->processKeyboardInput($this->game, '23-R');
+    expect($res2['success'])->toBeTrue();
+
+    $this->game->refresh();
+    expect($this->game->home_fouls_current_period)->toBe(2);
+
+    $stat23->refresh();
+    expect($stat23->fouls_off)->toBe(1);
+    expect($stat23->total_fouls)->toBe(2);
+
+    // 3. Technical foul on jersey 23 ('T') -> counts towards player, NOT towards team fouls
+    $res3 = $this->service->processKeyboardInput($this->game, '23-T');
+    expect($res3['success'])->toBeTrue();
+
+    $this->game->refresh();
+    expect($this->game->home_fouls_current_period)->toBe(2); // Still 2!
+
+    $stat23->refresh();
+    expect($stat23->fouls_tech)->toBe(1);
+    expect($stat23->total_fouls)->toBe(3);
+
+    // 4. Flagrant foul on jersey 23 ('G') -> counts towards player AND team fouls
+    $res4 = $this->service->processKeyboardInput($this->game, '23-G');
+    expect($res4['success'])->toBeTrue();
+
+    $this->game->refresh();
+    expect($this->game->home_fouls_current_period)->toBe(3); // Increments to 3!
+
+    $stat23->refresh();
+    expect($stat23->fouls_flagrant)->toBe(1);
+    expect($stat23->total_fouls)->toBe(4);
+
+    // Rebuild game from events should maintain identical counts
+    $this->service->rebuildGameFromEvents($this->game);
+
+    $this->game->refresh();
+    expect($this->game->home_fouls_current_period)->toBe(3);
+
+    $stat23->refresh();
+    expect($stat23->fouls_pers)->toBe(1);
+    expect($stat23->fouls_off)->toBe(1);
+    expect($stat23->fouls_tech)->toBe(1);
+    expect($stat23->fouls_flagrant)->toBe(1);
+    expect($stat23->total_fouls)->toBe(4);
+});
+

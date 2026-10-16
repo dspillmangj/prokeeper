@@ -37,6 +37,7 @@ class BasketballStat extends Model
         'fouls_pers',
         'fouls_off',
         'fouls_tech',
+        'fouls_flagrant',
         'fouls_forced',
         'total_fouls',
         'seconds_played',

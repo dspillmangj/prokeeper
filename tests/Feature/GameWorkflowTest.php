@@ -59,3 +59,15 @@ test('dashboard requires authentication', function () {
     $authResponse->assertStatus(200);
     $authResponse->assertSee('Athletic Command Center');
 });
+
+test('operator view renders redesigned bench slot, action pad rebound boxes, and substitution dock', function () {
+    $response = $this->actingAs($this->user)->get(route('games.operator', $this->game->uuid));
+    $response->assertStatus(200);
+    $response->assertSee('+ BENCH');
+    $response->assertSee('Charge Timeout?');
+    $response->assertSee('DEF REB');
+    $response->assertSee('OFF REB');
+    $response->assertSee('SUBSTITUTE PLAYERS');
+    $response->assertSee('SEND IN');
+});
+

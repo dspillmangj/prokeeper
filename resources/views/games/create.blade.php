@@ -429,9 +429,43 @@ function gameSetup() {
         },
         basketballPresets: [
             {
+                id: 'ncaa_men',
+                name: "NCAA Men's College (Halves)",
+                summary: '2x20m Halves • 4 Full + 2 30s • 1 OT • 30s Shot • 7/10 Bonus',
+                rules: {
+                    timeouts_full: 4,
+                    timeouts_30s: 2,
+                    timeouts_ot: 1,
+                    period_format: 'halves',
+                    period_minutes: 20,
+                    ot_minutes: 5,
+                    shot_clock_seconds: 30,
+                    bonus_foul_threshold: 7,
+                    double_bonus_foul_threshold: 10,
+                    player_foul_limit: 5,
+                }
+            },
+            {
+                id: 'ncaa_women',
+                name: "NCAA Women's College (Quarters)",
+                summary: '4x10m Qtrs • 2 Full + 3 30s • 1 OT • 30s Shot • 5 Fouls 2-FT',
+                rules: {
+                    timeouts_full: 2,
+                    timeouts_30s: 3,
+                    timeouts_ot: 1,
+                    period_format: 'quarters',
+                    period_minutes: 10,
+                    ot_minutes: 5,
+                    shot_clock_seconds: 30,
+                    bonus_foul_threshold: 5,
+                    double_bonus_foul_threshold: 5,
+                    player_foul_limit: 5,
+                }
+            },
+            {
                 id: 'high_school',
-                name: 'High School Standard',
-                summary: '4x8m Qtrs • 3 Full + 2 30s • 5 Fouls 2-FT Bonus',
+                name: 'High School (NFHS) Standard',
+                summary: '4x8m Qtrs • 3 Full + 2 30s • 1 OT • 5 Fouls 2-FT Bonus',
                 rules: {
                     timeouts_full: 3,
                     timeouts_30s: 2,
@@ -447,7 +481,7 @@ function gameSetup() {
             },
             {
                 id: 'standard_halves',
-                name: 'Standard Halves',
+                name: 'Standard Halves (College Style)',
                 summary: '2x20m Halves • 4 Full + 2 30s • 7/10 Bonus • 30s Shot',
                 rules: {
                     timeouts_full: 4,

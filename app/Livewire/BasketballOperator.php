@@ -841,11 +841,11 @@ class BasketballOperator extends Component
         }
     }
 
-    public function recordQuickStat(string $teamSide, string $jersey, string $actionCode)
+    public function recordQuickStat(string $teamSide, string $jersey, string $actionCode, ?string $assistJersey = null)
     {
         try {
             $game = $this->game;
-            $result = $this->statService->recordStat($game, $teamSide, $jersey, $actionCode);
+            $result = $this->statService->recordStat($game, $teamSide, $jersey, $actionCode, null, null, $assistJersey);
             $this->feedbackMessage = $result['message'];
             $this->feedbackType = 'success';
             $this->dispatchGameStateUpdate();
@@ -902,6 +902,8 @@ class BasketballOperator extends Component
 
         $this->feedbackMessage = "Advanced to {$game->period_name}.";
         $this->feedbackType = 'info';
+        $this->statService->recalculateGameTotals($game);
+        $this->game->refresh();
         $this->dispatchGameStateUpdate();
     }
 
@@ -919,7 +921,10 @@ class BasketballOperator extends Component
         $game->away_fouls_current_period = 0;
         $game->save();
 
-        $this->feedbackMessage = "Set period to {$game->period_name}.";
+        $this->statService->recalculateGameTotals($game);
+        $this->game->refresh();
+
+        $this->feedbackMessage = "Set period to {$this->game->period_name}.";
         $this->feedbackType = 'info';
         $this->dispatchGameStateUpdate();
     }
@@ -1010,6 +1015,9 @@ class BasketballOperator extends Component
         $homeBench = GameLineup::where('game_id', $game->id)->where('team_side', 'home')->where('is_on_court', false)->get();
         $awayBench = GameLineup::where('game_id', $game->id)->where('team_side', 'away')->where('is_on_court', false)->get();
 
+        $homeStats = BasketballStat::where('game_id', $game->id)->where('team_side', 'home')->get();
+        $awayStats = BasketballStat::where('game_id', $game->id)->where('team_side', 'away')->get();
+
         $this->dispatch('game-state-updated', [
             'homeScore' => (int) $game->home_score,
             'awayScore' => (int) $game->away_score,
@@ -1031,6 +1039,8 @@ class BasketballOperator extends Component
             'awayCourt' => $awayCourt,
             'homeBench' => $homeBench,
             'awayBench' => $awayBench,
+            'homeStats' => $homeStats,
+            'awayStats' => $awayStats,
         ]);
     }
 

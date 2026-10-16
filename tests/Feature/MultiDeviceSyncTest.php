@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Livewire\BasketballOperator;
 use App\Livewire\VolleyballOperator;
+use App\Models\BasketballStat;
 use App\Models\Game;
+use App\Models\GameEvent;
 use App\Models\GameLineup;
 use App\Models\Organization;
 use App\Models\Team;
@@ -315,5 +317,64 @@ class MultiDeviceSyncTest extends TestCase
         $operator->call('undo');
         $game->refresh();
         $this->assertEquals(4, $game->home_score);
+    }
+
+    public function test_record_quick_stat_with_assist_and_undo(): void
+    {
+        $user = User::factory()->create();
+        $org = Organization::create(['name' => 'Sync Org Assist', 'slug' => 'sync-org-assist']);
+        $home = Team::create(['organization_id' => $org->id, 'name' => 'Home Team', 'sport' => 'basketball']);
+        $away = Team::create(['organization_id' => $org->id, 'name' => 'Away Team', 'sport' => 'basketball']);
+
+        $game = Game::create([
+            'access_code' => 'ASTSYNC',
+            'slug' => 'home-vs-away-astsync',
+            'organization_id' => $org->id,
+            'sport' => 'basketball',
+            'home_team_id' => $home->id,
+            'home_team_name' => 'Home Team',
+            'away_team_id' => $away->id,
+            'away_team_name' => 'Away Team',
+        ]);
+
+        GameLineup::create([
+            'game_id' => $game->id,
+            'team_side' => 'home',
+            'jersey_number' => '23',
+            'player_name' => 'Jordan',
+            'is_on_court' => true,
+        ]);
+
+        GameLineup::create([
+            'game_id' => $game->id,
+            'team_side' => 'home',
+            'jersey_number' => '10',
+            'player_name' => 'Kerr',
+            'is_on_court' => true,
+        ]);
+
+        $this->actingAs($user);
+
+        $operator = Livewire::test(BasketballOperator::class, ['gameId' => $game->id])
+            ->call('recordQuickStat', 'home', '23', 'M', '10');
+
+        $game->refresh();
+        $this->assertEquals(3, $game->home_score);
+
+        $event = GameEvent::where('game_id', $game->id)->where('action_code', 'M')->first();
+        $this->assertNotNull($event);
+        $this->assertEquals('10', $event->assist_jersey_number);
+        $this->assertStringContainsString('Ast: #10 Kerr', $event->description);
+
+        $astStat = \App\Models\BasketballStat::where('game_id', $game->id)->where('jersey_number', '10')->first();
+        $this->assertEquals(1, $astStat->ast);
+
+        // Undo
+        $operator->call('undo');
+        $game->refresh();
+        $this->assertEquals(0, $game->home_score);
+
+        $astStat->refresh();
+        $this->assertEquals(0, $astStat->ast);
     }
 }

@@ -18,6 +18,7 @@
          awayRotation: {{ (int)$game->away_rotation }},
          homeTimeouts: {{ (int)$game->home_timeouts_remaining }},
          awayTimeouts: {{ (int)$game->away_timeouts_remaining }},
+         timeoutsPerSet: {{ (int)($game->rules['timeouts_per_set'] ?? 2) }},
          homeCourt: @js($homeCourt),
          awayCourt: @js($awayCourt),
          homeBench: @js($homeBench),
@@ -175,7 +176,7 @@
     <div class="flex-1 min-h-0 relative my-1 overflow-hidden">
         
         <!-- DEFAULT: 2-COLUMN ACTIVE PLAYERS GRID (When no player is selected) -->
-        <div x-show="!selectedPlayer" class="w-full h-full grid grid-cols-2 gap-2 overflow-hidden">
+        <div x-show="!selectedPlayer && !showLineupModal && !showExecuteSubModal" class="w-full h-full grid grid-cols-2 gap-2 overflow-hidden">
             <!-- HOME ACTIVE PLAYERS (6 LARGE BUTTONS) -->
             <div class="flex flex-col h-full bg-slate-900/90 border border-slate-800 rounded-2xl p-2 overflow-hidden shadow-inner transition-all"
                  :class="isFlipped ? 'order-2' : 'order-1'">
@@ -465,6 +466,408 @@
             </div>
         </template>
 
+        <!-- LINEUP & CHECK-IN MODAL (APPEARS INSIDE CENTER TIER WINDOW) -->
+        <template x-if="showLineupModal">
+            <div class="w-full h-full bg-slate-900 border-2 border-indigo-500/80 rounded-2xl p-2 sm:p-2.5 shadow-2xl flex flex-col justify-between overflow-hidden select-none relative animate-in fade-in duration-100"
+                 style="box-shadow: 0 8px 30px -4px rgba(99, 102, 241, 0.4);">
+                
+                <!-- Header (Shrink-0) -->
+                <div class="flex items-center justify-between pb-1.5 border-b border-slate-800 shrink-0">
+                    <div class="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+                        <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-indigo-400 shrink-0 shadow-inner">
+                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2">
+                                <h2 class="text-xs sm:text-sm font-black uppercase text-white tracking-wide truncate">Substitutions: Table Line-Up</h2>
+                                <span class="px-2 py-0.5 rounded-lg text-[10px] sm:text-xs font-mono font-black tracking-wide shrink-0"
+                                      :class="pendingSubCount() > 0 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 animate-pulse' : 'bg-slate-800 text-slate-400 border border-slate-700'"
+                                      x-text="pendingSubCount() + ' Lined Up'">
+                                </span>
+                            </div>
+                            <p class="text-[10px] sm:text-[11px] text-slate-400 truncate hidden sm:block">
+                                Tap bench players to line up. Press <strong class="text-emerald-400 font-black">SEND IN NOW (↵ Enter)</strong> when entering court.
+                            </p>
+                        </div>
+                    </div>
+
+                    <button @click="showLineupModal = false" 
+                            class="p-1 sm:p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-rose-900/80 border border-slate-700 hover:border-rose-500 transition shadow shrink-0" 
+                            title="Close (Esc)">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+
+                <!-- Dual Team Bench Grids Side-by-Side (Adaptive to Court Flip) -->
+                <div class="grid grid-cols-2 gap-2 sm:gap-3 flex-1 min-h-0 overflow-hidden my-1">
+                    
+                    <!-- HOME BENCH -->
+                    <div class="flex flex-col bg-slate-950/80 border-2 rounded-xl p-2 transition-all min-h-0 overflow-hidden"
+                         :class="isFlipped ? 'order-2' : 'order-1'"
+                         :style="{ borderColor: homeTeamColor + '60' }">
+                        <div class="flex items-center justify-between pb-1 border-b shrink-0" :style="{ borderColor: homeTeamColor + '30' }">
+                            <span class="text-xs sm:text-sm font-black uppercase truncate flex items-center gap-1.5" :style="{ color: homeTeamColor }">
+                                <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: homeTeamColor }"></span>
+                                <span>{{ $game->home_display_name }} (Bench)</span>
+                            </span>
+                            <span class="text-[10px] sm:text-xs font-mono font-bold px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-slate-300" x-text="homeBench.length + ' Avail'"></span>
+                        </div>
+
+                        <div class="flex-1 min-h-0 overflow-y-auto pr-1 mt-1">
+                            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-1.5 sm:gap-2">
+                                <template x-for="p in homeBench" :key="p.id || p.jersey_number">
+                                    <button @click="togglePendingSub('home', p)" 
+                                            type="button"
+                                            class="min-h-[75px] sm:min-h-[85px] w-full rounded-xl border-2 p-1.5 flex flex-col justify-between items-center text-center touch-active transition-all group select-none shadow-md relative overflow-hidden"
+                                            :class="isPlayerPending('home', p.jersey_number) 
+                                                ? 'text-white border-white ring-2 ring-emerald-400 shadow-xl scale-[1.02]' 
+                                                : 'bg-slate-900/90 text-slate-200 border-slate-800 hover:border-slate-600 hover:bg-slate-850'"
+                                            :style="isPlayerPending('home', p.jersey_number) ? { backgroundColor: homeTeamColor } : {}">
+                                        
+                                        <!-- Top Row: Position -->
+                                        <div class="w-full flex items-center justify-between text-[9px] font-mono leading-tight">
+                                            <span class="font-bold uppercase tracking-wider" :class="isPlayerPending('home', p.jersey_number) ? 'text-white/90' : 'text-slate-400'" x-text="p.position || 'BENCH'"></span>
+                                        </div>
+
+                                        <!-- Big Jersey Number -->
+                                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black leading-none tracking-tight my-0.5 group-hover:scale-105 transition-transform"
+                                             :class="isPlayerPending('home', p.jersey_number) ? 'text-amber-300 drop-shadow' : 'text-white'"
+                                             x-text="'#' + p.jersey_number"></div>
+
+                                        <!-- Player Name -->
+                                        <div class="w-full text-[11px] sm:text-xs font-black truncate leading-tight"
+                                             :class="isPlayerPending('home', p.jersey_number) ? 'text-white' : 'text-slate-200'"
+                                             x-text="p.player_name || ('#' + p.jersey_number)"></div>
+
+                                        <!-- Bottom Status Indicator -->
+                                        <div class="w-full pt-0.5 mt-0.5 border-t flex items-center justify-center text-[8px] sm:text-[9px] font-mono font-black uppercase tracking-wider"
+                                             :class="isPlayerPending('home', p.jersey_number) ? 'border-white/30 text-white' : 'border-slate-800 text-slate-400 group-hover:text-emerald-400'">
+                                            <span x-text="isPlayerPending('home', p.jersey_number) ? '✓ LINED UP (IN)' : '+ TAP TO ADD'"></span>
+                                        </div>
+                                    </button>
+                                </template>
+                            </div>
+                            <div x-show="homeBench.length === 0" class="text-xs text-slate-500 text-center py-8 font-bold">
+                                No bench players available.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AWAY BENCH -->
+                    <div class="flex flex-col bg-slate-950/80 border-2 rounded-xl p-2 transition-all min-h-0 overflow-hidden"
+                         :class="isFlipped ? 'order-1' : 'order-2'"
+                         :style="{ borderColor: awayTeamColor + '60' }">
+                        <div class="flex items-center justify-between pb-1 border-b shrink-0" :style="{ borderColor: awayTeamColor + '30' }">
+                            <span class="text-xs sm:text-sm font-black uppercase truncate flex items-center gap-1.5" :style="{ color: awayTeamColor }">
+                                <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: awayTeamColor }"></span>
+                                <span>{{ $game->away_display_name }} (Bench)</span>
+                            </span>
+                            <span class="text-[10px] sm:text-xs font-mono font-bold px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-slate-300" x-text="awayBench.length + ' Avail'"></span>
+                        </div>
+
+                        <div class="flex-1 min-h-0 overflow-y-auto pr-1 mt-1">
+                            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-1.5 sm:gap-2">
+                                <template x-for="p in awayBench" :key="p.id || p.jersey_number">
+                                    <button @click="togglePendingSub('away', p)" 
+                                            type="button"
+                                            class="min-h-[75px] sm:min-h-[85px] w-full rounded-xl border-2 p-1.5 flex flex-col justify-between items-center text-center touch-active transition-all group select-none shadow-md relative overflow-hidden"
+                                            :class="isPlayerPending('away', p.jersey_number) 
+                                                ? 'text-white border-white ring-2 ring-emerald-400 shadow-xl scale-[1.02]' 
+                                                : 'bg-slate-900/90 text-slate-200 border-slate-800 hover:border-slate-600 hover:bg-slate-850'"
+                                            :style="isPlayerPending('away', p.jersey_number) ? { backgroundColor: awayTeamColor } : {}">
+                                        
+                                        <!-- Top Row: Position -->
+                                        <div class="w-full flex items-center justify-between text-[9px] font-mono leading-tight">
+                                            <span class="font-bold uppercase tracking-wider" :class="isPlayerPending('away', p.jersey_number) ? 'text-white/90' : 'text-slate-400'" x-text="p.position || 'BENCH'"></span>
+                                        </div>
+
+                                        <!-- Big Jersey Number -->
+                                        <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black leading-none tracking-tight my-0.5 group-hover:scale-105 transition-transform"
+                                             :class="isPlayerPending('away', p.jersey_number) ? 'text-amber-300 drop-shadow' : 'text-white'"
+                                             x-text="'#' + p.jersey_number"></div>
+
+                                        <!-- Player Name -->
+                                        <div class="w-full text-[11px] sm:text-xs font-black truncate leading-tight"
+                                             :class="isPlayerPending('away', p.jersey_number) ? 'text-white' : 'text-slate-200'"
+                                             x-text="p.player_name || ('#' + p.jersey_number)"></div>
+
+                                        <!-- Bottom Status Indicator -->
+                                        <div class="w-full pt-0.5 mt-0.5 border-t flex items-center justify-center text-[8px] sm:text-[9px] font-mono font-black uppercase tracking-wider"
+                                             :class="isPlayerPending('away', p.jersey_number) ? 'border-white/30 text-white' : 'border-slate-800 text-slate-400 group-hover:text-emerald-400'">
+                                            <span x-text="isPlayerPending('away', p.jersey_number) ? '✓ LINED UP (IN)' : '+ TAP TO ADD'"></span>
+                                        </div>
+                                    </button>
+                                </template>
+                            </div>
+                            <div x-show="awayBench.length === 0" class="text-xs text-slate-500 text-center py-8 font-bold">
+                                No bench players available.
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Footer Controls (Shrink-0) -->
+                <div class="pt-1.5 border-t border-slate-800 flex items-center justify-between shrink-0">
+                    <button x-show="pendingSubCount() > 0" 
+                            @click="clearPendingSubs()" 
+                            class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-rose-950 border border-slate-700 hover:border-rose-500 text-slate-300 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                        <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        <span>Clear Queue</span>
+                        <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-amber-300 font-bold">C</span>
+                    </button>
+                    <div x-show="pendingSubCount() === 0"></div>
+
+                    <div class="flex items-center space-x-2">
+                        <button @click="showLineupModal = false" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                            <span>Done (Keep Lined Up)</span>
+                            <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-slate-300">Esc</span>
+                        </button>
+                        <button x-show="pendingSubCount() > 0" 
+                                @click="openExecuteSubModal()" 
+                                class="h-9 sm:h-10 px-4 sm:px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-black text-xs sm:text-sm shadow-lg shadow-emerald-950/80 ring-2 ring-emerald-400 flex items-center gap-2 transition touch-active">
+                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+                            <span>Send In Now</span>
+                            <span class="px-1.5 py-0.2 rounded-md bg-emerald-950/80 border border-emerald-400 text-amber-300 font-mono text-xs" x-text="pendingSubCount()"></span>
+                            <span class="px-1.5 py-0.2 rounded bg-emerald-950 border border-emerald-400 text-[9px] font-mono text-amber-300 font-bold">↵ Enter</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </template>
+
+        <!-- EXECUTE SUBSTITUTIONS: ASSIGN OUTGOING (APPEARS INSIDE CENTER TIER WINDOW) -->
+        <template x-if="showExecuteSubModal">
+            <div class="w-full h-full bg-slate-900 border-2 border-emerald-500/80 rounded-2xl p-2 sm:p-2.5 shadow-2xl flex flex-col justify-between overflow-hidden select-none relative animate-in fade-in duration-100"
+                 style="box-shadow: 0 8px 30px -4px rgba(16, 185, 129, 0.4);">
+                
+                <!-- Header (Shrink-0) -->
+                <div class="flex items-center justify-between pb-1.5 border-b border-slate-800 shrink-0">
+                    <div class="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+                        <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-600/30 border border-emerald-500/50 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+                            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2">
+                                <h2 class="text-xs sm:text-sm font-black uppercase text-white tracking-wide truncate">Assign Outgoing Players</h2>
+                                <span class="px-2 py-0.5 rounded-lg text-[10px] sm:text-xs font-mono font-black tracking-wide bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shrink-0"
+                                      x-text="pendingSubCount() + ' Pending Sub(s)'">
+                                </span>
+                            </div>
+                            <p class="text-[10px] sm:text-[11px] text-slate-400 truncate hidden sm:block">
+                                Tap on-court players coming <strong class="text-rose-400 font-black">OUT</strong> to match incoming substitutes, then confirm.
+                            </p>
+                        </div>
+                    </div>
+
+                    <button @click="showExecuteSubModal = false" 
+                            class="p-1 sm:p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-rose-900/80 border border-slate-700 hover:border-rose-500 transition shadow shrink-0" 
+                            title="Close (Esc)">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+
+                <!-- Dual Team Court Assign Grids Side-by-Side (Adaptive to Court Flip) -->
+                <div class="grid grid-cols-2 gap-2 sm:gap-3 flex-1 min-h-0 overflow-hidden my-1">
+                    
+                    <!-- HOME TEAM SUBS -->
+                    <div class="flex flex-col bg-slate-950/80 border-2 rounded-xl p-2 space-y-1.5 transition-all min-h-0 overflow-hidden"
+                         :class="isFlipped ? 'order-2' : 'order-1'"
+                         :style="{ borderColor: homeTeamColor + '60' }">
+                        <div class="flex items-center justify-between pb-1 border-b shrink-0" :style="{ borderColor: homeTeamColor + '30' }">
+                            <span class="text-xs sm:text-sm font-black uppercase truncate flex items-center gap-1.5" :style="{ color: homeTeamColor }">
+                                <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: homeTeamColor }"></span>
+                                <span>{{ $game->home_display_name }}</span>
+                            </span>
+                            <span class="text-[10px] sm:text-xs font-mono font-black px-2 py-0.2 rounded-lg transition-all"
+                                  :class="(selectedOutSubs.home?.length || 0) === (pendingSubs.home?.length || 0) && (pendingSubs.home?.length || 0) > 0 ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400 shadow ring-1 ring-emerald-400/40' : 'bg-slate-900 text-slate-400 border border-slate-800'"
+                                  x-text="(selectedOutSubs.home?.length || 0) + ' / ' + (pendingSubs.home?.length || 0) + ' OUT Selected'">
+                            </span>
+                        </div>
+
+                        <template x-if="!pendingSubs.home || pendingSubs.home.length === 0">
+                            <div class="flex-1 flex flex-col items-center justify-center text-center p-4 space-y-1">
+                                <svg class="w-8 h-8 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <p class="text-slate-400 font-bold text-xs">No pending substitutes for {{ $game->home_display_name }}.</p>
+                            </div>
+                        </template>
+
+                        <div class="space-y-1.5 flex-1 flex flex-col min-h-0 overflow-hidden" x-show="pendingSubs.home && pendingSubs.home.length > 0">
+                            <!-- Incoming Players Pill List -->
+                            <div class="p-1.5 bg-slate-900/90 border rounded-xl shrink-0" :style="{ borderColor: homeTeamColor + '50' }">
+                                <span class="text-[10px] font-black uppercase tracking-wider block text-emerald-400 flex items-center gap-1 mb-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                    <span>Incoming (Entering Court):</span>
+                                </span>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <template x-for="inP in pendingSubs.home" :key="inP.id || inP.jersey_number">
+                                        <div class="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-lg border text-xs font-mono font-bold shadow"
+                                             :style="{ backgroundColor: homeTeamColor + '30', borderColor: homeTeamColor + '80', color: '#ffffff' }">
+                                            <span class="px-1 rounded bg-emerald-500 text-slate-950 font-black text-[9px]">IN</span>
+                                            <span class="font-black text-amber-300" x-text="'#' + inP.jersey_number"></span>
+                                            <span class="truncate max-w-[100px] text-[11px]" x-text="inP.player_name"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- On-Court Players Selection Grid -->
+                            <div class="flex-1 flex flex-col min-h-0 space-y-1">
+                                <div class="flex items-center justify-between text-[10px] font-black text-slate-300 uppercase tracking-wider shrink-0 px-0.5">
+                                    <span>Tap Players Coming OUT:</span>
+                                    <span class="font-mono text-[10px] text-slate-400" x-text="'Need ' + ((pendingSubs.home?.length || 0) - (selectedOutSubs.home?.length || 0)) + ' more'"></span>
+                                </div>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 flex-1 min-h-0 overflow-y-auto pr-1">
+                                    <template x-for="courtP in homeCourt" :key="courtP.id || courtP.jersey_number">
+                                        <button @click="toggleSelectedOut('home', courtP.jersey_number)"
+                                                type="button"
+                                                class="w-full min-h-[75px] sm:min-h-[85px] p-1.5 rounded-xl border-2 text-center flex flex-col justify-between items-center transition-all touch-active shadow-md group relative overflow-hidden"
+                                                :class="isPlayerSelectedOut('home', courtP.jersey_number)
+                                                    ? 'bg-rose-600 text-white border-white ring-2 ring-rose-400 shadow-xl scale-[1.02]'
+                                                    : 'bg-slate-900/90 text-slate-200 border-slate-800 hover:border-slate-600 hover:bg-slate-850'">
+                                            
+                                            <!-- Top: Position -->
+                                            <div class="w-full flex items-center justify-between text-[9px] font-mono leading-tight">
+                                                <span class="font-bold uppercase tracking-wider" :class="isPlayerSelectedOut('home', courtP.jersey_number) ? 'text-white/90' : 'text-slate-400'" x-text="courtP.position || 'COURT'"></span>
+                                            </div>
+
+                                            <!-- Big Jersey -->
+                                            <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black leading-none tracking-tight my-0.5 group-hover:scale-105 transition-transform"
+                                                 :class="isPlayerSelectedOut('home', courtP.jersey_number) ? 'text-white drop-shadow' : 'text-white'"
+                                                 x-text="'#' + courtP.jersey_number"></div>
+
+                                            <!-- Name -->
+                                            <div class="w-full text-[11px] sm:text-xs font-black truncate leading-tight"
+                                                 :class="isPlayerSelectedOut('home', courtP.jersey_number) ? 'text-white' : 'text-slate-200'"
+                                                 x-text="courtP.player_name || ('#' + courtP.jersey_number)"></div>
+
+                                            <!-- Bottom indicator -->
+                                            <div class="w-full pt-0.5 mt-0.5 border-t flex items-center justify-center text-[8px] sm:text-[9px] font-mono font-black uppercase tracking-wider"
+                                                 :class="isPlayerSelectedOut('home', courtP.jersey_number) ? 'border-white/40 text-white' : 'border-slate-800 text-slate-400 group-hover:text-rose-400'">
+                                                <span x-text="isPlayerSelectedOut('home', courtP.jersey_number) ? '✕ OUT (LEAVING)' : 'TAP TO SUB OUT'"></span>
+                                            </div>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AWAY TEAM SUBS -->
+                    <div class="flex flex-col bg-slate-950/80 border-2 rounded-xl p-2 space-y-1.5 transition-all min-h-0 overflow-hidden"
+                         :class="isFlipped ? 'order-1' : 'order-2'"
+                         :style="{ borderColor: awayTeamColor + '60' }">
+                        <div class="flex items-center justify-between pb-1 border-b shrink-0" :style="{ borderColor: awayTeamColor + '30' }">
+                            <span class="text-xs sm:text-sm font-black uppercase truncate flex items-center gap-1.5" :style="{ color: awayTeamColor }">
+                                <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: awayTeamColor }"></span>
+                                <span>{{ $game->away_display_name }}</span>
+                            </span>
+                            <span class="text-[10px] sm:text-xs font-mono font-black px-2 py-0.2 rounded-lg transition-all"
+                                  :class="(selectedOutSubs.away?.length || 0) === (pendingSubs.away?.length || 0) && (pendingSubs.away?.length || 0) > 0 ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400 shadow ring-1 ring-emerald-400/40' : 'bg-slate-900 text-slate-400 border border-slate-800'"
+                                  x-text="(selectedOutSubs.away?.length || 0) + ' / ' + (pendingSubs.away?.length || 0) + ' OUT Selected'">
+                            </span>
+                        </div>
+
+                        <template x-if="!pendingSubs.away || pendingSubs.away.length === 0">
+                            <div class="flex-1 flex flex-col items-center justify-center text-center p-4 space-y-1">
+                                <svg class="w-8 h-8 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <p class="text-slate-400 font-bold text-xs">No pending substitutes for {{ $game->away_display_name }}.</p>
+                            </div>
+                        </template>
+
+                        <div class="space-y-1.5 flex-1 flex flex-col min-h-0 overflow-hidden" x-show="pendingSubs.away && pendingSubs.away.length > 0">
+                            <!-- Incoming Players Pill List -->
+                            <div class="p-1.5 bg-slate-900/90 border rounded-xl shrink-0" :style="{ borderColor: awayTeamColor + '50' }">
+                                <span class="text-[10px] font-black uppercase tracking-wider block text-emerald-400 flex items-center gap-1 mb-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                    <span>Incoming (Entering Court):</span>
+                                </span>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <template x-for="inP in pendingSubs.away" :key="inP.id || inP.jersey_number">
+                                        <div class="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-lg border text-xs font-mono font-bold shadow"
+                                             :style="{ backgroundColor: awayTeamColor + '30', borderColor: awayTeamColor + '80', color: '#ffffff' }">
+                                            <span class="px-1 rounded bg-emerald-500 text-slate-950 font-black text-[9px]">IN</span>
+                                            <span class="font-black text-amber-300" x-text="'#' + inP.jersey_number"></span>
+                                            <span class="truncate max-w-[100px] text-[11px]" x-text="inP.player_name"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- On-Court Players Selection Grid -->
+                            <div class="flex-1 flex flex-col min-h-0 space-y-1">
+                                <div class="flex items-center justify-between text-[10px] font-black text-slate-300 uppercase tracking-wider shrink-0 px-0.5">
+                                    <span>Tap Players Coming OUT:</span>
+                                    <span class="font-mono text-[10px] text-slate-400" x-text="'Need ' + ((pendingSubs.away?.length || 0) - (selectedOutSubs.away?.length || 0)) + ' more'"></span>
+                                </div>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 flex-1 min-h-0 overflow-y-auto pr-1">
+                                    <template x-for="courtP in awayCourt" :key="courtP.id || courtP.jersey_number">
+                                        <button @click="toggleSelectedOut('away', courtP.jersey_number)"
+                                                type="button"
+                                                class="w-full min-h-[75px] sm:min-h-[85px] p-1.5 rounded-xl border-2 text-center flex flex-col justify-between items-center transition-all touch-active shadow-md group relative overflow-hidden"
+                                                :class="isPlayerSelectedOut('away', courtP.jersey_number)
+                                                    ? 'bg-rose-600 text-white border-white ring-2 ring-rose-400 shadow-xl scale-[1.02]'
+                                                    : 'bg-slate-900/90 text-slate-200 border-slate-800 hover:border-slate-600 hover:bg-slate-850'">
+                                            
+                                            <!-- Top: Position -->
+                                            <div class="w-full flex items-center justify-between text-[9px] font-mono leading-tight">
+                                                <span class="font-bold uppercase tracking-wider" :class="isPlayerSelectedOut('away', courtP.jersey_number) ? 'text-white/90' : 'text-slate-400'" x-text="courtP.position || 'COURT'"></span>
+                                            </div>
+
+                                            <!-- Big Jersey -->
+                                            <div class="font-mono text-2xl sm:text-3xl lg:text-4xl font-black leading-none tracking-tight my-0.5 group-hover:scale-105 transition-transform"
+                                                 :class="isPlayerSelectedOut('away', courtP.jersey_number) ? 'text-white drop-shadow' : 'text-white'"
+                                                 x-text="'#' + courtP.jersey_number"></div>
+
+                                            <!-- Name -->
+                                            <div class="w-full text-[11px] sm:text-xs font-black truncate leading-tight"
+                                                 :class="isPlayerSelectedOut('away', courtP.jersey_number) ? 'text-white' : 'text-slate-200'"
+                                                 x-text="courtP.player_name || ('#' + courtP.jersey_number)"></div>
+
+                                            <!-- Bottom indicator -->
+                                            <div class="w-full pt-0.5 mt-0.5 border-t flex items-center justify-center text-[8px] sm:text-[9px] font-mono font-black uppercase tracking-wider"
+                                                 :class="isPlayerSelectedOut('away', courtP.jersey_number) ? 'border-white/40 text-white' : 'border-slate-800 text-slate-400 group-hover:text-rose-400'">
+                                                <span x-text="isPlayerSelectedOut('away', courtP.jersey_number) ? '✕ OUT (LEAVING)' : 'TAP TO SUB OUT'"></span>
+                                            </div>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Footer Controls (Shrink-0) -->
+                <div class="pt-1.5 border-t border-slate-800 flex items-center justify-between shrink-0">
+                    <button @click="openLineupModal()" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+                        <span>Edit Lineup Table</span>
+                        <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-amber-300 font-bold">B</span>
+                    </button>
+
+                    <div class="flex items-center space-x-2">
+                        <button @click="showExecuteSubModal = false" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                            <span>Cancel (Keep Waiting)</span>
+                            <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-slate-300">Esc</span>
+                        </button>
+                        <button @click="executeAllPendingSubs()" 
+                                :disabled="!canExecutePendingSubs()"
+                                class="h-9 sm:h-10 px-4 sm:px-6 rounded-xl font-black text-xs sm:text-sm shadow-lg transition flex items-center gap-2 touch-active"
+                                :class="canExecutePendingSubs() 
+                                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-2 ring-emerald-400/80 shadow-emerald-950/80 animate-pulse hover:scale-[1.02] cursor-pointer' 
+                                    : 'bg-slate-800 border border-slate-700 text-slate-500 opacity-60 cursor-not-allowed'">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                            <span>Confirm Substitutions</span>
+                            <span class="px-1.5 py-0.2 rounded bg-emerald-950 border border-emerald-400 text-[9px] font-mono text-amber-300 font-bold">↵ Enter</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </template>
+
     </div>
 
     <!-- 3. BOTTOM TIER: NON-PLAYER-SCOPED ACTIONS DOCK (Single Layer, Even Horizontal Distribution) -->
@@ -605,297 +1008,7 @@
 
 
 
-    <!-- 1. DUAL-TEAM TABLE LINE-UP MODAL (CHECK-IN) -->
-    <div x-show="showLineupModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none" style="display: none;"
-         @click.self="showLineupModal = false">
-        
-        <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full p-4 sm:p-5 shadow-2xl space-y-3 max-h-[92vh] flex flex-col">
-            <!-- Modal Header -->
-            <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
-                <div class="flex items-center space-x-2">
-                    <span class="text-sm sm:text-base font-black uppercase text-white tracking-wider">Substitutions (Check-In)</span>
-                    <span class="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-[10px] font-mono font-bold text-amber-300"
-                          x-text="pendingSubCount() + ' Lined Up'">
-                    </span>
-                </div>
-                <button @click="showLineupModal = false" class="p-1 rounded-xl bg-slate-800 text-slate-400 hover:text-white">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </div>
-
-            <div class="text-[11px] text-slate-400 shrink-0">
-                Tap bench players from either side who have arrived at the scorer's table to check in, then close. When they are waved onto the court, tap <strong class="text-emerald-400">SEND IN</strong>.
-            </div>
-
-            <!-- BOTH TEAMS DISPLAYED AT ONCE SIDE-BY-SIDE -->
-            <div class="grid grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto">
-                <!-- HOME BENCH -->
-                <div class="flex flex-col bg-slate-950/80 border rounded-2xl p-2.5 space-y-2 transition-all"
-                     :class="isFlipped ? 'order-2' : 'order-1'"
-                     :style="{ borderColor: homeTeamColor + '40' }">
-                    <div class="flex items-center justify-between pb-1 border-b" :style="{ borderColor: homeTeamColor + '30' }">
-                        <span class="text-xs font-black uppercase truncate flex items-center gap-1.5" :style="{ color: homeTeamColor }">
-                            <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: homeTeamColor }"></span>
-                            <span>{{ $game->home_display_name }} (Bench)</span>
-                        </span>
-                        <span class="text-[9px] font-mono text-slate-400" x-text="homeBench.length + ' Available'"></span>
-                    </div>
-
-                    <div class="space-y-1.5 flex-1 overflow-y-auto pr-0.5">
-                        <template x-for="p in homeBench" :key="p.id || p.jersey_number">
-                            <button @click="togglePendingSub('home', p)" 
-                                    type="button"
-                                    class="w-full p-2 rounded-xl border text-left flex items-center justify-between transition touch-active"
-                                    :class="isPlayerPending('home', p.jersey_number) 
-                                        ? 'text-white border-white shadow-md ring-2 ring-white/50' 
-                                        : 'bg-slate-900 text-slate-200 border-slate-800 hover:border-slate-600'"
-                                    :style="isPlayerPending('home', p.jersey_number) ? { backgroundColor: homeTeamColor } : {}">
-                                <div class="flex items-center space-x-2 truncate">
-                                    <span class="font-mono font-black text-sm" x-text="'#' + p.jersey_number"></span>
-                                    <span class="truncate text-xs font-semibold" x-text="p.player_name"></span>
-                                </div>
-                                <span class="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold shrink-0 ml-1"
-                                      :class="isPlayerPending('home', p.jersey_number) ? 'bg-white text-slate-950' : 'bg-slate-800 text-slate-400'"
-                                      x-text="isPlayerPending('home', p.jersey_number) ? 'LINED UP' : 'ADD'">
-                                </span>
-                            </button>
-                        </template>
-                        <div x-show="homeBench.length === 0" class="text-xs text-slate-500 text-center py-6">
-                            No bench players on Home roster.
-                        </div>
-                    </div>
-                </div>
-
-                <!-- AWAY BENCH -->
-                <div class="flex flex-col bg-slate-950/80 border rounded-2xl p-2.5 space-y-2 transition-all"
-                     :class="isFlipped ? 'order-1' : 'order-2'"
-                     :style="{ borderColor: awayTeamColor + '40' }">
-                    <div class="flex items-center justify-between pb-1 border-b" :style="{ borderColor: awayTeamColor + '30' }">
-                        <span class="text-xs font-black uppercase truncate flex items-center gap-1.5" :style="{ color: awayTeamColor }">
-                            <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: awayTeamColor }"></span>
-                            <span>{{ $game->away_display_name }} (Bench)</span>
-                        </span>
-                        <span class="text-[9px] font-mono text-slate-400" x-text="awayBench.length + ' Available'"></span>
-                    </div>
-
-                    <div class="space-y-1.5 flex-1 overflow-y-auto pr-0.5">
-                        <template x-for="p in awayBench" :key="p.id || p.jersey_number">
-                            <button @click="togglePendingSub('away', p)" 
-                                    type="button"
-                                    class="w-full p-2 rounded-xl border text-left flex items-center justify-between transition touch-active"
-                                    :class="isPlayerPending('away', p.jersey_number) 
-                                        ? 'text-white border-white shadow-md ring-2 ring-white/50' 
-                                        : 'bg-slate-900 text-slate-200 border-slate-800 hover:border-slate-600'"
-                                    :style="isPlayerPending('away', p.jersey_number) ? { backgroundColor: awayTeamColor } : {}">
-                                <div class="flex items-center space-x-2 truncate">
-                                    <span class="font-mono font-black text-sm" x-text="'#' + p.jersey_number"></span>
-                                    <span class="truncate text-xs font-semibold" x-text="p.player_name"></span>
-                                </div>
-                                <span class="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold shrink-0 ml-1"
-                                      :class="isPlayerPending('away', p.jersey_number) ? 'bg-white text-slate-950' : 'bg-slate-800 text-slate-400'"
-                                      x-text="isPlayerPending('away', p.jersey_number) ? 'LINED UP' : 'ADD'">
-                                </span>
-                            </button>
-                        </template>
-                        <div x-show="awayBench.length === 0" class="text-xs text-slate-500 text-center py-6">
-                            No bench players on Away roster.
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Modal Footer Controls -->
-            <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs shrink-0">
-                <button x-show="pendingSubCount() > 0" 
-                        @click="clearPendingSubs()" 
-                        class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-[11px] transition flex items-center gap-1.5">
-                    <span>Clear Table Queue</span>
-                    <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-amber-300 font-bold">C</span>
-                </button>
-                <div x-show="pendingSubCount() === 0"></div>
-
-                <div class="flex items-center space-x-2">
-                    <button @click="showLineupModal = false" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition flex items-center gap-1.5">
-                        <span>Done (Keep Waiting)</span>
-                        <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-slate-300">Esc</span>
-                    </button>
-                    <button x-show="pendingSubCount() > 0" 
-                            @click="openExecuteSubModal()" 
-                            class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition">
-                        <span>Send In Now</span>
-                        <span x-text="'(' + pendingSubCount() + ')'"></span>
-                        <span class="px-1.5 py-0.2 rounded bg-emerald-950 border border-emerald-400 text-[8px] font-mono text-amber-300 font-bold">↵ Enter</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 2. DUAL-TEAM EXECUTE SUBSTITUTIONS (ASSIGN PLAYERS COMING OUT) -->
-    <div x-show="showExecuteSubModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none" style="display: none;"
-         @click.self="showExecuteSubModal = false">
-        
-        <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full p-4 sm:p-5 shadow-2xl space-y-3 max-h-[94vh] flex flex-col">
-            <!-- Modal Header -->
-            <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
-                <div class="flex items-center space-x-2">
-                    <span class="text-sm sm:text-base font-black uppercase text-white tracking-wider">Select Outgoing Players</span>
-                    <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-[10px] font-mono font-bold text-emerald-300"
-                          x-text="pendingSubCount() + ' Pending Sub(s)'">
-                    </span>
-                </div>
-                <button @click="showExecuteSubModal = false" class="p-1 rounded-xl bg-slate-800 text-slate-400 hover:text-white">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </div>
-
-            <div class="text-[11px] text-slate-400 shrink-0">
-                Select which on-court players are coming OUT to match the number of incoming substitutes for each team.
-            </div>
-
-            <!-- BOTH TEAMS DISPLAYED AT ONCE SIDE-BY-SIDE -->
-            <div class="grid grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto">
-                <!-- HOME TEAM SUBS -->
-                <div class="flex flex-col bg-slate-950/80 border rounded-2xl p-3 space-y-2.5 transition-all"
-                     :class="isFlipped ? 'order-2' : 'order-1'"
-                     :style="{ borderColor: homeTeamColor + '40' }">
-                    <div class="flex items-center justify-between pb-1 border-b" :style="{ borderColor: homeTeamColor + '30' }">
-                        <span class="text-xs font-black uppercase truncate flex items-center gap-1.5" :style="{ color: homeTeamColor }">
-                            <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: homeTeamColor }"></span>
-                            <span>{{ $game->home_display_name }}</span>
-                        </span>
-                        <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md"
-                              :class="selectedOutSubs.home.length === pendingSubs.home.length && pendingSubs.home.length > 0 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'"
-                              x-text="selectedOutSubs.home.length + ' / ' + pendingSubs.home.length + ' OUT Selected'">
-                        </span>
-                    </div>
-
-                    <template x-if="pendingSubs.home.length === 0">
-                        <div class="text-xs text-slate-500 text-center py-8">
-                            No pending subs for Home.
-                        </div>
-                    </template>
-
-                    <div class="space-y-3 flex-1 overflow-y-auto pr-0.5" x-show="pendingSubs.home.length > 0">
-                        <!-- Incoming Players Pill List -->
-                        <div class="p-2 bg-slate-900/90 border rounded-xl space-y-1" :style="{ borderColor: homeTeamColor + '40' }">
-                            <span class="text-[10px] font-bold uppercase tracking-wider block" :style="{ color: homeTeamColor }">Incoming Players:</span>
-                            <div class="flex flex-wrap gap-1">
-                                <template x-for="inP in pendingSubs.home" :key="inP.id || inP.jersey_number">
-                                    <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg border text-xs font-mono font-bold"
-                                          :style="{ backgroundColor: homeTeamColor + '30', borderColor: homeTeamColor + '60', color: '#ffffff' }">
-                                        <span class="text-[9px] font-black text-amber-300">IN</span>
-                                        <span x-text="'#' + inP.jersey_number + ' ' + inP.player_name"></span>
-                                    </span>
-                                </template>
-                            </div>
-                        </div>
-
-                        <!-- On-Court Players Selection Grid -->
-                        <div class="space-y-1.5">
-                            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tap On-Court Players Leaving Game:</div>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
-                                <template x-for="courtP in homeCourt" :key="courtP.id || courtP.jersey_number">
-                                    <button @click="toggleSelectedOut('home', courtP.jersey_number)"
-                                            type="button"
-                                            class="p-2 rounded-xl border text-left flex items-center justify-between transition touch-active"
-                                            :class="isPlayerSelectedOut('home', courtP.jersey_number)
-                                                ? 'bg-rose-600 text-white border-white shadow-lg ring-2 ring-rose-400'
-                                                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:border-slate-600 hover:bg-slate-800'">
-                                        <div class="flex items-center space-x-1.5 truncate">
-                                            <span class="font-mono font-black text-xs" x-text="'#' + courtP.jersey_number"></span>
-                                            <span class="truncate text-xs font-semibold" x-text="courtP.player_name"></span>
-                                        </div>
-                                        <span x-show="isPlayerSelectedOut('home', courtP.jersey_number)" class="text-[10px] font-black px-1.5 py-0.5 rounded bg-white text-rose-700 uppercase shrink-0 tracking-wider">OUT</span>
-                                    </button>
-                                </template>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- AWAY TEAM SUBS -->
-                <div class="flex flex-col bg-slate-950/80 border rounded-2xl p-3 space-y-2.5 transition-all"
-                     :class="isFlipped ? 'order-1' : 'order-2'"
-                     :style="{ borderColor: awayTeamColor + '40' }">
-                    <div class="flex items-center justify-between pb-1 border-b" :style="{ borderColor: awayTeamColor + '30' }">
-                        <span class="text-xs font-black uppercase truncate flex items-center gap-1.5" :style="{ color: awayTeamColor }">
-                            <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: awayTeamColor }"></span>
-                            <span>{{ $game->away_display_name }}</span>
-                        </span>
-                        <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md"
-                              :class="selectedOutSubs.away.length === pendingSubs.away.length && pendingSubs.away.length > 0 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'"
-                              x-text="selectedOutSubs.away.length + ' / ' + pendingSubs.away.length + ' OUT Selected'">
-                        </span>
-                    </div>
-
-                    <template x-if="pendingSubs.away.length === 0">
-                        <div class="text-xs text-slate-500 text-center py-8">
-                            No pending subs for Away.
-                        </div>
-                    </template>
-
-                    <div class="space-y-3 flex-1 overflow-y-auto pr-0.5" x-show="pendingSubs.away.length > 0">
-                        <!-- Incoming Players Pill List -->
-                        <div class="p-2 bg-slate-900/90 border rounded-xl space-y-1" :style="{ borderColor: awayTeamColor + '40' }">
-                            <span class="text-[10px] font-bold uppercase tracking-wider block" :style="{ color: awayTeamColor }">Incoming Players:</span>
-                            <div class="flex flex-wrap gap-1">
-                                <template x-for="inP in pendingSubs.away" :key="inP.id || inP.jersey_number">
-                                    <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg border text-xs font-mono font-bold"
-                                          :style="{ backgroundColor: awayTeamColor + '30', borderColor: awayTeamColor + '60', color: '#ffffff' }">
-                                        <span class="text-[9px] font-black text-amber-300">IN</span>
-                                        <span x-text="'#' + inP.jersey_number + ' ' + inP.player_name"></span>
-                                    </span>
-                                </template>
-                            </div>
-                        </div>
-
-                        <!-- On-Court Players Selection Grid -->
-                        <div class="space-y-1.5">
-                            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tap On-Court Players Leaving Game:</div>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
-                                <template x-for="courtP in awayCourt" :key="courtP.id || courtP.jersey_number">
-                                    <button @click="toggleSelectedOut('away', courtP.jersey_number)"
-                                            type="button"
-                                            class="p-2 rounded-xl border text-left flex items-center justify-between transition touch-active"
-                                            :class="isPlayerSelectedOut('away', courtP.jersey_number)
-                                                ? 'bg-rose-600 text-white border-white shadow-lg ring-2 ring-rose-400'
-                                                : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:border-slate-600 hover:bg-slate-800'">
-                                        <div class="flex items-center space-x-1.5 truncate">
-                                            <span class="font-mono font-black text-xs" x-text="'#' + courtP.jersey_number"></span>
-                                            <span class="truncate text-xs font-semibold" x-text="courtP.player_name"></span>
-                                        </div>
-                                        <span x-show="isPlayerSelectedOut('away', courtP.jersey_number)" class="text-[10px] font-black px-1.5 py-0.5 rounded bg-white text-rose-700 uppercase shrink-0 tracking-wider">OUT</span>
-                                    </button>
-                                </template>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Modal Footer Controls -->
-            <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs shrink-0">
-                <button @click="openLineupModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition flex items-center gap-1.5">
-                    <span>← Edit Lineup Table</span>
-                    <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-amber-300 font-bold">B</span>
-                </button>
-
-                <div class="flex items-center space-x-2">
-                    <button @click="showExecuteSubModal = false" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition flex items-center gap-1.5">
-                        <span>Cancel (Keep Waiting)</span>
-                        <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-slate-300">Esc</span>
-                    </button>
-                    <button @click="executeAllPendingSubs()" 
-                            :disabled="!canExecutePendingSubs()"
-                            class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs shadow-lg shadow-emerald-600/40 transition flex items-center gap-1.5">
-                        <span>Confirm Substitutions</span>
-                        <span class="px-1.5 py-0.2 rounded bg-emerald-950 border border-emerald-400 text-[8px] font-mono text-amber-300 font-bold">↵ Enter</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- NOTE: Dual-Team Substitution UI is embedded directly inside Center Tier window -->
 
     <!-- 3. PLAY-BY-PLAY LOG VIEWER & AUDIT LOG MODAL -->
     <div x-show="showPlayByPlayModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none" style="display: none;"

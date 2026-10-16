@@ -33,6 +33,9 @@ class BasketballStatService
         'F' => ['name' => 'Pers Foul', 'type' => 'foul_pers', 'points' => 0, 'stat' => 'fouls_pers', 'category' => 'fouls'],
         'R' => ['name' => 'Off Foul', 'type' => 'foul_off', 'points' => 0, 'stat' => 'fouls_off', 'category' => 'fouls'],
         'T' => ['name' => 'Tech Foul', 'type' => 'foul_tech', 'points' => 0, 'stat' => 'fouls_tech', 'category' => 'fouls'],
+        'G' => ['name' => 'Flagrant Foul', 'type' => 'foul_flagrant', 'points' => 0, 'stat' => 'fouls_flagrant', 'category' => 'fouls'],
+        'FL' => ['name' => 'Flagrant Foul', 'type' => 'foul_flagrant', 'points' => 0, 'stat' => 'fouls_flagrant', 'category' => 'fouls'],
+        'FLAG' => ['name' => 'Flagrant Foul', 'type' => 'foul_flagrant', 'points' => 0, 'stat' => 'fouls_flagrant', 'category' => 'fouls'],
         'H' => ['name' => 'Forc Foul', 'type' => 'foul_forced', 'points' => 0, 'stat' => 'fouls_forced', 'category' => 'fouls'],
         'TIMEOUT' => ['name' => 'Timeout', 'type' => 'timeout', 'points' => 0, 'category' => 'administrative'],
         'SCORE_ADJ' => ['name' => 'Score Adjustment', 'type' => 'score_adjustment', 'points' => 0, 'category' => 'administrative'],
@@ -51,14 +54,15 @@ class BasketballStatService
             throw new Exception('No input provided.');
         }
 
-        // Support formats: 23-X (Home) or 23=X (Away), with optional spaces
-        if (! preg_match('/^([0-9]{1,3}|00)\s*([=\-])\s*([A-Za-z]+)$/', $input, $matches)) {
-            throw new Exception("Invalid input format. Use '<Jersey>-<Action>' for Home or '<Jersey>=<Action>' for Away (e.g. 23-X).");
+        // Support formats: 23-X (Home) or 23=X (Away), with optional spaces and optional assist (e.g. 23-X:10, 23-X/10)
+        if (! preg_match('/^([0-9]{1,3}|00)\s*([=\-])\s*([A-Za-z]+)(?:[:\/]([0-9]{1,3}|00))?$/', $input, $matches)) {
+            throw new Exception("Invalid input format. Use '<Jersey>-<Action>' for Home or '<Jersey>=<Action>' for Away (e.g. 23-X or 23-X:10 with assist).");
         }
 
         $jersey = $matches[1];
         $teamIndicator = $matches[2];
         $actionCode = strtoupper($matches[3]);
+        $assistJersey = ! empty($matches[4]) ? $matches[4] : null;
 
         $teamSide = ($teamIndicator === '-') ? 'home' : 'away';
 
@@ -66,17 +70,17 @@ class BasketballStatService
             throw new Exception("Unknown action '{$actionCode}'. Supported actions: ".implode(', ', array_keys(self::ACTIONS)));
         }
 
-        return $this->recordStat($game, $teamSide, $jersey, $actionCode, $input, $clockSeconds);
+        return $this->recordStat($game, $teamSide, $jersey, $actionCode, $input, $clockSeconds, $assistJersey);
     }
 
     /**
      * Record a specific stat action for a player.
      */
-    public function recordStat(Game $game, string $teamSide, string $jersey, string $actionCode, ?string $rawInput = null, ?int $clockSeconds = null): array
+    public function recordStat(Game $game, string $teamSide, string $jersey, string $actionCode, ?string $rawInput = null, ?int $clockSeconds = null, ?string $assistJersey = null): array
     {
         $actionDef = self::ACTIONS[$actionCode] ?? ['name' => $actionCode, 'type' => 'custom', 'points' => 0];
 
-        return DB::transaction(function () use ($game, $teamSide, $jersey, $actionCode, $actionDef, $rawInput, $clockSeconds) {
+        return DB::transaction(function () use ($game, $teamSide, $jersey, $actionCode, $actionDef, $rawInput, $clockSeconds, $assistJersey) {
             $game = Game::where('id', $game->id)->lockForUpdate()->first();
 
             $lineup = GameLineup::where('game_id', $game->id)
@@ -86,6 +90,17 @@ class BasketballStatService
 
             $playerName = $lineup?->player_name ?? "Player #{$jersey}";
             $playerId = $lineup?->player_id;
+
+            $assistPlayerId = null;
+            $assistPlayerName = null;
+            if (! empty($assistJersey)) {
+                $assistLineup = GameLineup::where('game_id', $game->id)
+                    ->where('team_side', $teamSide)
+                    ->where('jersey_number', $assistJersey)
+                    ->first();
+                $assistPlayerId = $assistLineup?->player_id;
+                $assistPlayerName = $assistLineup?->player_name ?? "Player #{$assistJersey}";
+            }
 
             $clock = $clockSeconds ?? $game->clock_seconds_remaining;
             $period = $game->current_period;
@@ -98,6 +113,14 @@ class BasketballStatService
             // Sequence count
             $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
 
+            $desc = strtoupper($teamSide)." #{$jersey} {$playerName}: ".($actionDef['name'] ?? $actionCode);
+            if ($points > 0) {
+                $desc .= " (+{$points} pts)";
+            }
+            if (! empty($assistJersey)) {
+                $desc .= " (Ast: #{$assistJersey} {$assistPlayerName})";
+            }
+
             // Create Game Event
             $event = GameEvent::create([
                 'game_id' => $game->id,
@@ -108,16 +131,18 @@ class BasketballStatService
                 'player_id' => $playerId,
                 'jersey_number' => $jersey,
                 'player_name' => $playerName,
+                'assist_player_id' => $assistPlayerId,
+                'assist_jersey_number' => $assistJersey,
                 'sport' => 'basketball',
                 'action_code' => $actionCode,
                 'action_type' => $actionDef['type'] ?? 'stat',
                 'action_name' => $actionDef['name'] ?? $actionCode,
-                'raw_input' => $rawInput ?? "{$jersey}".($teamSide === 'home' ? '-' : '=').$actionCode,
+                'raw_input' => $rawInput ?? "{$jersey}".($teamSide === 'home' ? '-' : '=').$actionCode.(! empty($assistJersey) ? ":{$assistJersey}" : ''),
                 'points' => $points,
                 'home_score_after' => $homeScoreAfter,
                 'away_score_after' => $awayScoreAfter,
                 'is_undone' => false,
-                'description' => strtoupper($teamSide)." #{$jersey} {$playerName}: ".($actionDef['name'] ?? $actionCode),
+                'description' => $desc,
             ]);
 
             // Update Game Score
@@ -145,7 +170,8 @@ class BasketballStatService
             $game->away_period_scores = $awayPeriodScores;
 
             // Handle Fouls & Bonus
-            if (in_array($actionCode, ['F', 'R', 'T'])) {
+            // In basketball, all fouls EXCEPT technicals count as team fouls towards bonus (pers, off, flagrant).
+            if (in_array($actionCode, ['F', 'R', 'G', 'FL', 'FLAG'])) {
                 if ($teamSide === 'home') {
                     $game->home_fouls_current_period += 1;
                 } else {
@@ -160,12 +186,22 @@ class BasketballStatService
 
             $game->save();
 
-            // Update BasketballStat table
+            // Update BasketballStat table for the shooter
             $this->applyStatToPlayer($game->id, $teamSide, $jersey, $playerName, $playerId, $actionDef);
+
+            // If assist jersey provided, apply assist to assisting teammate
+            if (! empty($assistJersey)) {
+                $this->applyStatToPlayer($game->id, $teamSide, $assistJersey, $assistPlayerName, $assistPlayerId, self::ACTIONS['A']);
+            }
+
+            $message = strtoupper($teamSide)." - {$playerName} (#{$jersey}): ".($actionDef['name'] ?? $actionCode).($points > 0 ? " (+{$points} pts)" : '');
+            if (! empty($assistJersey)) {
+                $message .= " (Ast: #{$assistJersey} {$assistPlayerName})";
+            }
 
             return [
                 'success' => true,
-                'message' => strtoupper($teamSide)." - {$playerName} (#{$jersey}): ".($actionDef['name'] ?? $actionCode).($points > 0 ? " (+{$points} pts)" : ''),
+                'message' => $message,
                 'event' => $event,
                 'game' => $game,
             ];
@@ -391,8 +427,8 @@ class BasketballStatService
             if (in_array($col, ['to_pass', 'to_fumble', 'to_violation'])) {
                 $stat->turnovers = $stat->to_pass + $stat->to_fumble + $stat->to_violation;
             }
-            if (in_array($col, ['fouls_pers', 'fouls_off', 'fouls_tech'])) {
-                $stat->total_fouls = $stat->fouls_pers + $stat->fouls_off + $stat->fouls_tech;
+            if (in_array($col, ['fouls_pers', 'fouls_off', 'fouls_tech', 'fouls_flagrant'])) {
+                $stat->total_fouls = $stat->fouls_pers + $stat->fouls_off + $stat->fouls_tech + ($stat->fouls_flagrant ?? 0);
             }
         }
 
@@ -481,6 +517,7 @@ class BasketballStatService
             'fouls_pers' => 0,
             'fouls_off' => 0,
             'fouls_tech' => 0,
+            'fouls_flagrant' => 0,
             'fouls_forced' => 0,
             'total_fouls' => 0,
         ]);
@@ -499,7 +536,7 @@ class BasketballStatService
             if ($event->team_side === 'home') {
                 $homeScore += $points;
                 $homePeriodScores[$period - 1] += $points;
-                if (in_array($event->action_code, ['F', 'R', 'T']) && $period === $game->current_period) {
+                if (in_array($event->action_code, ['F', 'R', 'G', 'FL', 'FLAG']) && $period === $game->current_period) {
                     $homeFouls += 1;
                 }
                 if ($event->action_code === 'TIMEOUT') {
@@ -508,7 +545,7 @@ class BasketballStatService
             } elseif ($event->team_side === 'away') {
                 $awayScore += $points;
                 $awayPeriodScores[$period - 1] += $points;
-                if (in_array($event->action_code, ['F', 'R', 'T']) && $period === $game->current_period) {
+                if (in_array($event->action_code, ['F', 'R', 'G', 'FL', 'FLAG']) && $period === $game->current_period) {
                     $awayFouls += 1;
                 }
                 if ($event->action_code === 'TIMEOUT') {
@@ -531,6 +568,21 @@ class BasketballStatService
                     self::ACTIONS[$event->action_code]
                 );
             }
+
+            if (! empty($event->assist_jersey_number)) {
+                $assistLineup = GameLineup::where('game_id', $game->id)
+                    ->where('team_side', $event->team_side)
+                    ->where('jersey_number', $event->assist_jersey_number)
+                    ->first();
+                $this->applyStatToPlayer(
+                    $game->id,
+                    $event->team_side,
+                    $event->assist_jersey_number,
+                    $assistLineup?->player_name ?? "Player #{$event->assist_jersey_number}",
+                    $event->assist_player_id ?? $assistLineup?->player_id,
+                    self::ACTIONS['A']
+                );
+            }
         }
 
         $game->home_score = max(0, $homeScore);
@@ -545,6 +597,11 @@ class BasketballStatService
         $game->away_timeouts_remaining = max(0, $maxTimeouts - $awayTimeoutsUsed);
 
         $game->save();
+    }
+
+    public function recalculateGameTotals(Game $game): void
+    {
+        $this->rebuildGameFromEvents($game);
     }
 
     /**

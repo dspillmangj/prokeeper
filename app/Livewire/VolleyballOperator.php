@@ -839,6 +839,8 @@ class VolleyballOperator extends Component
         $game = $this->game;
         $game->current_period = $set;
         $game->save();
+        $this->statService->recalculateGameTotals($game);
+        $this->game->refresh();
         $this->feedbackMessage = "Switched to Set {$set}.";
         $this->feedbackType = 'info';
         $this->dispatchGameStateUpdate();
