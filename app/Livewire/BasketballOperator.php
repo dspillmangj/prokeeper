@@ -874,6 +874,7 @@ class BasketballOperator extends Component
         if ($game->current_period >= 6) {
             $this->feedbackMessage = 'Already at maximum period (2nd Overtime / Period 6).';
             $this->feedbackType = 'error';
+            $this->dispatchGameStateUpdate();
 
             return;
         }
@@ -912,6 +913,7 @@ class BasketballOperator extends Component
         if ($period < 1 || $period > 6) {
             $this->feedbackMessage = 'Period must be between 1 and 6.';
             $this->feedbackType = 'error';
+            $this->dispatchGameStateUpdate();
 
             return;
         }
@@ -1040,6 +1042,8 @@ class BasketballOperator extends Component
             'awayBench' => $awayBench,
             'homeStats' => $homeStats,
             'awayStats' => $awayStats,
+            'feedbackMessage' => $this->feedbackMessage,
+            'feedbackType' => $this->feedbackType,
         ]);
     }
 

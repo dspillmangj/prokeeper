@@ -833,7 +833,11 @@ class VolleyballOperator extends Component
 
     public function setSet(int $set)
     {
-        if ($set < 1) {
+        if ($set < 1 || $set > 5) {
+            $this->feedbackMessage = 'Set must be between 1 and 5.';
+            $this->feedbackType = 'error';
+            $this->dispatchGameStateUpdate();
+
             return;
         }
         $game = $this->game;
@@ -930,6 +934,8 @@ class VolleyballOperator extends Component
             'awayCourt' => $awayCourt,
             'homeBench' => $homeBench,
             'awayBench' => $awayBench,
+            'feedbackMessage' => $this->feedbackMessage,
+            'feedbackType' => $this->feedbackType,
         ]);
     }
 
@@ -965,6 +971,8 @@ class VolleyballOperator extends Component
             'awayCourt' => $awayCourt,
             'homeBench' => $homeBench,
             'awayBench' => $awayBench,
+            'feedbackMessage' => $this->feedbackMessage,
+            'feedbackType' => $this->feedbackType,
         ]);
     }
 

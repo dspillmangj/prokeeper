@@ -149,11 +149,12 @@
                         {{ $game->period_name }}
                     </span>
 
-                    <div class="flex items-center space-x-1 text-[9px] font-semibold text-slate-300 truncate max-w-[140px]">
-                        <span class="w-1.5 h-1.5 rounded-full shrink-0"
+                    <div class="flex items-center space-x-1.5 text-[9px] font-mono font-bold text-slate-300">
+                        <span class="w-2 h-2 rounded-full shrink-0"
                               :class="syncStatus === 'synced' ? 'bg-emerald-400' : (syncStatus === 'syncing' ? 'bg-amber-400 animate-pulse' : 'bg-rose-400')">
                         </span>
-                        <span x-text="feedbackMessage" class="truncate"></span>
+                        <span x-text="syncStatus === 'synced' ? 'LIVE SYNCED' : (syncStatus === 'syncing' ? 'SYNCING...' : 'OFFLINE')"
+                              :class="syncStatus === 'synced' ? 'text-emerald-400' : (syncStatus === 'syncing' ? 'text-amber-400' : 'text-rose-400')"></span>
                     </div>
 
                     <!-- Quick Play-by-Play Trigger -->
@@ -289,6 +290,75 @@
                 </div>
             </div>
 
+        </div>
+    </div>
+
+    <!-- PROMINENT HIGH-VISIBILITY LIVE FEEDBACK & ACTION STATUS BANNER -->
+    <div class="shrink-0 mb-1 rounded-xl transition-all duration-200 border px-3 sm:px-4 py-2 flex items-center justify-between gap-3 shadow-md select-none"
+         :class="[
+             feedbackType === 'error'
+                 ? 'bg-gradient-to-r from-rose-950/95 via-red-950/90 to-rose-950/95 border-rose-500 text-rose-100 shadow-[0_0_25px_rgba(244,63,94,0.45)] ring-2 ring-rose-500/70'
+                 : (feedbackType === 'success'
+                     ? 'bg-gradient-to-r from-slate-900/95 via-emerald-950/60 to-slate-900/95 border-emerald-500/50 text-emerald-100 shadow-sm'
+                     : 'bg-gradient-to-r from-slate-900/95 via-slate-800/80 to-slate-900/95 border-slate-700/80 text-slate-100 shadow-sm')
+         ]"
+         data-testid="operator-feedback-banner">
+        
+        <!-- Left Icon & Type Badge -->
+        <div class="flex items-center gap-2 shrink-0">
+            <!-- ERROR BADGE -->
+            <template x-if="feedbackType === 'error'">
+                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-600 text-white font-black text-[11px] uppercase tracking-wider shadow-md shadow-rose-950/50 animate-pulse">
+                    <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    <span>ALERT</span>
+                </div>
+            </template>
+
+            <!-- SUCCESS BADGE -->
+            <template x-if="feedbackType === 'success'">
+                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/90 text-white font-black text-[11px] uppercase tracking-wider shadow-sm">
+                    <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span>ACTION</span>
+                </div>
+            </template>
+
+            <!-- INFO / READY BADGE -->
+            <template x-if="feedbackType !== 'error' && feedbackType !== 'success'">
+                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-blue-300 font-black text-[11px] uppercase tracking-wider shadow-sm">
+                    <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span>STATUS</span>
+                </div>
+            </template>
+        </div>
+
+        <!-- Center: Full Feedback Text (Never Truncated, High Contrast, Legible) -->
+        <div class="flex-1 min-w-0 text-left">
+            <p x-text="feedbackMessage || 'Ready'" 
+               class="text-xs sm:text-sm md:text-base font-extrabold tracking-tight leading-snug break-words"
+               :class="[
+                   feedbackType === 'error'
+                       ? 'text-rose-100'
+                       : (feedbackType === 'success' ? 'text-emerald-100' : 'text-slate-100')
+               ]">
+            </p>
+        </div>
+
+        <!-- Right Side: Quick Dismiss (Non-blocking, keyboard speed first) -->
+        <div class="flex items-center gap-2 shrink-0">
+            <template x-if="feedbackMessage && feedbackMessage !== 'Ready'">
+                <button type="button"
+                        @click="feedbackMessage = 'Ready'; feedbackType = 'info';"
+                        class="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition"
+                        title="Dismiss notice">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </template>
         </div>
     </div>
 

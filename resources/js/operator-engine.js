@@ -159,6 +159,7 @@ window.ProKeeperEngine = {
             jerseyBuffer: '',
             bufferTimeout: null,
             feedbackMessage: 'Ready',
+            feedbackType: 'info',
             benchSelectSide: null,
             pendingTimeout: null,
 
@@ -1162,6 +1163,10 @@ window.ProKeeperEngine = {
                         }
                         if (this.sport === 'basketball' && (data.homeStats || data.awayStats)) {
                             this.initPlayerStats(data.homeStats, data.awayStats);
+                        }
+                        if (data.feedbackMessage) {
+                            this.feedbackMessage = data.feedbackMessage;
+                            if (data.feedbackType) this.feedbackType = data.feedbackType;
                         }
                         this.saveLocalState();
                     }

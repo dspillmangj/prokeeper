@@ -308,4 +308,64 @@ class GameFidelityTest extends TestCase
         $this->assertEquals(25, $game->home_period_scores[0]);
         $this->assertEquals(22, $game->away_period_scores[0]);
     }
+
+    public function test_operator_feedback_banner_renders_with_error_and_success_states(): void
+    {
+        $org = Organization::create(['name' => 'Banner Org', 'slug' => 'banner-org']);
+        $user = User::factory()->create(['organization_id' => $org->id]);
+        $homeTeam = Team::create(['organization_id' => $org->id, 'name' => 'Eagles', 'sport' => 'basketball']);
+        $awayTeam = Team::create(['organization_id' => $org->id, 'name' => 'Hawks', 'sport' => 'basketball']);
+
+        $game = Game::create([
+            'organization_id' => $org->id,
+            'created_by_user_id' => $user->id,
+            'access_code' => 'BAN101',
+            'home_team_id' => $homeTeam->id,
+            'home_team_name' => 'Eagles',
+            'away_team_id' => $awayTeam->id,
+            'away_team_name' => 'Hawks',
+            'sport' => 'basketball',
+            'status' => 'in_progress',
+            'current_period' => 1,
+        ]);
+
+        $this->actingAs($user);
+
+        // Test basketball operator renders feedback banner
+        $component = Livewire::test(BasketballOperator::class, ['gameId' => $game->id])
+            ->assertSeeHtml('data-testid="operator-feedback-banner"');
+
+        // Trigger an invalid period change to verify error feedbackType
+        $component->call('setPeriod', 99);
+        $this->assertEquals('error', $component->get('feedbackType'));
+        $this->assertEquals('Period must be between 1 and 6.', $component->get('feedbackMessage'));
+
+        // Verify dispatchGameStateUpdate includes error feedback state
+        $component->assertDispatched('game-state-updated', function ($eventName, $params) {
+            $payload = $params[0] ?? $params;
+
+            return isset($payload['feedbackType']) && $payload['feedbackType'] === 'error'
+                && isset($payload['feedbackMessage']) && $payload['feedbackMessage'] === 'Period must be between 1 and 6.';
+        });
+
+        // Test volleyball operator renders feedback banner
+        $vbGame = Game::create([
+            'organization_id' => $org->id,
+            'created_by_user_id' => $user->id,
+            'access_code' => 'BANVB1',
+            'home_team_id' => $homeTeam->id,
+            'home_team_name' => 'Eagles VB',
+            'away_team_id' => $awayTeam->id,
+            'away_team_name' => 'Hawks VB',
+            'sport' => 'volleyball',
+            'status' => 'in_progress',
+            'current_period' => 1,
+        ]);
+
+        $vbComponent = Livewire::test(VolleyballOperator::class, ['gameId' => $vbGame->id])
+            ->assertSeeHtml('data-testid="operator-feedback-banner"');
+
+        $vbComponent->call('setSet', 99);
+        $this->assertEquals('error', $vbComponent->get('feedbackType'));
+    }
 }
