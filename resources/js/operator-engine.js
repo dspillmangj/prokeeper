@@ -297,10 +297,18 @@ window.ProKeeperEngine = {
             },
 
             recalculateLocalEventsAndScores() {
-                if (!Array.isArray(this.recentEvents)) return;
+                if (!Array.isArray(this.recentEvents) || this.recentEvents.length === 0) return;
 
                 // Sort ascending by sequence / reverse chronological to compute running scores
                 const chronological = [...this.recentEvents].reverse();
+
+                // FIDELITY GUARD: If events do not start from the beginning of the game (sequence 1),
+                // do NOT clobber the game scores with a partial-sum calculation!
+                const firstSeq = Number(chronological[0]?.sequence || 1);
+                if (firstSeq > 1) {
+                    console.warn(`recalculateLocalEventsAndScores: event history begins at sequence ${firstSeq} > 1. Aborting local zero-based rebuild to preserve complete game fidelity.`);
+                    return;
+                }
 
                 let runningHome = 0;
                 let runningAway = 0;
@@ -538,6 +546,26 @@ window.ProKeeperEngine = {
 
                 // Remove from recentEvents array and recalculate running state
                 this.recentEvents.splice(idx, 1);
+
+                // Immediate delta adjustment to guarantee score fidelity even on partial array
+                const pts = Number(event.points || 0);
+                const side = event.team_side || 'home';
+                const p = Number(event.period || 1);
+                const pIdx = Math.max(0, p - 1);
+                if (pts > 0) {
+                    if (side === 'home') {
+                        this.homeScore = Math.max(0, this.homeScore - pts);
+                        if (this.homePeriodScores[pIdx] !== undefined) {
+                            this.homePeriodScores[pIdx] = Math.max(0, this.homePeriodScores[pIdx] - pts);
+                        }
+                    } else {
+                        this.awayScore = Math.max(0, this.awayScore - pts);
+                        if (this.awayPeriodScores[pIdx] !== undefined) {
+                            this.awayPeriodScores[pIdx] = Math.max(0, this.awayPeriodScores[pIdx] - pts);
+                        }
+                    }
+                }
+
                 this.recalculateLocalEventsAndScores();
 
                 this.playSound('tap');
@@ -967,7 +995,7 @@ window.ProKeeperEngine = {
                         homeBench: this.homeBench,
                         awayBench: this.awayBench,
                         playerStats: this.playerStats,
-                        recentEvents: (this.recentEvents || []).slice(0, 50),
+                        recentEvents: this.recentEvents || [],
                     };
                     localStorage.setItem(`prokeeper_state_${this.gameId}`, JSON.stringify(payload));
                 } catch (e) {}
@@ -980,11 +1008,27 @@ window.ProKeeperEngine = {
                         const parsed = JSON.parse(saved);
                         if (parsed && parsed.snapshot && (Date.now() - parsed.savedAt < 86400000)) { // within 24h
                             const s = parsed.snapshot;
-                            if (typeof s.homeScore !== 'undefined') this.homeScore = s.homeScore;
-                            if (typeof s.awayScore !== 'undefined') this.awayScore = s.awayScore;
-                            if (Array.isArray(s.homePeriodScores) && s.homePeriodScores.length > 0) this.homePeriodScores = [...s.homePeriodScores];
-                            if (Array.isArray(s.awayPeriodScores) && s.awayPeriodScores.length > 0) this.awayPeriodScores = [...s.awayPeriodScores];
-                            if (typeof s.currentPeriod !== 'undefined') this.currentPeriod = s.currentPeriod;
+
+                            // FIDELITY: Compare server baseline in config with local saved state
+                            const serverTotalScore = Number(config.homeScore || 0) + Number(config.awayScore || 0);
+                            const savedTotalScore = Number(s.homeScore || 0) + Number(s.awayScore || 0);
+                            const serverEventsCount = Array.isArray(config.recentEvents) ? config.recentEvents.length : 0;
+                            const savedEventsCount = Array.isArray(parsed.recentEvents) ? parsed.recentEvents.length : 0;
+
+                            // If server already has greater or equal score and events, server state is authoritative.
+                            // Do not let an older or stale local snapshot overwrite fresh server data!
+                            const useLocalScores = (savedTotalScore > serverTotalScore) || (this.isQueuePending && this.isQueuePending());
+
+                            if (useLocalScores) {
+                                if (typeof s.homeScore !== 'undefined') this.homeScore = s.homeScore;
+                                if (typeof s.awayScore !== 'undefined') this.awayScore = s.awayScore;
+                                if (Array.isArray(s.homePeriodScores) && s.homePeriodScores.length > 0) this.homePeriodScores = [...s.homePeriodScores];
+                                if (Array.isArray(s.awayPeriodScores) && s.awayPeriodScores.length > 0) this.awayPeriodScores = [...s.awayPeriodScores];
+                            }
+
+                            if (typeof s.currentPeriod !== 'undefined' && s.currentPeriod >= (config.currentPeriod || 1)) {
+                                this.currentPeriod = s.currentPeriod;
+                            }
                             if (s.possession) this.possession = s.possession;
                             if (s.server) this.server = s.server;
                             if (typeof s.homeFouls !== 'undefined') this.homeFouls = s.homeFouls;
@@ -1001,8 +1045,24 @@ window.ProKeeperEngine = {
                             if (parsed.awayCourt && Array.isArray(parsed.awayCourt) && parsed.awayCourt.length > 0) this.awayCourt = parsed.awayCourt;
                             if (parsed.homeBench && Array.isArray(parsed.homeBench)) this.homeBench = parsed.homeBench;
                             if (parsed.awayBench && Array.isArray(parsed.awayBench)) this.awayBench = parsed.awayBench;
-                            if (parsed.playerStats && typeof parsed.playerStats === 'object') this.playerStats = parsed.playerStats;
-                            if (parsed.recentEvents && Array.isArray(parsed.recentEvents) && parsed.recentEvents.length > 0) this.recentEvents = parsed.recentEvents;
+                            if (parsed.playerStats && typeof parsed.playerStats === 'object' && Object.keys(parsed.playerStats).length > 0) {
+                                this.playerStats = parsed.playerStats;
+                            }
+
+                            // For events: prefer whichever has more events, and merge any unsynced local events (id starting with local_)
+                            if (parsed.recentEvents && Array.isArray(parsed.recentEvents)) {
+                                if (this.recentEvents.length === 0 || savedEventsCount > serverEventsCount) {
+                                    this.recentEvents = parsed.recentEvents;
+                                } else {
+                                    // Prepend any local pending mutations from parsed that are not in server events
+                                    const localPending = parsed.recentEvents.filter(e => String(e.id).startsWith('local_'));
+                                    const existingIds = new Set(this.recentEvents.map(e => String(e.id)));
+                                    const toAdd = localPending.filter(e => !existingIds.has(String(e.id)));
+                                    if (toAdd.length > 0) {
+                                        this.recentEvents = [...toAdd, ...this.recentEvents];
+                                    }
+                                }
+                            }
                             this.localRevision = parsed.version || 0;
                         }
                     }
@@ -1090,7 +1150,13 @@ window.ProKeeperEngine = {
                         if (typeof data.away30sTimeouts !== 'undefined') this.away30sTimeouts = Number(data.away30sTimeouts);
                         if (typeof data.homeRotation !== 'undefined') this.homeRotation = Number(data.homeRotation);
                         if (typeof data.awayRotation !== 'undefined') this.awayRotation = Number(data.awayRotation);
-                        if (data.recentEvents) this.recentEvents = JSON.parse(JSON.stringify(data.recentEvents));
+                        if (data.recentEvents) {
+                            const localPending = (this.recentEvents || []).filter(e => String(e.id).startsWith('local_'));
+                            const serverEvents = JSON.parse(JSON.stringify(data.recentEvents));
+                            const serverIds = new Set(serverEvents.map(e => String(e.id)));
+                            const toKeep = localPending.filter(e => !serverIds.has(String(e.id)));
+                            this.recentEvents = [...toKeep, ...serverEvents];
+                        }
                         if (data.homeCourt || data.awayCourt || data.homeBench || data.awayBench) {
                             this.hotPatchLineups(data);
                         }
@@ -2506,6 +2572,24 @@ window.ProKeeperEngine = {
                     }
                 } else if (this.recentEvents.length > 0) {
                     const undone = this.recentEvents.shift();
+                    // Delta revert on score so we NEVER zero out periods if history is partial
+                    const pts = Number(undone.points || 0);
+                    const side = undone.team_side || 'home';
+                    const p = Number(undone.period || 1);
+                    const pIdx = Math.max(0, p - 1);
+                    if (pts > 0) {
+                        if (side === 'home') {
+                            this.homeScore = Math.max(0, this.homeScore - pts);
+                            if (this.homePeriodScores[pIdx] !== undefined) {
+                                this.homePeriodScores[pIdx] = Math.max(0, this.homePeriodScores[pIdx] - pts);
+                            }
+                        } else {
+                            this.awayScore = Math.max(0, this.awayScore - pts);
+                            if (this.awayPeriodScores[pIdx] !== undefined) {
+                                this.awayPeriodScores[pIdx] = Math.max(0, this.awayPeriodScores[pIdx] - pts);
+                            }
+                        }
+                    }
                     this.recalculateLocalEventsAndScores();
                     this.feedbackMessage = `Reverted: ${undone.description || 'Last play'}`;
                 }
@@ -2543,7 +2627,7 @@ window.ProKeeperEngine = {
                     homeBench: JSON.parse(JSON.stringify(this.homeBench)),
                     awayBench: JSON.parse(JSON.stringify(this.awayBench)),
                 });
-                if (this.undoStack.length > 50) this.undoStack.shift();
+                if (this.undoStack.length > 500) this.undoStack.shift();
             },
 
             restoreSnapshot(s) {

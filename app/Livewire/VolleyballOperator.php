@@ -943,7 +943,6 @@ class VolleyballOperator extends Component
         $recentEvents = GameEvent::where('game_id', $game->id)
             ->where('is_undone', false)
             ->orderBy('sequence', 'desc')
-            ->take(100)
             ->get();
 
         $homeCourt = GameLineup::where('game_id', $game->id)->where('team_side', 'home')->where('is_on_court', true)->orderBy('court_position', 'asc')->get();
@@ -1246,19 +1245,79 @@ class VolleyballOperator extends Component
         }
 
         $domain = $meta['domain'] ?? null;
+        if ($domain === 'roster') {
+            return;
+        }
+
+        // Authoritative ledger: fetch all active non-undone game events from DB
+        $dbEvents = GameEvent::where('game_id', $game->id)->where('is_undone', false)->get();
+        $dbHomePoints = (int) $dbEvents->where('team_side', 'home')->sum('points');
+        $dbAwayPoints = (int) $dbEvents->where('team_side', 'away')->sum('points');
+
+        // Build minimum set/period scores from active events
+        $dbHomePeriodScores = [];
+        $dbAwayPeriodScores = [];
+        $maxPeriod = max(3, (int) $game->current_period);
+        for ($p = 1; $p <= $maxPeriod; $p++) {
+            $dbHomePeriodScores[$p - 1] = (int) $dbEvents->where('team_side', 'home')->where('period', $p)->sum('points');
+            $dbAwayPeriodScores[$p - 1] = (int) $dbEvents->where('team_side', 'away')->where('period', $p)->sum('points');
+        }
+
+        // FIDELITY GUARANTEE: A client snapshot can NEVER downgrade or delete points backed by active DB events
+        $targetHomeScore = isset($snapshot['homeScore']) ? max(0, (int) $snapshot['homeScore']) : null;
+        $targetAwayScore = isset($snapshot['awayScore']) ? max(0, (int) $snapshot['awayScore']) : null;
+
+        if ($dbEvents->isNotEmpty()) {
+            if ($targetHomeScore !== null) {
+                $targetHomeScore = max($dbHomePoints, $targetHomeScore);
+            }
+            if ($targetAwayScore !== null) {
+                $targetAwayScore = max($dbAwayPoints, $targetAwayScore);
+            }
+        }
+
+        $mergedHomePeriodScores = null;
+        if (isset($snapshot['homePeriodScores']) && is_array($snapshot['homePeriodScores'])) {
+            $mergedHomePeriodScores = array_map('intval', $snapshot['homePeriodScores']);
+            if ($dbEvents->isNotEmpty()) {
+                foreach ($dbHomePeriodScores as $idx => $pts) {
+                    if ($pts > 0) {
+                        while (count($mergedHomePeriodScores) <= $idx) {
+                            $mergedHomePeriodScores[] = 0;
+                        }
+                        $mergedHomePeriodScores[$idx] = max($pts, (int) ($mergedHomePeriodScores[$idx] ?? 0));
+                    }
+                }
+            }
+        }
+
+        $mergedAwayPeriodScores = null;
+        if (isset($snapshot['awayPeriodScores']) && is_array($snapshot['awayPeriodScores'])) {
+            $mergedAwayPeriodScores = array_map('intval', $snapshot['awayPeriodScores']);
+            if ($dbEvents->isNotEmpty()) {
+                foreach ($dbAwayPeriodScores as $idx => $pts) {
+                    if ($pts > 0) {
+                        while (count($mergedAwayPeriodScores) <= $idx) {
+                            $mergedAwayPeriodScores[] = 0;
+                        }
+                        $mergedAwayPeriodScores[$idx] = max($pts, (int) ($mergedAwayPeriodScores[$idx] ?? 0));
+                    }
+                }
+            }
+        }
 
         if ($domain === 'score' || $domain === 'stats') {
-            if (isset($snapshot['homeScore'])) {
-                $game->home_score = max(0, (int) $snapshot['homeScore']);
+            if ($targetHomeScore !== null) {
+                $game->home_score = $targetHomeScore;
             }
-            if (isset($snapshot['awayScore'])) {
-                $game->away_score = max(0, (int) $snapshot['awayScore']);
+            if ($targetAwayScore !== null) {
+                $game->away_score = $targetAwayScore;
             }
-            if (isset($snapshot['homePeriodScores']) && is_array($snapshot['homePeriodScores'])) {
-                $game->home_period_scores = array_map('intval', $snapshot['homePeriodScores']);
+            if ($mergedHomePeriodScores !== null) {
+                $game->home_period_scores = $mergedHomePeriodScores;
             }
-            if (isset($snapshot['awayPeriodScores']) && is_array($snapshot['awayPeriodScores'])) {
-                $game->away_period_scores = array_map('intval', $snapshot['awayPeriodScores']);
+            if ($mergedAwayPeriodScores !== null) {
+                $game->away_period_scores = $mergedAwayPeriodScores;
             }
         } elseif ($domain === 'rotation') {
             if (isset($snapshot['homeRotation'])) {
@@ -1281,20 +1340,18 @@ class VolleyballOperator extends Component
             if (isset($snapshot['currentPeriod'])) {
                 $game->current_period = (int) $snapshot['currentPeriod'];
             }
-        } elseif ($domain === 'roster') {
-            return;
         } else {
-            if (isset($snapshot['homeScore'])) {
-                $game->home_score = max(0, (int) $snapshot['homeScore']);
+            if ($targetHomeScore !== null) {
+                $game->home_score = $targetHomeScore;
             }
-            if (isset($snapshot['awayScore'])) {
-                $game->away_score = max(0, (int) $snapshot['awayScore']);
+            if ($targetAwayScore !== null) {
+                $game->away_score = $targetAwayScore;
             }
-            if (isset($snapshot['homePeriodScores']) && is_array($snapshot['homePeriodScores'])) {
-                $game->home_period_scores = array_map('intval', $snapshot['homePeriodScores']);
+            if ($mergedHomePeriodScores !== null) {
+                $game->home_period_scores = $mergedHomePeriodScores;
             }
-            if (isset($snapshot['awayPeriodScores']) && is_array($snapshot['awayPeriodScores'])) {
-                $game->away_period_scores = array_map('intval', $snapshot['awayPeriodScores']);
+            if ($mergedAwayPeriodScores !== null) {
+                $game->away_period_scores = $mergedAwayPeriodScores;
             }
             if (isset($snapshot['currentPeriod'])) {
                 $game->current_period = (int) $snapshot['currentPeriod'];
@@ -1360,7 +1417,6 @@ class VolleyballOperator extends Component
         $recentEvents = GameEvent::where('game_id', $game->id)
             ->where('is_undone', false)
             ->orderBy('sequence', 'desc')
-            ->take(100)
             ->get();
 
         $rosterModalLineups = GameLineup::where('game_id', $game->id)

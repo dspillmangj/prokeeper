@@ -107,7 +107,7 @@ class WatchGame extends Component
             $eventsQuery->where('team_side', $this->pbpFilterTeam);
         }
 
-        $events = $eventsQuery->take(100)->get();
+        $events = $eventsQuery->get();
 
         // 2. Lineups
         $homeLineup = GameLineup::where('game_id', $game->id)
