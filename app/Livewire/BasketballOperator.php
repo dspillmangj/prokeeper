@@ -12,6 +12,7 @@ use App\Models\Team;
 use App\Services\BasketballStatService;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -602,8 +603,27 @@ class BasketballOperator extends Component
         $lineup = GameLineup::where('game_id', $this->gameId)->findOrFail($id);
         $jersey = $lineup->jersey_number;
         $name = $lineup->player_name;
+
+        $hasEvents = GameEvent::where('game_id', $this->gameId)
+            ->where('team_side', $lineup->team_side)
+            ->where('jersey_number', $jersey)
+            ->exists();
+
+        if ($hasEvents) {
+            $lineup->is_on_court = false;
+            $lineup->save();
+            $this->dispatchLineupUpdate();
+            $this->dispatchGameStateUpdate();
+
+            $this->feedbackMessage = "#{$jersey} {$name} has recorded plays in this game. Kept safely on bench.";
+            $this->feedbackType = 'info';
+
+            return;
+        }
+
         $lineup->delete();
         $this->dispatchLineupUpdate();
+        $this->dispatchGameStateUpdate();
 
         $this->feedbackMessage = "Removed #{$jersey} {$name} from game lineup.";
         $this->feedbackType = 'info';
@@ -620,9 +640,23 @@ class BasketballOperator extends Component
         $teamSide = $this->rosterModalTeam;
 
         if ($this->bulkRosterMode === 'replace') {
-            GameLineup::where('game_id', $game->id)
+            $existingLineups = GameLineup::where('game_id', $game->id)
                 ->where('team_side', $teamSide)
-                ->delete();
+                ->get();
+
+            foreach ($existingLineups as $existing) {
+                $hasEvents = GameEvent::where('game_id', $game->id)
+                    ->where('team_side', $teamSide)
+                    ->where('jersey_number', $existing->jersey_number)
+                    ->exists();
+
+                if ($hasEvents) {
+                    $existing->is_on_court = false;
+                    $existing->save();
+                } else {
+                    $existing->delete();
+                }
+            }
         }
 
         $lines = preg_split('/\r\n|\r|\n/', $text);
@@ -725,101 +759,125 @@ class BasketballOperator extends Component
 
     public function saveRosterSpreadsheet(string $teamSide, array $players)
     {
-        $game = $this->game;
-        $submittedLineupIds = [];
+        try {
+            DB::transaction(function () use ($teamSide, $players) {
+                $game = $this->game;
+                $submittedLineupIds = [];
 
-        foreach ($players as $index => $row) {
-            $jersey = trim((string) ($row['jersey_number'] ?? ''));
-            $name = trim($row['name'] ?? ($row['player_name'] ?? ''));
+                foreach ($players as $index => $row) {
+                    $jersey = trim((string) ($row['jersey_number'] ?? ''));
+                    $name = trim($row['name'] ?? ($row['player_name'] ?? ''));
 
-            if ($jersey === '' || $name === '') {
-                continue;
-            }
+                    if ($jersey === '' || $name === '') {
+                        continue;
+                    }
 
-            $lineupId = ! empty($row['id']) ? (int) $row['id'] : null;
-            $position = ! empty($row['position']) ? strtoupper(trim($row['position'])) : null;
-            $isOnCourt = filter_var($row['is_on_court'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $isStarter = filter_var($row['is_starter'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                    $lineupId = ! empty($row['id']) ? (int) $row['id'] : null;
+                    $position = ! empty($row['position']) ? strtoupper(trim($row['position'])) : null;
+                    $isOnCourt = filter_var($row['is_on_court'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                    $isStarter = filter_var($row['is_starter'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-            // Default first 5 players to on-court and starter if not specified
-            if (! isset($row['is_on_court']) && count($submittedLineupIds) < 5) {
-                $isOnCourt = true;
-            }
-            if (! isset($row['is_starter']) && count($submittedLineupIds) < 5) {
-                $isStarter = true;
-            }
+                    // Default first 5 players to on-court and starter if not specified
+                    if (! isset($row['is_on_court']) && count($submittedLineupIds) < 5) {
+                        $isOnCourt = true;
+                    }
+                    if (! isset($row['is_starter']) && count($submittedLineupIds) < 5) {
+                        $isStarter = true;
+                    }
 
-            $lineup = null;
-            if ($lineupId) {
-                $lineup = GameLineup::where('game_id', $game->id)
-                    ->where('team_side', $teamSide)
-                    ->where('id', $lineupId)
-                    ->first();
-            }
+                    $lineup = null;
+                    if ($lineupId) {
+                        $lineup = GameLineup::where('game_id', $game->id)
+                            ->where('team_side', $teamSide)
+                            ->where('id', $lineupId)
+                            ->first();
+                    }
 
-            if (! $lineup) {
-                $lineup = GameLineup::where('game_id', $game->id)
-                    ->where('team_side', $teamSide)
-                    ->where('jersey_number', $jersey)
-                    ->first();
-            }
+                    if (! $lineup) {
+                        $lineup = GameLineup::where('game_id', $game->id)
+                            ->where('team_side', $teamSide)
+                            ->where('jersey_number', $jersey)
+                            ->first();
+                    }
 
-            if ($lineup) {
-                $oldJersey = $lineup->jersey_number;
-                $oldName = $lineup->player_name;
+                    if ($lineup) {
+                        $oldJersey = $lineup->jersey_number;
+                        $oldName = $lineup->player_name;
 
-                $lineup->jersey_number = $jersey;
-                $lineup->player_name = $name;
-                $lineup->position = $position;
-                $lineup->is_starter = $isStarter;
-                $lineup->is_on_court = $isOnCourt;
-                $lineup->save();
+                        $lineup->jersey_number = $jersey;
+                        $lineup->player_name = $name;
+                        $lineup->position = $position;
+                        $lineup->is_starter = $isStarter;
+                        $lineup->is_on_court = $isOnCourt;
+                        $lineup->save();
 
-                if ($oldJersey !== $jersey || $oldName !== $name) {
-                    BasketballStat::where('game_id', $this->gameId)
-                        ->where('team_side', $teamSide)
-                        ->where('jersey_number', $oldJersey)
-                        ->update([
+                        if ($oldJersey !== $jersey || $oldName !== $name) {
+                            BasketballStat::where('game_id', $this->gameId)
+                                ->where('team_side', $teamSide)
+                                ->where('jersey_number', $oldJersey)
+                                ->update([
+                                    'jersey_number' => $jersey,
+                                    'player_name' => $name,
+                                ]);
+
+                            GameEvent::where('game_id', $this->gameId)
+                                ->where('team_side', $teamSide)
+                                ->where('jersey_number', $oldJersey)
+                                ->update([
+                                    'jersey_number' => $jersey,
+                                    'player_name' => $name,
+                                ]);
+                        }
+
+                        $this->syncLineupPlayerToTeamRoster($lineup, $oldJersey);
+                        $submittedLineupIds[] = $lineup->id;
+                    } else {
+                        $newLineup = GameLineup::create([
+                            'game_id' => $game->id,
+                            'team_side' => $teamSide,
                             'jersey_number' => $jersey,
                             'player_name' => $name,
+                            'position' => $position,
+                            'is_starter' => $isStarter,
+                            'is_on_court' => $isOnCourt,
                         ]);
 
-                    GameEvent::where('game_id', $this->gameId)
-                        ->where('team_side', $teamSide)
-                        ->where('jersey_number', $oldJersey)
-                        ->update([
-                            'jersey_number' => $jersey,
-                            'player_name' => $name,
-                        ]);
+                        $this->syncLineupPlayerToTeamRoster($newLineup);
+                        $submittedLineupIds[] = $newLineup->id;
+                    }
                 }
 
-                $this->syncLineupPlayerToTeamRoster($lineup, $oldJersey);
-                $submittedLineupIds[] = $lineup->id;
-            } else {
-                $newLineup = GameLineup::create([
-                    'game_id' => $game->id,
-                    'team_side' => $teamSide,
-                    'jersey_number' => $jersey,
-                    'player_name' => $name,
-                    'position' => $position,
-                    'is_starter' => $isStarter,
-                    'is_on_court' => $isOnCourt,
-                ]);
+                // Remove lineup players on this team side not in submitted list
+                // FIDELITY GUARANTEE: Never delete a player who participated or scored in this game
+                $toRemove = GameLineup::where('game_id', $game->id)
+                    ->where('team_side', $teamSide)
+                    ->whereNotIn('id', $submittedLineupIds)
+                    ->get();
 
-                $this->syncLineupPlayerToTeamRoster($newLineup);
-                $submittedLineupIds[] = $newLineup->id;
-            }
+                foreach ($toRemove as $delPlayer) {
+                    $hasEvents = GameEvent::where('game_id', $game->id)
+                        ->where('team_side', $teamSide)
+                        ->where('jersey_number', $delPlayer->jersey_number)
+                        ->exists();
+
+                    if ($hasEvents) {
+                        $delPlayer->is_on_court = false;
+                        $delPlayer->save();
+                    } else {
+                        $delPlayer->delete();
+                    }
+                }
+            });
+
+            $this->dispatchLineupUpdate();
+            $this->dispatchGameStateUpdate();
+            $this->feedbackMessage = 'Updated '.strtoupper($teamSide).' roster spreadsheet.';
+            $this->feedbackType = 'success';
+        } catch (\Throwable $e) {
+            $this->feedbackMessage = 'Failed to save roster: '.$e->getMessage();
+            $this->feedbackType = 'error';
+            $this->dispatchGameStateUpdate();
         }
-
-        // Remove lineup players on this team side not in submitted list
-        GameLineup::where('game_id', $game->id)
-            ->where('team_side', $teamSide)
-            ->whereNotIn('id', $submittedLineupIds)
-            ->delete();
-
-        $this->dispatchLineupUpdate();
-        $this->feedbackMessage = 'Updated '.strtoupper($teamSide).' roster spreadsheet.';
-        $this->feedbackType = 'success';
     }
 
     public function processInput()

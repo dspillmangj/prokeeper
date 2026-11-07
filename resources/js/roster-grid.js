@@ -390,6 +390,7 @@ export function rosterSpreadsheet(config) {
 
             try {
                 const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                const cleanPayload = JSON.parse(JSON.stringify(validRows));
                 const response = await fetch(this.saveUrl, {
                     method: 'POST',
                     headers: {
@@ -397,17 +398,25 @@ export function rosterSpreadsheet(config) {
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrf || ''
                     },
-                    body: JSON.stringify({ players: validRows })
+                    body: JSON.stringify({ players: cleanPayload })
                 });
 
                 const data = await response.json();
 
                 if (response.ok && data.success) {
                     if (data.players && Array.isArray(data.players)) {
-                        this.rows = data.players;
+                        this.rows = data.players.map(p => ({
+                            id: p.id || null,
+                            player_id: p.player_id || null,
+                            jersey_number: p.jersey_number || '',
+                            name: p.name || '',
+                            position: p.position || '',
+                            is_starter: Boolean(p.is_starter),
+                            is_libero: Boolean(p.is_libero)
+                        }));
                         const minRows = 15;
                         while (this.rows.length < minRows) {
-                            this.rows.push({ id: null, player_id: null, jersey_number: '', name: '' });
+                            this.rows.push({ id: null, player_id: null, jersey_number: '', name: '', position: '', is_starter: false, is_libero: false });
                         }
                     }
                     this.isDirty = false;
@@ -602,13 +611,15 @@ export function inGameRosterSpreadsheet(config) {
             this.isSaving = true;
             try {
                 if (wire && wire.saveRosterSpreadsheet) {
-                    await wire.saveRosterSpreadsheet(this.teamSide, validRows);
+                    const cleanRows = JSON.parse(JSON.stringify(validRows));
+                    await wire.saveRosterSpreadsheet(this.teamSide, cleanRows);
                     this.isDirty = false;
                     this.saveSuccessMessage = 'Lineup saved!';
                     setTimeout(() => { this.saveSuccessMessage = ''; }, 3000);
                 }
             } catch (err) {
                 console.error(err);
+                alert('Failed to save in-game roster: ' + (err?.message || 'unknown error'));
             } finally {
                 this.isSaving = false;
             }

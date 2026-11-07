@@ -437,13 +437,13 @@ class VolleyballStatService
             }
 
             $points = (int) $event->points;
-            if ($points > 0) {
+            if ($points !== 0) {
                 if ($event->team_side === 'home') {
-                    $homeScore += $points;
-                    $homePeriodScores[$period - 1] += $points;
+                    $homeScore = max(0, $homeScore + $points);
+                    $homePeriodScores[$period - 1] = max(0, $homePeriodScores[$period - 1] + $points);
                 } elseif ($event->team_side === 'away') {
-                    $awayScore += $points;
-                    $awayPeriodScores[$period - 1] += $points;
+                    $awayScore = max(0, $awayScore + $points);
+                    $awayPeriodScores[$period - 1] = max(0, $awayPeriodScores[$period - 1] + $points);
                 }
             }
 

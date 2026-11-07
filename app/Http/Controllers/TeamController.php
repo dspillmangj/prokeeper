@@ -271,6 +271,9 @@ class TeamController extends Controller
                         'player_id' => $rp->player_id,
                         'jersey_number' => (string) $rp->jersey_number,
                         'name' => trim(($rp->player->first_name ?? '').' '.($rp->player->last_name ?? '')),
+                        'position' => (string) ($rp->position ?? ''),
+                        'is_starter' => (bool) $rp->is_starter,
+                        'is_libero' => (bool) $rp->is_libero,
                     ];
                 })->values(),
             ]);

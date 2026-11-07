@@ -10,6 +10,7 @@ use App\Models\GameLineup;
 use App\Models\Organization;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\VolleyballStatService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -367,5 +368,132 @@ class GameFidelityTest extends TestCase
 
         $vbComponent->call('setSet', 99);
         $this->assertEquals('error', $vbComponent->get('feedbackType'));
+    }
+
+    public function test_lineup_players_with_recorded_events_cannot_be_deleted_by_spreadsheet_or_removal(): void
+    {
+        $org = Organization::create(['name' => 'Fidelity Org 2', 'slug' => 'fidelity-org-2']);
+        $user = User::factory()->create(['organization_id' => $org->id]);
+        $team = Team::create(['organization_id' => $org->id, 'name' => 'Tigers', 'sport' => 'basketball']);
+        $awayTeam = Team::create(['organization_id' => $org->id, 'name' => 'Bears', 'sport' => 'basketball']);
+
+        $game = Game::create([
+            'organization_id' => $org->id,
+            'created_by_user_id' => $user->id,
+            'access_code' => 'DELSAFE',
+            'home_team_id' => $team->id,
+            'home_team_name' => 'Tigers',
+            'away_team_id' => $awayTeam->id,
+            'away_team_name' => 'Bears',
+            'sport' => 'basketball',
+            'status' => 'in_progress',
+            'home_score' => 10,
+            'away_score' => 8,
+            'current_period' => 2,
+        ]);
+
+        $starPlayer = GameLineup::create([
+            'game_id' => $game->id,
+            'team_side' => 'home',
+            'jersey_number' => '23',
+            'player_name' => 'Michael Jordan',
+            'is_on_court' => true,
+        ]);
+
+        $benchPlayer = GameLineup::create([
+            'game_id' => $game->id,
+            'team_side' => 'home',
+            'jersey_number' => '99',
+            'player_name' => 'Bench Guy',
+            'is_on_court' => false,
+        ]);
+
+        // Record an event for player 23
+        GameEvent::create([
+            'game_id' => $game->id,
+            'sequence' => 1,
+            'period' => 1,
+            'team_side' => 'home',
+            'jersey_number' => '23',
+            'player_name' => 'Michael Jordan',
+            'sport' => 'basketball',
+            'action_code' => '2P',
+            'action_type' => 'stat',
+            'action_name' => '2-Point Field Goal',
+            'points' => 2,
+            'home_score_after' => 2,
+            'away_score_after' => 0,
+            'is_undone' => false,
+        ]);
+
+        $this->actingAs($user);
+
+        // Attempt to delete player 23 directly: should be retained on bench, NOT deleted
+        Livewire::test(BasketballOperator::class, ['gameId' => $game->id])
+            ->call('deleteLineupPlayer', $starPlayer->id);
+
+        $starPlayer->refresh();
+        $this->assertFalse($starPlayer->is_on_court);
+        $this->assertDatabaseHas('game_lineups', ['id' => $starPlayer->id]);
+
+        // Bench Guy has 0 events and can be safely deleted
+        Livewire::test(BasketballOperator::class, ['gameId' => $game->id])
+            ->call('deleteLineupPlayer', $benchPlayer->id);
+        $this->assertDatabaseMissing('game_lineups', ['id' => $benchPlayer->id]);
+
+        // Now save a spreadsheet containing only a NEW player #11. Player 23 is NOT in spreadsheet.
+        Livewire::test(BasketballOperator::class, ['gameId' => $game->id])
+            ->call('saveRosterSpreadsheet', 'home', [
+                ['id' => null, 'jersey_number' => '11', 'name' => 'New Guy', 'is_on_court' => true],
+            ]);
+
+        // Player 23 must STILL exist in game_lineups safely on bench
+        $this->assertDatabaseHas('game_lineups', ['id' => $starPlayer->id, 'jersey_number' => '23', 'is_on_court' => false]);
+        $this->assertDatabaseHas('game_lineups', ['game_id' => $game->id, 'jersey_number' => '11']);
+    }
+
+    public function test_volleyball_rebuild_faithfully_preserves_negative_score_adjustments(): void
+    {
+        $org = Organization::create(['name' => 'Fidelity Org 3', 'slug' => 'fidelity-org-3']);
+        $user = User::factory()->create(['organization_id' => $org->id]);
+        $team = Team::create(['organization_id' => $org->id, 'name' => 'Spikers', 'sport' => 'volleyball']);
+        $awayTeam = Team::create(['organization_id' => $org->id, 'name' => 'Setters', 'sport' => 'volleyball']);
+
+        $game = Game::create([
+            'organization_id' => $org->id,
+            'created_by_user_id' => $user->id,
+            'access_code' => 'VBADJ1',
+            'home_team_id' => $team->id,
+            'home_team_name' => 'Spikers',
+            'away_team_id' => $awayTeam->id,
+            'away_team_name' => 'Setters',
+            'sport' => 'volleyball',
+            'status' => 'in_progress',
+            'home_score' => 0,
+            'away_score' => 0,
+            'current_period' => 1,
+            'home_period_scores' => [0, 0, 0, 0, 0],
+            'away_period_scores' => [0, 0, 0, 0, 0],
+        ]);
+
+        $statService = app(VolleyballStatService::class);
+
+        // Add 2 scoring events (2 points total)
+        $statService->recordStat($game, 'home', '10', 'K'); // +1 pt
+        $statService->recordStat($game, 'home', '10', 'K'); // +1 pt
+
+        // Adjust score down -1 (1 point total)
+        $statService->adjustScore($game, 'home', -1, 'Correction');
+
+        $game->refresh();
+        $this->assertEquals(1, $game->home_score);
+
+        // Rebuild game from events
+        $statService->rebuildGameFromEvents($game);
+        $game->refresh();
+
+        // Score must stay 1 (not 2)
+        $this->assertEquals(1, $game->home_score);
+        $this->assertEquals(1, $game->home_period_scores[0]);
     }
 }
