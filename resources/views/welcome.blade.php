@@ -110,9 +110,9 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>&copy; {{ date('Y') }} ProKeeper Systems. All rights reserved.</div>
             <div class="flex items-center space-x-6 text-slate-400 font-medium">
-                <a href="https://prokeeper.taligent.dev" class="hover:underline hover:text-slate-200 transition">Home</a>
-                <a href="https://app.prokeeper.taligent.dev" class="hover:underline hover:text-slate-200 transition">App</a>
-                <a href="https://docs.prokeeper.taligent.dev" class="hover:underline hover:text-slate-200 transition">Docs</a>
+                <a href="https://prokeeper.org" class="hover:underline hover:text-slate-200 transition">Home</a>
+                <a href="https://app.prokeeper.org" class="hover:underline hover:text-slate-200 transition">App</a>
+                <a href="https://docs.prokeeper.org" class="hover:underline hover:text-slate-200 transition">Docs</a>
             </div>
         </div>
     </footer>

@@ -31,7 +31,7 @@ class DatabaseSeeder extends Seeder
         // 2. Create Users
         $admin = User::create([
             'name' => 'Athletic Director',
-            'email' => 'admin@prokeeper.com',
+            'email' => 'admin@prokeeper.org',
             'password' => Hash::make('password'),
             'organization_id' => $org->id,
             'role' => 'admin',
@@ -39,7 +39,7 @@ class DatabaseSeeder extends Seeder
 
         $scorekeeper = User::create([
             'name' => 'Lead Scorekeeper',
-            'email' => 'scorekeeper@prokeeper.com',
+            'email' => 'scorekeeper@prokeeper.org',
             'password' => Hash::make('password'),
             'organization_id' => $org->id,
             'role' => 'scorekeeper',
