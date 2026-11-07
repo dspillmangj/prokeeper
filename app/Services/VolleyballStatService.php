@@ -397,91 +397,93 @@ class VolleyballStatService
      */
     public function rebuildGameFromEvents(Game $game): void
     {
-        $events = GameEvent::where('game_id', $game->id)
-            ->where('is_undone', false)
-            ->orderBy('sequence', 'asc')
-            ->get();
+        DB::transaction(function () use ($game) {
+            $events = GameEvent::where('game_id', $game->id)
+                ->where('is_undone', false)
+                ->orderBy('sequence', 'asc')
+                ->get();
 
-        $homeScore = 0;
-        $awayScore = 0;
-        $homePeriodScores = [0, 0, 0, 0, 0];
-        $awayPeriodScores = [0, 0, 0, 0, 0];
-        $homeTimeoutsUsed = 0;
-        $awayTimeoutsUsed = 0;
+            $homeScore = 0;
+            $awayScore = 0;
+            $homePeriodScores = [0, 0, 0, 0, 0];
+            $awayPeriodScores = [0, 0, 0, 0, 0];
+            $homeTimeoutsUsed = 0;
+            $awayTimeoutsUsed = 0;
 
-        VolleyballStat::where('game_id', $game->id)->update([
-            'kills' => 0,
-            'attack_errors' => 0,
-            'attack_attempts' => 0,
-            'service_aces' => 0,
-            'service_errors' => 0,
-            'service_attempts' => 0,
-            'digs' => 0,
-            'block_solos' => 0,
-            'block_assists' => 0,
-            'total_blocks' => 0,
-            'ball_handling_errors' => 0,
-            'reception_errors' => 0,
-            'assists' => 0,
-            'total_points' => 0,
-            'hitting_percentage' => 0,
-        ]);
+            VolleyballStat::where('game_id', $game->id)->update([
+                'kills' => 0,
+                'attack_errors' => 0,
+                'attack_attempts' => 0,
+                'service_aces' => 0,
+                'service_errors' => 0,
+                'service_attempts' => 0,
+                'digs' => 0,
+                'block_solos' => 0,
+                'block_assists' => 0,
+                'total_blocks' => 0,
+                'ball_handling_errors' => 0,
+                'reception_errors' => 0,
+                'assists' => 0,
+                'total_points' => 0,
+                'hitting_percentage' => 0,
+            ]);
 
-        foreach ($events as $event) {
-            $period = (int) $event->period;
-            while (count($homePeriodScores) < $period) {
-                $homePeriodScores[] = 0;
-            }
-            while (count($awayPeriodScores) < $period) {
-                $awayPeriodScores[] = 0;
-            }
+            foreach ($events as $event) {
+                $period = (int) $event->period;
+                while (count($homePeriodScores) < $period) {
+                    $homePeriodScores[] = 0;
+                }
+                while (count($awayPeriodScores) < $period) {
+                    $awayPeriodScores[] = 0;
+                }
 
-            $points = (int) $event->points;
-            if ($points !== 0) {
-                if ($event->team_side === 'home') {
-                    $homeScore = max(0, $homeScore + $points);
-                    $homePeriodScores[$period - 1] = max(0, $homePeriodScores[$period - 1] + $points);
-                } elseif ($event->team_side === 'away') {
-                    $awayScore = max(0, $awayScore + $points);
-                    $awayPeriodScores[$period - 1] = max(0, $awayPeriodScores[$period - 1] + $points);
+                $points = (int) $event->points;
+                if ($points !== 0) {
+                    if ($event->team_side === 'home') {
+                        $homeScore = max(0, $homeScore + $points);
+                        $homePeriodScores[$period - 1] = max(0, $homePeriodScores[$period - 1] + $points);
+                    } elseif ($event->team_side === 'away') {
+                        $awayScore = max(0, $awayScore + $points);
+                        $awayPeriodScores[$period - 1] = max(0, $awayPeriodScores[$period - 1] + $points);
+                    }
+                }
+
+                if ($event->action_code === 'TIMEOUT' && (int) $event->period === (int) $game->current_period) {
+                    if ($event->team_side === 'home') {
+                        $homeTimeoutsUsed++;
+                    }
+                    if ($event->team_side === 'away') {
+                        $awayTimeoutsUsed++;
+                    }
+                }
+
+                $event->home_score_after = $homeScore;
+                $event->away_score_after = $awayScore;
+                $event->saveQuietly();
+
+                if (isset(self::ACTIONS[$event->action_code]) && ! empty($event->jersey_number)) {
+                    $this->applyStatToPlayer(
+                        $game->id,
+                        $event->team_side,
+                        $event->jersey_number,
+                        $event->player_name ?? "Player #{$event->jersey_number}",
+                        $event->player_id,
+                        self::ACTIONS[$event->action_code]
+                    );
                 }
             }
 
-            if ($event->action_code === 'TIMEOUT' && (int) $event->period === (int) $game->current_period) {
-                if ($event->team_side === 'home') {
-                    $homeTimeoutsUsed++;
-                }
-                if ($event->team_side === 'away') {
-                    $awayTimeoutsUsed++;
-                }
-            }
+            $game->home_score = max(0, $homeScore);
+            $game->away_score = max(0, $awayScore);
+            $game->home_period_scores = $homePeriodScores;
+            $game->away_period_scores = $awayPeriodScores;
 
-            $event->home_score_after = $homeScore;
-            $event->away_score_after = $awayScore;
-            $event->saveQuietly();
+            $maxTimeouts = (int) ($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
+            $game->home_timeouts_remaining = max(0, $maxTimeouts - $homeTimeoutsUsed);
+            $game->away_timeouts_remaining = max(0, $maxTimeouts - $awayTimeoutsUsed);
 
-            if (isset(self::ACTIONS[$event->action_code]) && ! empty($event->jersey_number)) {
-                $this->applyStatToPlayer(
-                    $game->id,
-                    $event->team_side,
-                    $event->jersey_number,
-                    $event->player_name ?? "Player #{$event->jersey_number}",
-                    $event->player_id,
-                    self::ACTIONS[$event->action_code]
-                );
-            }
-        }
-
-        $game->home_score = max(0, $homeScore);
-        $game->away_score = max(0, $awayScore);
-        $game->home_period_scores = $homePeriodScores;
-        $game->away_period_scores = $awayPeriodScores;
-
-        $maxTimeouts = (int) ($game->settings['rules']['timeouts_per_set'] ?? ($game->settings['timeouts_per_set'] ?? 2));
-        $game->home_timeouts_remaining = max(0, $maxTimeouts - $homeTimeoutsUsed);
-        $game->away_timeouts_remaining = max(0, $maxTimeouts - $awayTimeoutsUsed);
-
-        $game->save();
+            $game->save();
+        });
     }
 
     public function recalculateGameTotals(Game $game): void

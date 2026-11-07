@@ -1418,6 +1418,12 @@ class BasketballOperator extends Component
             if ($mergedAwayPeriodScores !== null) {
                 $game->away_period_scores = $mergedAwayPeriodScores;
             }
+            if (isset($snapshot['homeFouls'])) {
+                $game->home_fouls_current_period = max(0, (int) $snapshot['homeFouls']);
+            }
+            if (isset($snapshot['awayFouls'])) {
+                $game->away_fouls_current_period = max(0, (int) $snapshot['awayFouls']);
+            }
         } elseif ($domain === 'fouls') {
             if (isset($snapshot['homeFouls'])) {
                 $game->home_fouls_current_period = max(0, (int) $snapshot['homeFouls']);
