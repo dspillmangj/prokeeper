@@ -485,8 +485,9 @@ window.ProKeeperEngine = {
                         : `${teamSide.toUpperCase()}: ${def.name}${points > 0 ? ` (+${points} pts)` : ''}`
                 );
 
+                const mutId = 'mut_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
                 const localEvent = {
-                    id: 'local_manual_' + Date.now(),
+                    id: mutId,
                     game_id: this.gameId,
                     sequence: (this.recentEvents[0]?.sequence || 0) + 1,
                     period: period,
@@ -519,7 +520,7 @@ window.ProKeeperEngine = {
                     points: points,
                     clock_seconds_remaining: clock,
                     description: desc,
-                }], 'stats');
+                }], 'stats', mutId);
             },
 
             filteredRecentEvents() {
@@ -567,7 +568,7 @@ window.ProKeeperEngine = {
                 this.feedbackType = 'info';
 
                 // Asynchronously sync to backend
-                if (typeof event.id === 'number' || !String(event.id).startsWith('local_')) {
+                if (typeof event.id === 'number' || (!String(event.id).startsWith('local_') && !String(event.id).startsWith('mut_'))) {
                     this.enqueueSync('deleteGameEvent', [Number(event.id)], 'stats');
                 }
             },
@@ -647,7 +648,7 @@ window.ProKeeperEngine = {
                 this.feedbackType = 'success';
                 this.editingEvent = null;
 
-                if (typeof eventId === 'number' || !String(eventId).startsWith('local_')) {
+                if (typeof eventId === 'number' || (!String(eventId).startsWith('local_') && !String(eventId).startsWith('mut_'))) {
                     this.enqueueSync('updateGameEvent', [
                         Number(eventId),
                         newJersey,
@@ -892,7 +893,7 @@ window.ProKeeperEngine = {
             isSyncing: false,
 
             isQueuePending() {
-                return (this.syncQueue && this.syncQueue.length > 0) || (Date.now() - (this.lastLocalActionTime || 0) < 4000);
+                return Array.isArray(this.syncQueue) && this.syncQueue.length > 0;
             },
 
             getAuthoritativeSnapshot() {
@@ -1002,22 +1003,22 @@ window.ProKeeperEngine = {
                         const parsed = JSON.parse(saved);
                         if (parsed && parsed.snapshot && (Date.now() - parsed.savedAt < 86400000)) { // within 24h
                             const s = parsed.snapshot;
+                            const hasActiveQueue = Array.isArray(this.syncQueue) && this.syncQueue.length > 0;
 
-                            // FIDELITY: Compare server baseline in config with local saved state
-                            const serverTotalScore = Number(config.homeScore || 0) + Number(config.awayScore || 0);
-                            const savedTotalScore = Number(s.homeScore || 0) + Number(s.awayScore || 0);
-                            const serverEventsCount = Array.isArray(config.recentEvents) ? config.recentEvents.length : 0;
-                            const savedEventsCount = Array.isArray(parsed.recentEvents) ? parsed.recentEvents.length : 0;
-
-                            // Detect score doubling corruption (> 1.4x server total when server has > 10 pts)
-                            const isCorruptDoubling = serverTotalScore > 10 && savedTotalScore >= Math.floor(serverTotalScore * 1.4);
-                            const useLocalScores = !isCorruptDoubling && ((savedTotalScore > serverTotalScore) || (this.isQueuePending && this.isQueuePending()));
-
-                            if (useLocalScores) {
+                            // FIDELITY GUARANTEE: Server baseline from play log is ALWAYS authoritative when queue is empty!
+                            if (hasActiveQueue) {
                                 if (typeof s.homeScore !== 'undefined') this.homeScore = s.homeScore;
                                 if (typeof s.awayScore !== 'undefined') this.awayScore = s.awayScore;
                                 if (Array.isArray(s.homePeriodScores) && s.homePeriodScores.length > 0) this.homePeriodScores = [...s.homePeriodScores];
                                 if (Array.isArray(s.awayPeriodScores) && s.awayPeriodScores.length > 0) this.awayPeriodScores = [...s.awayPeriodScores];
+                                if (parsed.playerStats && typeof parsed.playerStats === 'object' && Object.keys(parsed.playerStats).length > 0) {
+                                    this.playerStats = parsed.playerStats;
+                                }
+                            } else {
+                                this.homeScore = Number(config.homeScore || 0);
+                                this.awayScore = Number(config.awayScore || 0);
+                                this.homePeriodScores = Array.isArray(config.homePeriodScores) ? [...config.homePeriodScores] : [0, 0, 0, 0];
+                                this.awayPeriodScores = Array.isArray(config.awayPeriodScores) ? [...config.awayPeriodScores] : [0, 0, 0, 0];
                             }
 
                             if (typeof s.currentPeriod !== 'undefined' && s.currentPeriod >= (config.currentPeriod || 1)) {
@@ -1025,8 +1026,13 @@ window.ProKeeperEngine = {
                             }
                             if (s.possession) this.possession = s.possession;
                             if (s.server) this.server = s.server;
-                            if (typeof s.homeFouls !== 'undefined') this.homeFouls = s.homeFouls;
-                            if (typeof s.awayFouls !== 'undefined') this.awayFouls = s.awayFouls;
+                            if (hasActiveQueue) {
+                                if (typeof s.homeFouls !== 'undefined') this.homeFouls = s.homeFouls;
+                                if (typeof s.awayFouls !== 'undefined') this.awayFouls = s.awayFouls;
+                            } else {
+                                this.homeFouls = Number(config.homeFouls || 0);
+                                this.awayFouls = Number(config.awayFouls || 0);
+                            }
                             if (typeof s.homeTimeouts !== 'undefined') this.homeTimeouts = s.homeTimeouts;
                             if (typeof s.awayTimeouts !== 'undefined') this.awayTimeouts = s.awayTimeouts;
                             if (typeof s.homeFullTimeouts !== 'undefined') this.homeFullTimeouts = s.homeFullTimeouts;
@@ -1039,14 +1045,12 @@ window.ProKeeperEngine = {
                             if (parsed.awayCourt && Array.isArray(parsed.awayCourt) && parsed.awayCourt.length > 0) this.awayCourt = parsed.awayCourt;
                             if (parsed.homeBench && Array.isArray(parsed.homeBench)) this.homeBench = parsed.homeBench;
                             if (parsed.awayBench && Array.isArray(parsed.awayBench)) this.awayBench = parsed.awayBench;
-                            if (parsed.playerStats && typeof parsed.playerStats === 'object' && Object.keys(parsed.playerStats).length > 0) {
-                                this.playerStats = parsed.playerStats;
-                            }
 
                             // For events: server config.recentEvents is authoritative for database events.
-                            // Only restore uncommitted local mutations (id starting with local_) from parsed.recentEvents!
-                            if (parsed.recentEvents && Array.isArray(parsed.recentEvents)) {
-                                const localPending = parsed.recentEvents.filter(e => String(e.id).startsWith('local_'));
+                            // Only restore uncommitted local mutations whose IDs are STILL actively waiting in syncQueue!
+                            const pendingMutIds = new Set((this.syncQueue || []).map(item => String(item.id)));
+                            if (parsed.recentEvents && Array.isArray(parsed.recentEvents) && pendingMutIds.size > 0) {
+                                const localPending = parsed.recentEvents.filter(e => pendingMutIds.has(String(e.id)));
                                 const existingIds = new Set(this.recentEvents.map(e => String(e.id)));
                                 const toAdd = localPending.filter(e => !existingIds.has(String(e.id)));
                                 if (toAdd.length > 0) {
@@ -1063,8 +1067,8 @@ window.ProKeeperEngine = {
             init() {
                 window._activeOperator = this;
                 this.updateCssVariables();
-                this.loadLocalState();
                 this.loadQueue();
+                this.loadLocalState();
 
                 if (this.sport === 'basketball') {
                     this.initPlayerStats(config.homeStats || [], config.awayStats || []);
@@ -1115,11 +1119,16 @@ window.ProKeeperEngine = {
                         if (typeof data.activeDeviceCount !== 'undefined') this.activeDeviceCount = data.activeDeviceCount;
 
                         if (data.recentEvents) {
-                            const localPending = (this.recentEvents || []).filter(e => String(e.id).startsWith('local_'));
                             const serverEvents = JSON.parse(JSON.stringify(data.recentEvents));
-                            const serverIds = new Set(serverEvents.map(e => String(e.id)));
-                            const toKeep = localPending.filter(e => !serverIds.has(String(e.id)));
-                            this.recentEvents = [...toKeep, ...serverEvents];
+                            if (this.syncQueue.length === 0) {
+                                // Zero pending mutations: server play log is 100% authoritative
+                                this.recentEvents = serverEvents;
+                            } else {
+                                // Only retain local events whose mutation ID is still actively pending in syncQueue
+                                const pendingMutIds = new Set(this.syncQueue.map(item => String(item.id)));
+                                const toKeep = (this.recentEvents || []).filter(e => pendingMutIds.has(String(e.id)));
+                                this.recentEvents = [...toKeep, ...serverEvents];
+                            }
                             this.recalculateLocalEventsAndScores();
                         }
 
@@ -2149,8 +2158,9 @@ window.ProKeeperEngine = {
                 const pointsSuffix = pts > 0 ? ` (+${pts} pts)` : '';
                 const eventDesc = `${side.toUpperCase()} #${jersey} ${name}: ${actionDef.name}${pointsSuffix}${assistSuffix}`;
 
+                const mutId = 'mut_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
                 this.recentEvents.unshift({
-                    id: 'local_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                    id: mutId,
                     sequence: (this.recentEvents[0]?.sequence || 0) + 1,
                     period: this.currentPeriod,
                     team_side: side,
@@ -2178,7 +2188,7 @@ window.ProKeeperEngine = {
 
                 // Queue mutation for non-blocking asynchronous sync
                 const syncArgs = assistJersey ? [side, jersey, actionCode, assistJersey] : [side, jersey, actionCode];
-                this.enqueueSync('recordQuickStat', syncArgs, 'stats');
+                this.enqueueSync('recordQuickStat', syncArgs, 'stats', mutId);
             },
 
             // 0ms Direct Score Adjustment (+1, +2, +3, -1)
@@ -2195,8 +2205,9 @@ window.ProKeeperEngine = {
                 this.updateCurrentPeriodScore(side, delta);
 
                 const ptsText = (delta > 0 ? '+' : '') + delta;
+                const mutId = 'mut_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
                 const scoreEvent = {
-                    id: 'local_adj_' + Date.now(),
+                    id: mutId,
                     game_id: this.gameId,
                     sequence: (this.recentEvents[0]?.sequence || 0) + 1,
                     period: this.currentPeriod,
@@ -2219,7 +2230,7 @@ window.ProKeeperEngine = {
                 this.feedbackMessage = `${side.toUpperCase()} Score ${ptsText}`;
                 this.feedbackType = 'info';
 
-                this.enqueueSync('adjustScore', [side, delta], 'score');
+                this.enqueueSync('adjustScore', [side, delta], 'score', mutId);
             },
 
             updateCurrentPeriodScore(side, delta) {
@@ -2272,8 +2283,9 @@ window.ProKeeperEngine = {
                     benchList[benchIdx] = { ...outPlayer, is_on_court: false };
                 }
 
+                const mutId = 'mut_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
                 const subEvent = {
-                    id: 'local_sub_' + Date.now(),
+                    id: mutId,
                     game_id: this.gameId,
                     sequence: (this.recentEvents[0]?.sequence || 0) + 1,
                     period: this.currentPeriod,
@@ -2299,7 +2311,7 @@ window.ProKeeperEngine = {
                 this.subOutJersey = '';
                 this.subInJersey = '';
 
-                this.enqueueSync('setAndExecuteSub', [side, outJ, inJ], 'lineup');
+                this.enqueueSync('setAndExecuteSub', [side, outJ, inJ], 'lineup', mutId);
             },
 
             // 0ms Volleyball Rotation (P1-P6 order shift)
@@ -2423,8 +2435,9 @@ window.ProKeeperEngine = {
                 const teamName = (side === 'home' ? this.homeTeamName : this.awayTeamName) || (side === 'home' ? 'HOME' : 'AWAY');
                 const typeLabel = (type === '30s') ? '30-Second' : 'Full (60s)';
 
+                const mutId = 'mut_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
                 const timeoutEvent = {
-                    id: 'local_to_' + Date.now(),
+                    id: mutId,
                     game_id: this.gameId,
                     sequence: (this.recentEvents[0]?.sequence || 0) + 1,
                     period: this.currentPeriod,
@@ -2454,7 +2467,7 @@ window.ProKeeperEngine = {
                 this.feedbackMessage = this.sport === 'basketball'
                     ? `${typeLabel} Timeout charged to ${side.toUpperCase()} (${remFull} Full, ${rem30s} 30s remaining)`
                     : `Timeout charged to ${side.toUpperCase()} (${remaining} remaining)`;
-                this.enqueueSync('callTimeout', [side, type], 'timeouts');
+                this.enqueueSync('callTimeout', [side, type], 'timeouts', mutId);
             },
 
             // 0ms Advance Period / Set
@@ -2494,8 +2507,9 @@ window.ProKeeperEngine = {
                     }
                 }
 
+                const periodMutId = 'mut_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
                 const periodEvent = {
-                    id: 'local_period_' + Date.now(),
+                    id: periodMutId,
                     game_id: this.gameId,
                     sequence: (this.recentEvents[0]?.sequence || 0) + 1,
                     period: this.currentPeriod,
@@ -2515,7 +2529,7 @@ window.ProKeeperEngine = {
 
                 this.playSound('tap');
                 this.feedbackMessage = `Advanced to ${this.periodName}`;
-                this.enqueueSync(this.sport === 'volleyball' ? 'nextSet' : 'nextPeriod', [], 'period');
+                this.enqueueSync(this.sport === 'volleyball' ? 'nextSet' : 'nextPeriod', [], 'period', periodMutId);
             },
 
 
@@ -2655,13 +2669,15 @@ window.ProKeeperEngine = {
             },
 
             // Asynchronous Background Sync Pipeline (Zero UI blocking)
-            enqueueSync(method, args, domain = 'general') {
+            enqueueSync(method, args, domain = 'general', mutationId = null) {
                 this.lastLocalActionTime = Date.now();
                 this.localRevision++;
                 this.saveLocalState();
 
+                const id = mutationId || ('mut_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+
                 this.syncQueue.push({
-                    id: 'mut_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                    id,
                     method,
                     args,
                     domain,
@@ -2711,9 +2727,13 @@ window.ProKeeperEngine = {
                             }
                         }
 
-                        // Mutation synchronized
-                        this.syncQueue.shift();
+                        // Mutation synchronized: pop from queue and immediately drop matching optimistic event
+                        const completed = this.syncQueue.shift();
                         this.saveQueue();
+
+                        if (completed?.id && Array.isArray(this.recentEvents)) {
+                            this.recentEvents = this.recentEvents.filter(e => String(e.id) !== String(completed.id));
+                        }
                     } catch (err) {
                         console.warn('Background sync deferred (offline or network pause):', err);
                         this.syncStatus = 'offline';
@@ -2722,7 +2742,15 @@ window.ProKeeperEngine = {
                     }
                 }
 
-                // CLIENT IS GOD: Once mutations are flushed, force client's authoritative state snapshot onto server with domain scoping
+                // If syncQueue is completely empty, purge any lingering uncommitted local/mut events
+                if (this.syncQueue.length === 0 && Array.isArray(this.recentEvents)) {
+                    this.recentEvents = this.recentEvents.filter(e => {
+                        const idStr = String(e.id);
+                        return !idStr.startsWith('mut_') && !idStr.startsWith('local_');
+                    });
+                }
+
+                // Once mutations are flushed, sync authoritative state snapshot onto server with domain scoping
                 try {
                     if (this.$wire && typeof this.$wire.forceClientState === 'function') {
                         const meta = {

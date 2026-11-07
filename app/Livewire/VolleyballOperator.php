@@ -1323,7 +1323,7 @@ class VolleyballOperator extends Component
         $dbHomePoints = (int) $dbEvents->where('team_side', 'home')->sum('points');
         $dbAwayPoints = (int) $dbEvents->where('team_side', 'away')->sum('points');
 
-        // Build minimum set/period scores from active events
+        // Build set/period scores from active events
         $dbHomePeriodScores = [];
         $dbAwayPeriodScores = [];
         $maxPeriod = max(3, (int) $game->current_period);
@@ -1332,132 +1332,53 @@ class VolleyballOperator extends Component
             $dbAwayPeriodScores[$p - 1] = (int) $dbEvents->where('team_side', 'away')->where('period', $p)->sum('points');
         }
 
-        // FIDELITY GUARANTEE: A client snapshot can NEVER downgrade or delete points backed by active DB events
-        $targetHomeScore = isset($snapshot['homeScore']) ? max(0, (int) $snapshot['homeScore']) : null;
-        $targetAwayScore = isset($snapshot['awayScore']) ? max(0, (int) $snapshot['awayScore']) : null;
-
+        // SUPREMACY RULE: When active events exist in DB, the DB play log is the SOLE TRUTH
         if ($dbEvents->isNotEmpty()) {
-            // Anti-doubling / anti-inflation guard: if client score has diverged by > 10 pts from DB ledger,
-            // clamp directly to DB events ledger to eliminate stale browser cache doubling.
-            $homeDiverged = $targetHomeScore !== null && ($targetHomeScore > $dbHomePoints + 10 || $targetHomeScore < $dbHomePoints);
-            $awayDiverged = $targetAwayScore !== null && ($targetAwayScore > $dbAwayPoints + 10 || $targetAwayScore < $dbAwayPoints);
-
-            if ($homeDiverged) {
-                $targetHomeScore = $dbHomePoints;
-            } elseif ($targetHomeScore !== null) {
-                $targetHomeScore = max($dbHomePoints, $targetHomeScore);
-            }
-
-            if ($awayDiverged) {
-                $targetAwayScore = $dbAwayPoints;
-            } elseif ($targetAwayScore !== null) {
-                $targetAwayScore = max($dbAwayPoints, $targetAwayScore);
-            }
-        }
-
-        $mergedHomePeriodScores = null;
-        if (isset($snapshot['homePeriodScores']) && is_array($snapshot['homePeriodScores'])) {
-            $mergedHomePeriodScores = array_map('intval', $snapshot['homePeriodScores']);
-            if ($dbEvents->isNotEmpty()) {
-                if ($targetHomeScore === $dbHomePoints) {
-                    $mergedHomePeriodScores = $dbHomePeriodScores;
-                } else {
-                    foreach ($dbHomePeriodScores as $idx => $pts) {
-                        if ($pts > 0) {
-                            while (count($mergedHomePeriodScores) <= $idx) {
-                                $mergedHomePeriodScores[] = 0;
-                            }
-                            $mergedHomePeriodScores[$idx] = max($pts, (int) ($mergedHomePeriodScores[$idx] ?? 0));
-                        }
-                    }
-                }
-            }
-        }
-
-        $mergedAwayPeriodScores = null;
-        if (isset($snapshot['awayPeriodScores']) && is_array($snapshot['awayPeriodScores'])) {
-            $mergedAwayPeriodScores = array_map('intval', $snapshot['awayPeriodScores']);
-            if ($dbEvents->isNotEmpty()) {
-                if ($targetAwayScore === $dbAwayPoints) {
-                    $mergedAwayPeriodScores = $dbAwayPeriodScores;
-                } else {
-                    foreach ($dbAwayPeriodScores as $idx => $pts) {
-                        if ($pts > 0) {
-                            while (count($mergedAwayPeriodScores) <= $idx) {
-                                $mergedAwayPeriodScores[] = 0;
-                            }
-                            $mergedAwayPeriodScores[$idx] = max($pts, (int) ($mergedAwayPeriodScores[$idx] ?? 0));
-                        }
-                    }
-                }
-            }
-        }
-
-        if ($domain === 'score' || $domain === 'stats') {
-            if ($targetHomeScore !== null) {
-                $game->home_score = $targetHomeScore;
-            }
-            if ($targetAwayScore !== null) {
-                $game->away_score = $targetAwayScore;
-            }
-            if ($mergedHomePeriodScores !== null) {
-                $game->home_period_scores = $mergedHomePeriodScores;
-            }
-            if ($mergedAwayPeriodScores !== null) {
-                $game->away_period_scores = $mergedAwayPeriodScores;
-            }
-        } elseif ($domain === 'rotation') {
-            if (isset($snapshot['homeRotation'])) {
-                $game->home_rotation = max(1, min(6, (int) $snapshot['homeRotation']));
-            }
-            if (isset($snapshot['awayRotation'])) {
-                $game->away_rotation = max(1, min(6, (int) $snapshot['awayRotation']));
-            }
-            if (isset($snapshot['server']) && in_array($snapshot['server'], ['home', 'away'])) {
-                $game->current_server = $snapshot['server'];
-            }
-        } elseif ($domain === 'timeouts') {
-            if (isset($snapshot['homeTimeouts'])) {
-                $game->home_timeouts_remaining = max(0, (int) $snapshot['homeTimeouts']);
-            }
-            if (isset($snapshot['awayTimeouts'])) {
-                $game->away_timeouts_remaining = max(0, (int) $snapshot['awayTimeouts']);
-            }
-        } elseif ($domain === 'period') {
-            if (isset($snapshot['currentPeriod'])) {
-                $game->current_period = (int) $snapshot['currentPeriod'];
-            }
+            $targetHomeScore = $dbHomePoints;
+            $targetAwayScore = $dbAwayPoints;
+            $mergedHomePeriodScores = $dbHomePeriodScores;
+            $mergedAwayPeriodScores = $dbAwayPeriodScores;
         } else {
-            if ($targetHomeScore !== null) {
-                $game->home_score = $targetHomeScore;
-            }
-            if ($targetAwayScore !== null) {
-                $game->away_score = $targetAwayScore;
-            }
-            if ($mergedHomePeriodScores !== null) {
-                $game->home_period_scores = $mergedHomePeriodScores;
-            }
-            if ($mergedAwayPeriodScores !== null) {
-                $game->away_period_scores = $mergedAwayPeriodScores;
-            }
-            if (isset($snapshot['currentPeriod'])) {
-                $game->current_period = (int) $snapshot['currentPeriod'];
-            }
-            if (isset($snapshot['server']) && in_array($snapshot['server'], ['home', 'away'])) {
-                $game->current_server = $snapshot['server'];
-            }
-            if (isset($snapshot['homeRotation'])) {
-                $game->home_rotation = max(1, min(6, (int) $snapshot['homeRotation']));
-            }
-            if (isset($snapshot['awayRotation'])) {
-                $game->away_rotation = max(1, min(6, (int) $snapshot['awayRotation']));
-            }
-            if (isset($snapshot['homeTimeouts'])) {
-                $game->home_timeouts_remaining = max(0, (int) $snapshot['homeTimeouts']);
-            }
-            if (isset($snapshot['awayTimeouts'])) {
-                $game->away_timeouts_remaining = max(0, (int) $snapshot['awayTimeouts']);
-            }
+            $targetHomeScore = isset($snapshot['homeScore']) ? max(0, (int) $snapshot['homeScore']) : null;
+            $targetAwayScore = isset($snapshot['awayScore']) ? max(0, (int) $snapshot['awayScore']) : null;
+            $mergedHomePeriodScores = isset($snapshot['homePeriodScores']) && is_array($snapshot['homePeriodScores'])
+                ? array_map('intval', $snapshot['homePeriodScores'])
+                : null;
+            $mergedAwayPeriodScores = isset($snapshot['awayPeriodScores']) && is_array($snapshot['awayPeriodScores'])
+                ? array_map('intval', $snapshot['awayPeriodScores'])
+                : null;
+        }
+
+        if ($targetHomeScore !== null) {
+            $game->home_score = $targetHomeScore;
+        }
+        if ($targetAwayScore !== null) {
+            $game->away_score = $targetAwayScore;
+        }
+        if ($mergedHomePeriodScores !== null) {
+            $game->home_period_scores = $mergedHomePeriodScores;
+        }
+        if ($mergedAwayPeriodScores !== null) {
+            $game->away_period_scores = $mergedAwayPeriodScores;
+        }
+
+        if (isset($snapshot['currentPeriod'])) {
+            $game->current_period = (int) $snapshot['currentPeriod'];
+        }
+        if (isset($snapshot['server']) && in_array($snapshot['server'], ['home', 'away'])) {
+            $game->current_server = $snapshot['server'];
+        }
+        if (isset($snapshot['homeRotation'])) {
+            $game->home_rotation = max(1, min(6, (int) $snapshot['homeRotation']));
+        }
+        if (isset($snapshot['awayRotation'])) {
+            $game->away_rotation = max(1, min(6, (int) $snapshot['awayRotation']));
+        }
+        if (isset($snapshot['homeTimeouts'])) {
+            $game->home_timeouts_remaining = max(0, (int) $snapshot['homeTimeouts']);
+        }
+        if (isset($snapshot['awayTimeouts'])) {
+            $game->away_timeouts_remaining = max(0, (int) $snapshot['awayTimeouts']);
         }
 
         $game->save();
