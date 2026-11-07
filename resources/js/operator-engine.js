@@ -1016,9 +1016,9 @@ window.ProKeeperEngine = {
                             const serverEventsCount = Array.isArray(config.recentEvents) ? config.recentEvents.length : 0;
                             const savedEventsCount = Array.isArray(parsed.recentEvents) ? parsed.recentEvents.length : 0;
 
-                            // If server already has greater or equal score and events, server state is authoritative.
-                            // Do not let an older or stale local snapshot overwrite fresh server data!
-                            const useLocalScores = (savedTotalScore > serverTotalScore) || (this.isQueuePending && this.isQueuePending());
+                            // Detect score doubling corruption (> 1.4x server total when server has > 10 pts)
+                            const isCorruptDoubling = serverTotalScore > 10 && savedTotalScore >= Math.floor(serverTotalScore * 1.4);
+                            const useLocalScores = !isCorruptDoubling && ((savedTotalScore > serverTotalScore) || (this.isQueuePending && this.isQueuePending()));
 
                             if (useLocalScores) {
                                 if (typeof s.homeScore !== 'undefined') this.homeScore = s.homeScore;
@@ -1123,9 +1123,20 @@ window.ProKeeperEngine = {
                         if (data.conflicts) this.activeConflicts = data.conflicts;
                         if (typeof data.activeDeviceCount !== 'undefined') this.activeDeviceCount = data.activeDeviceCount;
 
-                        // CLIENT IS GOD: If client has pending sync mutations or recent user actions,
-                        // NEVER allow server roundtrips or delayed responses to overwrite local client scores.
-                        if (this.isQueuePending()) {
+                        // Check if local score has suffered an unnatural doubling or gross drift (>10 pts) vs server events ledger
+                        const scoreDivergence = typeof data.homeScore !== 'undefined' && typeof data.awayScore !== 'undefined' &&
+                            (Math.abs(Number(data.homeScore) - Number(this.homeScore)) > 10 || Math.abs(Number(data.awayScore) - Number(this.awayScore)) > 10);
+
+                        if (data.forceAuthoritativeReset || scoreDivergence) {
+                            // Recover immediately from stale or doubled cache: accept authoritative event totals
+                            if (typeof data.homeScore !== 'undefined') this.homeScore = Number(data.homeScore);
+                            if (typeof data.awayScore !== 'undefined') this.awayScore = Number(data.awayScore);
+                            if (data.homePeriodScores) this.homePeriodScores = JSON.parse(JSON.stringify(data.homePeriodScores));
+                            if (data.awayPeriodScores) this.awayPeriodScores = JSON.parse(JSON.stringify(data.awayPeriodScores));
+                            this.syncQueue = [];
+                            this.saveQueue();
+                            try { localStorage.removeItem(`prokeeper_state_${this.gameId}`); } catch(e) {}
+                        } else if (this.isQueuePending()) {
                             // Still hot-patch lineups/metadata if provided
                             if (data.homeCourt || data.awayCourt || data.homeBench || data.awayBench) {
                                 this.hotPatchLineups(data);

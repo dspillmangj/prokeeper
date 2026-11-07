@@ -1337,10 +1337,20 @@ class VolleyballOperator extends Component
         $targetAwayScore = isset($snapshot['awayScore']) ? max(0, (int) $snapshot['awayScore']) : null;
 
         if ($dbEvents->isNotEmpty()) {
-            if ($targetHomeScore !== null) {
+            // Anti-doubling / anti-inflation guard: if client score has diverged by > 10 pts from DB ledger,
+            // clamp directly to DB events ledger to eliminate stale browser cache doubling.
+            $homeDiverged = $targetHomeScore !== null && ($targetHomeScore > $dbHomePoints + 10 || $targetHomeScore < $dbHomePoints);
+            $awayDiverged = $targetAwayScore !== null && ($targetAwayScore > $dbAwayPoints + 10 || $targetAwayScore < $dbAwayPoints);
+
+            if ($homeDiverged) {
+                $targetHomeScore = $dbHomePoints;
+            } elseif ($targetHomeScore !== null) {
                 $targetHomeScore = max($dbHomePoints, $targetHomeScore);
             }
-            if ($targetAwayScore !== null) {
+
+            if ($awayDiverged) {
+                $targetAwayScore = $dbAwayPoints;
+            } elseif ($targetAwayScore !== null) {
                 $targetAwayScore = max($dbAwayPoints, $targetAwayScore);
             }
         }
@@ -1349,12 +1359,16 @@ class VolleyballOperator extends Component
         if (isset($snapshot['homePeriodScores']) && is_array($snapshot['homePeriodScores'])) {
             $mergedHomePeriodScores = array_map('intval', $snapshot['homePeriodScores']);
             if ($dbEvents->isNotEmpty()) {
-                foreach ($dbHomePeriodScores as $idx => $pts) {
-                    if ($pts > 0) {
-                        while (count($mergedHomePeriodScores) <= $idx) {
-                            $mergedHomePeriodScores[] = 0;
+                if ($targetHomeScore === $dbHomePoints) {
+                    $mergedHomePeriodScores = $dbHomePeriodScores;
+                } else {
+                    foreach ($dbHomePeriodScores as $idx => $pts) {
+                        if ($pts > 0) {
+                            while (count($mergedHomePeriodScores) <= $idx) {
+                                $mergedHomePeriodScores[] = 0;
+                            }
+                            $mergedHomePeriodScores[$idx] = max($pts, (int) ($mergedHomePeriodScores[$idx] ?? 0));
                         }
-                        $mergedHomePeriodScores[$idx] = max($pts, (int) ($mergedHomePeriodScores[$idx] ?? 0));
                     }
                 }
             }
@@ -1364,12 +1378,16 @@ class VolleyballOperator extends Component
         if (isset($snapshot['awayPeriodScores']) && is_array($snapshot['awayPeriodScores'])) {
             $mergedAwayPeriodScores = array_map('intval', $snapshot['awayPeriodScores']);
             if ($dbEvents->isNotEmpty()) {
-                foreach ($dbAwayPeriodScores as $idx => $pts) {
-                    if ($pts > 0) {
-                        while (count($mergedAwayPeriodScores) <= $idx) {
-                            $mergedAwayPeriodScores[] = 0;
+                if ($targetAwayScore === $dbAwayPoints) {
+                    $mergedAwayPeriodScores = $dbAwayPeriodScores;
+                } else {
+                    foreach ($dbAwayPeriodScores as $idx => $pts) {
+                        if ($pts > 0) {
+                            while (count($mergedAwayPeriodScores) <= $idx) {
+                                $mergedAwayPeriodScores[] = 0;
+                            }
+                            $mergedAwayPeriodScores[$idx] = max($pts, (int) ($mergedAwayPeriodScores[$idx] ?? 0));
                         }
-                        $mergedAwayPeriodScores[$idx] = max($pts, (int) ($mergedAwayPeriodScores[$idx] ?? 0));
                     }
                 }
             }
