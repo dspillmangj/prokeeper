@@ -57,6 +57,16 @@
                 </span>
             </template>
 
+            @if ($canEdit)
+                <!-- Share Roster Action Button -->
+                <button type="button" @click="$dispatch('open-roster-share')" class="px-3 py-2 rounded-xl bg-blue-600/25 hover:bg-blue-600/40 border border-blue-500/40 text-blue-300 hover:text-white text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer" title="Share Roster with collaborators">
+                    <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                    </svg>
+                    <span>Share</span>
+                </button>
+            @endif
+
             <!-- Clear Roster Action Form -->
             <form action="{{ route('teams.roster.clear', $team->id) }}" method="POST" onsubmit="return confirm('Are you sure you want to completely clear the roster for {{ addslashes($team->name) }}? All roster player links will be removed.');" class="inline">
                 @csrf
@@ -200,5 +210,85 @@
             </div>
         </div>
     </div>
+
+    @if ($canEdit)
+        <!-- Share Roster Modal (Google Drive Style) -->
+        <div x-data="{ open: false, notify: true, showMessage: false }"
+             @open-roster-share.window="open = true"
+             x-show="open"
+             class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
+             style="display: none;"
+             @keydown.escape.window="open = false">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4" @click.outside="open = false">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                    <div>
+                        <h3 class="text-base font-black text-white">Share Roster</h3>
+                        <p class="text-xs text-slate-400">{{ $team->name }}</p>
+                    </div>
+                    <button @click="open = false" class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+
+                <form action="{{ route('teams.share', $team->id) }}" method="POST" class="space-y-3">
+                    @csrf
+                    <div class="flex flex-col sm:flex-row items-center gap-2">
+                        <div class="w-full sm:flex-1">
+                            <input type="email" name="email" required placeholder="collaborator@school.edu"
+                                   class="w-full py-2 px-3 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div class="w-full sm:w-auto">
+                            <select name="permission" class="w-full py-2 px-3 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-blue-500">
+                                <option value="edit">Can Edit</option>
+                                <option value="view">View Only</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="w-full sm:w-auto py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow shrink-0">
+                            Share
+                        </button>
+                    </div>
+
+                    <div class="flex items-center justify-between text-xs pt-1">
+                        <label class="flex items-center gap-2 text-slate-300 cursor-pointer select-none">
+                            <input type="checkbox" name="notify" value="1" x-model="notify" class="rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                            <span>Notify person via email</span>
+                        </label>
+
+                        <button type="button" @click="showMessage = !showMessage" class="text-blue-400 hover:text-blue-300 text-[11px] font-semibold" x-show="notify">
+                            <span x-text="showMessage ? '- Remove note' : '+ Add message'"></span>
+                        </button>
+                    </div>
+
+                    <div x-show="notify && showMessage" x-transition>
+                        <textarea name="message" rows="2" placeholder="Add an optional message..."
+                                  class="w-full py-2 px-3 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"></textarea>
+                    </div>
+                </form>
+
+                @if ($team->rosterShares && $team->rosterShares->isNotEmpty())
+                    <div class="pt-3 border-t border-slate-800 space-y-2">
+                        <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500">People with Access:</div>
+                        <div class="space-y-1.5 max-h-36 overflow-y-auto">
+                            @foreach ($team->rosterShares as $sh)
+                                <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <span class="truncate text-slate-200">{{ $sh->shared_with_email }}</span>
+                                        <span class="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-bold {{ $sh->permission === 'edit' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-800 text-slate-400' }}">
+                                            {{ $sh->permission === 'edit' ? 'Editor' : 'Viewer' }}
+                                        </span>
+                                    </div>
+                                    <form action="{{ route('teams.share.remove', ['id' => $team->id, 'shareId' => $sh->id]) }}" method="POST" onsubmit="return confirm('Revoke roster access for {{ $sh->shared_with_email }}?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="text-rose-400 hover:text-rose-300 text-[11px] font-bold">Revoke</button>
+                                    </form>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+            </div>
+        </div>
+    @endif
 </div>
 @endsection

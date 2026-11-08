@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Game;
+use App\Models\GameShare;
 use App\Models\Team;
 use Illuminate\Support\Facades\Auth;
 
@@ -33,10 +34,17 @@ class DashboardController extends Controller
             ->take(6)
             ->get();
 
+        $sharedGames = GameShare::where(function ($q) use ($user) {
+            $q->where('shared_with_user_id', $user->id)
+                ->orWhere('shared_with_email', $user->email);
+        })
+            ->with(['game.homeTeam', 'game.awayTeam', 'game.organization'])
+            ->get();
+
         $teams = Team::where('organization_id', $orgId)
             ->withCount(['players', 'homeGames'])
             ->get();
 
-        return view('dashboard.index', compact('activeGames', 'recentGames', 'scheduledGames', 'teams'));
+        return view('dashboard.index', compact('activeGames', 'recentGames', 'scheduledGames', 'sharedGames', 'teams'));
     }
 }

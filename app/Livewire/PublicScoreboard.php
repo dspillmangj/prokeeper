@@ -15,9 +15,9 @@ class PublicScoreboard extends Component
 
     public string $activeTab = 'summary'; // summary, boxscore, plays
 
-    public function mount(string $code)
+    public function mount(string $code = '', ?string $accessCode = null)
     {
-        $this->code = $code;
+        $this->code = $code ?: ($accessCode ?? '');
     }
 
     public function getGameProperty(): Game

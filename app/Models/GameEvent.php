@@ -12,9 +12,11 @@ class GameEvent extends Model
 
     protected $fillable = [
         'game_id',
+        'uuid',
         'sequence',
         'period',
         'clock_seconds_remaining',
+        'wall_clock_time',
         'team_side',
         'player_id',
         'jersey_number',
@@ -29,14 +31,30 @@ class GameEvent extends Model
         'points',
         'home_score_after',
         'away_score_after',
+        'possession_arrow_after',
+        'home_fouls_after',
+        'away_fouls_after',
+        'home_timeouts_after',
+        'away_timeouts_after',
         'is_undone',
         'description',
         'metadata',
+        'actor_id',
     ];
+
+    protected $attributes = [
+        'player_name' => '',
+    ];
+
+    public function setPlayerNameAttribute($value): void
+    {
+        $this->attributes['player_name'] = $value ?? '';
+    }
 
     protected $casts = [
         'is_undone' => 'boolean',
         'metadata' => 'array',
+        'wall_clock_time' => 'datetime',
     ];
 
     public function game(): BelongsTo

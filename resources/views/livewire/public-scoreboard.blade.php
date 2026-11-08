@@ -25,8 +25,8 @@
                     <div class="flex items-center space-x-2">
                         <span class="w-3 h-3 rounded-full bg-blue-500"></span>
                         <span class="text-xs font-bold uppercase tracking-wider text-blue-400">HOME</span>
-                        @if ($game->possession_arrow === 'home')
-                            <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold border border-amber-500/40">POSS</span>
+                        @if ($game->sport === 'basketball' && $game->possession_arrow === 'home')
+                            <span class="px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[10px] font-black tracking-wider uppercase flex items-center gap-1 shadow-md shadow-amber-400/50 border border-amber-300 animate-pulse">&larr; POSS ARROW</span>
                         @endif
                         @if ($game->sport === 'volleyball' && $game->current_server === 'home')
                             <span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold border border-emerald-500/40">SERVING</span>
@@ -66,8 +66,8 @@
                         @if ($game->sport === 'volleyball' && $game->current_server === 'away')
                             <span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold border border-emerald-500/40">SERVING</span>
                         @endif
-                        @if ($game->possession_arrow === 'away')
-                            <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold border border-amber-500/40">POSS</span>
+                        @if ($game->sport === 'basketball' && $game->possession_arrow === 'away')
+                            <span class="px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 text-[10px] font-black tracking-wider uppercase flex items-center gap-1 shadow-md shadow-amber-400/50 border border-amber-300 animate-pulse">POSS ARROW &rarr;</span>
                         @endif
                         <span class="text-xs font-bold uppercase tracking-wider text-rose-400">AWAY</span>
                         <span class="w-3 h-3 rounded-full bg-rose-500"></span>
@@ -109,10 +109,28 @@
                         <tr>
                             <th class="py-2">Team</th>
                             @if ($game->sport === 'basketball')
-                                <th class="py-2 text-center">Q1</th>
-                                <th class="py-2 text-center">Q2</th>
-                                <th class="py-2 text-center">Q3</th>
-                                <th class="py-2 text-center">Q4</th>
+                                @php
+                                    $defaultScores = ($game->period_format === 'halves') ? [0, 0] : [0, 0, 0, 0];
+                                    $homeScores = $game->home_period_scores ?? $defaultScores;
+                                    $awayScores = $game->away_period_scores ?? $defaultScores;
+                                    $scoreCount = max(count($homeScores), count($awayScores));
+                                    $isHalves = ($game->period_format === 'halves');
+                                @endphp
+                                @if ($isHalves)
+                                    <th class="py-2 text-center">1H</th>
+                                    <th class="py-2 text-center">2H</th>
+                                    @for ($p = 3; $p <= $scoreCount; $p++)
+                                        <th class="py-2 text-center">OT{{ $p - 2 }}</th>
+                                    @endfor
+                                @else
+                                    <th class="py-2 text-center">Q1</th>
+                                    <th class="py-2 text-center">Q2</th>
+                                    <th class="py-2 text-center">Q3</th>
+                                    <th class="py-2 text-center">Q4</th>
+                                    @for ($p = 5; $p <= $scoreCount; $p++)
+                                        <th class="py-2 text-center">OT{{ $p - 4 }}</th>
+                                    @endfor
+                                @endif
                                 <th class="py-2 text-center">TOT</th>
                             @else
                                 <th class="py-2 text-center">S1</th>
@@ -126,20 +144,28 @@
                     <tbody class="divide-y divide-slate-800/60">
                         <tr>
                             <td class="py-2.5 font-bold font-sans text-blue-400">{{ $game->home_display_name }}</td>
-                            @foreach (($game->home_period_scores ?? [0,0,0,0]) as $s)
-                                <td class="py-2.5 text-center">{{ $s }}</td>
-                            @endforeach
                             @if ($game->sport === 'basketball')
+                                @for ($i = 0; $i < $scoreCount; $i++)
+                                    <td class="py-2.5 text-center">{{ $homeScores[$i] ?? 0 }}</td>
+                                @endfor
                                 <td class="py-2.5 text-center font-bold text-white">{{ $game->home_score }}</td>
+                            @else
+                                @foreach (($game->home_period_scores ?? [0,0,0,0,0]) as $s)
+                                    <td class="py-2.5 text-center">{{ $s }}</td>
+                                @endforeach
                             @endif
                         </tr>
                         <tr>
                             <td class="py-2.5 font-bold font-sans text-rose-400">{{ $game->away_display_name }}</td>
-                            @foreach (($game->away_period_scores ?? [0,0,0,0]) as $s)
-                                <td class="py-2.5 text-center">{{ $s }}</td>
-                            @endforeach
                             @if ($game->sport === 'basketball')
+                                @for ($i = 0; $i < $scoreCount; $i++)
+                                    <td class="py-2.5 text-center">{{ $awayScores[$i] ?? 0 }}</td>
+                                @endfor
                                 <td class="py-2.5 text-center font-bold text-white">{{ $game->away_score }}</td>
+                            @else
+                                @foreach (($game->away_period_scores ?? [0,0,0,0,0]) as $s)
+                                    <td class="py-2.5 text-center">{{ $s }}</td>
+                                @endforeach
                             @endif
                         </tr>
                     </tbody>

@@ -95,25 +95,22 @@
                         </div>
 
                         <!-- Action Buttons -->
-                        <div class="pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                        <div class="pt-4 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
                             <a href="{{ route('games.operator', $game->uuid) }}" class="py-2 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold text-white transition shadow-md shadow-blue-600/30 flex items-center justify-center">
                                 Operator
                             </a>
-                            <a href="{{ route('public.stats', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-indigo-950/80 hover:bg-indigo-900/80 text-indigo-300 font-bold transition border border-indigo-700/60 flex items-center justify-center">
+                            <a href="{{ route('public.live', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 font-bold transition border border-emerald-700/60 flex items-center justify-center">
+                                Live View
+                            </a>
+                            <a href="{{ route('public.stats', ['code' => $game->access_code, 'token' => $game->stats_token]) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-indigo-950/80 hover:bg-indigo-900/80 text-indigo-300 font-bold transition border border-indigo-700/60 flex items-center justify-center">
                                 Coach Stats
                             </a>
-                            <a href="{{ route('public.scoreboard', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
-                                Scoreboard
-                            </a>
-                            <a href="{{ route('public.watch', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
-                                Watch Live
-                            </a>
                             @if ($game->sport === 'basketball')
-                                <a href="{{ route('public.scorebook', $game->access_code) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
+                                <a href="{{ route('public.scorebook', ['code' => $game->access_code, 'token' => $game->scorebook_token]) }}" target="_blank" class="py-2 px-2.5 rounded-xl bg-amber-950/80 hover:bg-amber-900/80 text-amber-300 font-bold transition border border-amber-700/60 flex items-center justify-center">
                                     Scorebook
                                 </a>
                             @else
-                                <a href="{{ route('public.watch', $game->access_code) }}?tab=boxscore" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
+                                <a href="{{ route('public.live', $game->access_code) }}?tab=boxscore" target="_blank" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-slate-200 transition border border-slate-700 flex items-center justify-center">
                                     Box Score
                                 </a>
                             @endif
@@ -225,30 +222,30 @@
                         </div>
 
                         <div class="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold">
-                            <a href="{{ route('games.operator', $game->uuid) }}" class="text-slate-400 hover:text-slate-200">
+                            <a href="{{ route('games.operator', $game->uuid) }}" class="text-blue-400 hover:text-blue-300">
                                 Operator
                             </a>
-                            <a href="{{ route('public.stats', $game->access_code) }}" target="_blank" class="text-indigo-400 hover:text-indigo-300">
+                            <a href="{{ route('public.live', $game->access_code) }}" target="_blank" class="text-emerald-400 hover:text-emerald-300">
+                                Live View
+                            </a>
+                            <a href="{{ route('public.stats', ['code' => $game->access_code, 'token' => $game->stats_token]) }}" target="_blank" class="text-indigo-400 hover:text-indigo-300">
                                 Coach Stats
                             </a>
                             @if ($game->sport === 'basketball')
-                                <a href="{{ route('public.scorebook', $game->access_code) }}" target="_blank" class="text-amber-400 hover:text-amber-300">
+                                <a href="{{ route('public.scorebook', ['code' => $game->access_code, 'token' => $game->scorebook_token]) }}" target="_blank" class="text-amber-400 hover:text-amber-300">
                                     Scorebook
                                 </a>
-                                <a href="{{ route('games.stats.pdf', $game->access_code) }}" class="text-blue-400 hover:text-blue-300">
+                                <a href="{{ route('games.stats.pdf', ['code' => $game->access_code, 'token' => $game->stats_token]) }}" class="text-slate-400 hover:text-slate-200">
                                     Stats PDF
                                 </a>
-                                <a href="{{ route('games.pdf', $game->access_code) }}" class="text-slate-400 hover:text-slate-200">
+                                <a href="{{ route('games.pdf', ['code' => $game->access_code, 'token' => $game->scorebook_token]) }}" class="text-slate-400 hover:text-slate-200">
                                     Official PDF
                                 </a>
                             @else
-                                <a href="{{ route('public.watch', $game->access_code) }}?tab=boxscore" target="_blank" class="text-blue-400 hover:text-blue-300">
+                                <a href="{{ route('public.live', $game->access_code) }}?tab=boxscore" target="_blank" class="text-slate-400 hover:text-slate-200">
                                     Box Score
                                 </a>
                             @endif
-                            <a href="{{ route('public.watch', $game->access_code) }}" target="_blank" class="text-slate-400 hover:text-slate-200">
-                                Watch
-                            </a>
                         </div>
                     </div>
                 @endforeach

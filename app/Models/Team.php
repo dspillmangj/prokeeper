@@ -35,6 +35,48 @@ class Team extends Model
         return $this->belongsTo(Organization::class);
     }
 
+    public function rosterShares(): HasMany
+    {
+        return $this->hasMany(RosterShare::class);
+    }
+
+    public function canBeViewedBy(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->isAdmin() || $user->organization_id === $this->organization_id) {
+            return true;
+        }
+
+        return $this->rosterShares()
+            ->where(function ($q) use ($user) {
+                $q->where('shared_with_user_id', $user->id)
+                    ->orWhere('shared_with_email', $user->email);
+            })
+            ->exists();
+    }
+
+    public function canBeEditedBy(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->isAdmin() || $user->organization_id === $this->organization_id) {
+            return true;
+        }
+
+        return $this->rosterShares()
+            ->where(function ($q) use ($user) {
+                $q->where('shared_with_user_id', $user->id)
+                    ->orWhere('shared_with_email', $user->email);
+            })
+            ->where('permission', 'edit')
+            ->exists();
+    }
+
     public function rosterPlayers(): HasMany
     {
         return $this->hasMany(RosterPlayer::class);

@@ -366,7 +366,7 @@ class MultiDeviceSyncTest extends TestCase
         $this->assertEquals('10', $event->assist_jersey_number);
         $this->assertStringContainsString('Ast: #10 Kerr', $event->description);
 
-        $astStat = \App\Models\BasketballStat::where('game_id', $game->id)->where('jersey_number', '10')->first();
+        $astStat = BasketballStat::where('game_id', $game->id)->where('jersey_number', '10')->first();
         $this->assertEquals(1, $astStat->ast);
 
         // Undo

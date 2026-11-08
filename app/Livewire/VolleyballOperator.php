@@ -313,13 +313,18 @@ class VolleyballOperator extends Component
         $fullName = trim((string) $lineup->player_name);
         $pos = ! empty($lineup->position) ? strtoupper(trim($lineup->position)) : null;
 
-        if (empty($jersey) || empty($fullName)) {
+        if (empty($jersey)) {
             return;
         }
 
-        $nameParts = preg_split('/\s+/', $fullName, 2);
-        $firstName = $nameParts[0] ?? 'Player';
-        $lastName = $nameParts[1] ?? '';
+        if ($fullName !== '') {
+            $nameParts = preg_split('/\s+/', $fullName, 2);
+            $firstName = $nameParts[0] ?? '';
+            $lastName = $nameParts[1] ?? '';
+        } else {
+            $firstName = '';
+            $lastName = '';
+        }
 
         $player = null;
         if ($lineup->player_id) {
@@ -395,8 +400,8 @@ class VolleyballOperator extends Component
         $name = trim($this->newName);
         $pos = ! empty($this->newPosition) ? strtoupper(trim($this->newPosition)) : null;
 
-        if (empty($jersey) || empty($name)) {
-            $this->feedbackMessage = 'Jersey number and player name are required.';
+        if (empty($jersey)) {
+            $this->feedbackMessage = 'Jersey number is required.';
             $this->feedbackType = 'error';
 
             return;
@@ -442,7 +447,7 @@ class VolleyballOperator extends Component
         $this->dispatchLineupUpdate();
 
         $this->resetNewPlayerFields();
-        $this->feedbackMessage = "Added #{$jersey} {$name} to ".strtoupper($this->rosterModalTeam).' roster!';
+        $this->feedbackMessage = "Added #{$jersey}".($name ? " {$name}" : '').' to '.strtoupper($this->rosterModalTeam).' roster!';
         $this->feedbackType = 'success';
         $this->rosterModalTab = 'list';
     }
@@ -475,8 +480,8 @@ class VolleyballOperator extends Component
         $newName = trim($this->editName);
         $newPos = ! empty($this->editPosition) ? strtoupper(trim($this->editPosition)) : null;
 
-        if (empty($newJersey) || empty($newName)) {
-            $this->feedbackMessage = 'Jersey number and player name cannot be blank.';
+        if (empty($newJersey)) {
+            $this->feedbackMessage = 'Jersey number cannot be blank.';
             $this->feedbackType = 'error';
 
             return;
@@ -653,7 +658,7 @@ class VolleyballOperator extends Component
                 }
             }
 
-            if (empty($jersey) || empty($name)) {
+            if (empty($jersey)) {
                 continue;
             }
 
@@ -715,7 +720,7 @@ class VolleyballOperator extends Component
                     $jersey = trim((string) ($row['jersey_number'] ?? ''));
                     $name = trim($row['name'] ?? ($row['player_name'] ?? ''));
 
-                    if ($jersey === '' || $name === '') {
+                    if ($jersey === '') {
                         continue;
                     }
 
@@ -1027,6 +1032,8 @@ class VolleyballOperator extends Component
             'server' => $game->serving_team ?? 'home',
             'homeTimeouts' => (int) $game->home_timeouts_remaining,
             'awayTimeouts' => (int) $game->away_timeouts_remaining,
+            'homeTimeoutsTaken' => (int) $game->home_timeouts_used,
+            'awayTimeoutsTaken' => (int) $game->away_timeouts_used,
             'recentEvents' => $recentEvents,
             'homeCourt' => $homeCourt,
             'awayCourt' => $awayCourt,

@@ -107,8 +107,8 @@
                             </div>
 
                             @if ($game->sport === 'basketball' && $game->possession_arrow === 'home')
-                                <div class="px-3 py-1 rounded-full bg-amber-500 text-slate-950 font-black text-xs tracking-wider uppercase flex items-center gap-1 shadow-lg shadow-amber-500/40 animate-pulse">
-                                    <span>&bull; POSS &bull;</span>
+                                <div class="px-3.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs sm:text-sm tracking-wider uppercase flex items-center gap-1.5 shadow-[0_0_18px_rgba(251,191,36,0.7)] border border-amber-200 animate-pulse">
+                                    <span>{{ !$isFlipped ? '◀ POSS ARROW' : 'POSS ARROW ▶' }}</span>
                                 </div>
                             @elseif ($game->sport === 'volleyball' && $game->current_server === 'home')
                                 <div class="px-3 py-1 rounded-full bg-emerald-500 text-slate-950 font-black text-xs tracking-wider uppercase flex items-center gap-1 shadow-lg shadow-emerald-500/40 animate-pulse">
@@ -146,19 +146,23 @@
                                 </div>
                             @endif
 
-                            <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                                <div class="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Timeouts Left</div>
-                                <div class="flex items-center space-x-2">
-                                    <span class="text-xl font-mono font-black text-amber-300">{{ $game->home_timeouts_remaining }}</span>
-                                    @if ($game->sport === 'basketball')
-                                        <span class="text-[11px] font-mono text-slate-400">({{ $game->home_timeouts_breakdown['rem_full'] }} Full &bull; {{ $game->home_timeouts_breakdown['rem_30s'] }} 30s)</span>
-                                    @else
-                                        <div class="flex space-x-1">
-                                            @for ($i = 0; $i < $game->home_timeouts_remaining; $i++)
-                                                <span class="w-2 h-4 rounded-sm bg-amber-400"></span>
-                                            @endfor
-                                        </div>
-                                    @endif
+                            <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                                <div class="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Timeouts</div>
+                                <div class="grid grid-cols-2 gap-2 text-center">
+                                    <div class="p-1 rounded-lg bg-slate-900 border border-slate-800">
+                                        <div class="text-[8px] font-black uppercase tracking-wider text-slate-400">Taken</div>
+                                        <div class="text-base sm:text-lg font-mono font-black text-slate-200">{{ $game->home_timeouts_used }}</div>
+                                        @if ($game->sport === 'basketball')
+                                            <div class="text-[8px] font-mono text-slate-400">({{ $game->home_timeouts_breakdown['used_full'] }}F &bull; {{ $game->home_timeouts_breakdown['used_30s'] }}s)</div>
+                                        @endif
+                                    </div>
+                                    <div class="p-1 rounded-lg bg-amber-950/40 border border-amber-800/60">
+                                        <div class="text-[8px] font-black uppercase tracking-wider text-amber-400">Remain</div>
+                                        <div class="text-base sm:text-lg font-mono font-black text-amber-300">{{ $game->home_timeouts_remaining }}</div>
+                                        @if ($game->sport === 'basketball')
+                                            <div class="text-[8px] font-mono text-amber-200/80">({{ $game->home_timeouts_breakdown['rem_full'] }}F &bull; {{ $game->home_timeouts_breakdown['rem_30s'] }}s)</div>
+                                        @endif
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -178,13 +182,27 @@
 
                         <!-- Possession Arrow Visualizer -->
                         @if ($game->sport === 'basketball')
-                            <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 w-full flex items-center justify-between text-xs font-mono font-bold">
+                            <div class="p-2 rounded-2xl bg-slate-950 border border-slate-800 w-full flex items-center justify-between text-xs font-mono font-bold shadow-inner gap-2">
                                 @if (!$isFlipped)
-                                    <span class="px-2 py-0.5 rounded transition text-white shadow" style="{{ $game->possession_arrow === 'home' ? 'background-color: ' . $homeColor . ';' : 'color: rgb(100 116 139); background-color: transparent;' }}">&larr; HOME</span>
-                                    <span class="px-2 py-0.5 rounded transition text-white shadow" style="{{ $game->possession_arrow === 'away' ? 'background-color: ' . $awayColor . ';' : 'color: rgb(100 116 139); background-color: transparent;' }}">AWAY &rarr;</span>
+                                    <div class="flex-1 py-1.5 px-2 rounded-xl text-center transition flex items-center justify-center gap-1.5 {{ $game->possession_arrow === 'home' ? 'bg-amber-400 text-slate-950 font-black shadow-[0_0_16px_rgba(251,191,36,0.7)] ring-2 ring-amber-300' : 'text-slate-600 bg-slate-900/50' }}">
+                                        <span class="text-xs">◀</span>
+                                        <span>HOME</span>
+                                    </div>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">POSS</span>
+                                    <div class="flex-1 py-1.5 px-2 rounded-xl text-center transition flex items-center justify-center gap-1.5 {{ $game->possession_arrow === 'away' ? 'bg-amber-400 text-slate-950 font-black shadow-[0_0_16px_rgba(251,191,36,0.7)] ring-2 ring-amber-300' : 'text-slate-600 bg-slate-900/50' }}">
+                                        <span>AWAY</span>
+                                        <span class="text-xs">▶</span>
+                                    </div>
                                 @else
-                                    <span class="px-2 py-0.5 rounded transition text-white shadow" style="{{ $game->possession_arrow === 'away' ? 'background-color: ' . $awayColor . ';' : 'color: rgb(100 116 139); background-color: transparent;' }}">&larr; AWAY</span>
-                                    <span class="px-2 py-0.5 rounded transition text-white shadow" style="{{ $game->possession_arrow === 'home' ? 'background-color: ' . $homeColor . ';' : 'color: rgb(100 116 139); background-color: transparent;' }}">HOME &rarr;</span>
+                                    <div class="flex-1 py-1.5 px-2 rounded-xl text-center transition flex items-center justify-center gap-1.5 {{ $game->possession_arrow === 'away' ? 'bg-amber-400 text-slate-950 font-black shadow-[0_0_16px_rgba(251,191,36,0.7)] ring-2 ring-amber-300' : 'text-slate-600 bg-slate-900/50' }}">
+                                        <span class="text-xs">◀</span>
+                                        <span>AWAY</span>
+                                    </div>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">POSS</span>
+                                    <div class="flex-1 py-1.5 px-2 rounded-xl text-center transition flex items-center justify-center gap-1.5 {{ $game->possession_arrow === 'home' ? 'bg-amber-400 text-slate-950 font-black shadow-[0_0_16px_rgba(251,191,36,0.7)] ring-2 ring-amber-300' : 'text-slate-600 bg-slate-900/50' }}">
+                                        <span>HOME</span>
+                                        <span class="text-xs">▶</span>
+                                    </div>
                                 @endif
                             </div>
                         @else
@@ -205,8 +223,8 @@
                         <!-- Top Team Bar with Possession Indicator -->
                         <div class="flex items-center justify-between pb-3 border-b border-slate-800">
                             @if ($game->sport === 'basketball' && $game->possession_arrow === 'away')
-                                <div class="px-3 py-1 rounded-full bg-amber-500 text-slate-950 font-black text-xs tracking-wider uppercase flex items-center gap-1 shadow-lg shadow-amber-500/40 animate-pulse">
-                                    <span>&bull; POSS &bull;</span>
+                                <div class="px-3.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs sm:text-sm tracking-wider uppercase flex items-center gap-1.5 shadow-[0_0_18px_rgba(251,191,36,0.7)] border border-amber-200 animate-pulse">
+                                    <span>{{ $isFlipped ? '◀ POSS ARROW' : 'POSS ARROW ▶' }}</span>
                                 </div>
                             @elseif ($game->sport === 'volleyball' && $game->current_server === 'away')
                                 <div class="px-3 py-1 rounded-full bg-emerald-500 text-slate-950 font-black text-xs tracking-wider uppercase flex items-center gap-1 shadow-lg shadow-emerald-500/40 animate-pulse">
@@ -232,19 +250,23 @@
 
                         <!-- Team Fouls & Timeouts Remaining -->
                         <div class="pt-3 border-t border-slate-800 grid grid-cols-2 gap-3 text-xs">
-                            <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                                <div class="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Timeouts Left</div>
-                                <div class="flex items-center justify-end space-x-2">
-                                    @if ($game->sport === 'basketball')
-                                        <span class="text-[11px] font-mono text-slate-400">({{ $game->away_timeouts_breakdown['rem_full'] }} Full &bull; {{ $game->away_timeouts_breakdown['rem_30s'] }} 30s)</span>
-                                    @else
-                                        <div class="flex space-x-1">
-                                            @for ($i = 0; $i < $game->away_timeouts_remaining; $i++)
-                                                <span class="w-2 h-4 rounded-sm bg-amber-400"></span>
-                                            @endfor
-                                        </div>
-                                    @endif
-                                    <span class="text-xl font-mono font-black text-amber-300">{{ $game->away_timeouts_remaining }}</span>
+                            <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                                <div class="text-[10px] font-bold uppercase text-slate-400 tracking-wider text-right">Timeouts</div>
+                                <div class="grid grid-cols-2 gap-2 text-center">
+                                    <div class="p-1 rounded-lg bg-slate-900 border border-slate-800">
+                                        <div class="text-[8px] font-black uppercase tracking-wider text-slate-400">Taken</div>
+                                        <div class="text-base sm:text-lg font-mono font-black text-slate-200">{{ $game->away_timeouts_used }}</div>
+                                        @if ($game->sport === 'basketball')
+                                            <div class="text-[8px] font-mono text-slate-400">({{ $game->away_timeouts_breakdown['used_full'] }}F &bull; {{ $game->away_timeouts_breakdown['used_30s'] }}s)</div>
+                                        @endif
+                                    </div>
+                                    <div class="p-1 rounded-lg bg-amber-950/40 border border-amber-800/60">
+                                        <div class="text-[8px] font-black uppercase tracking-wider text-amber-400">Remain</div>
+                                        <div class="text-base sm:text-lg font-mono font-black text-amber-300">{{ $game->away_timeouts_remaining }}</div>
+                                        @if ($game->sport === 'basketball')
+                                            <div class="text-[8px] font-mono text-amber-200/80">({{ $game->away_timeouts_breakdown['rem_full'] }}F &bull; {{ $game->away_timeouts_breakdown['rem_30s'] }}s)</div>
+                                        @endif
+                                    </div>
                                 </div>
                             </div>
 

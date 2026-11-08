@@ -43,6 +43,15 @@ class BasketballStat extends Model
         'seconds_played',
     ];
 
+    protected $attributes = [
+        'player_name' => '',
+    ];
+
+    public function setPlayerNameAttribute($value): void
+    {
+        $this->attributes['player_name'] = $value ?? '';
+    }
+
     public function game(): BelongsTo
     {
         return $this->belongsTo(Game::class);

@@ -551,3 +551,102 @@ test('batch roster update and in-game spreadsheet save preserve position and sta
     expect($rodmanLineup->position)->toBe('PF');
     expect($rodmanLineup->is_starter)->toBeTrue();
 });
+
+test('saving roster with only jersey numbers and no names persists without failing or erasing', function () {
+    $org = Organization::create(['name' => 'Jersey Only Org', 'slug' => 'jersey-only-org']);
+    $user = User::create([
+        'organization_id' => $org->id,
+        'name' => 'Coach Jersey',
+        'email' => 'jersey_coach@example.com',
+        'password' => bcrypt('password'),
+        'role' => 'admin',
+    ]);
+
+    $team = Team::create([
+        'organization_id' => $org->id,
+        'name' => 'Visiting Numbers',
+        'sport' => 'basketball',
+        'gender' => 'boys',
+        'level' => 'varsity',
+        'season' => '2026-2027',
+    ]);
+
+    // Batch update with numbers only, no names
+    $response = $this->actingAs($user)->postJson(route('teams.roster.batch', $team->id), [
+        'players' => [
+            ['id' => null, 'jersey_number' => '3', 'name' => ''],
+            ['id' => null, 'jersey_number' => '11', 'name' => ''],
+            ['id' => null, 'jersey_number' => '15', 'name' => ''],
+            ['id' => null, 'jersey_number' => '22', 'name' => ''],
+            ['id' => null, 'jersey_number' => '34', 'name' => ''],
+        ],
+    ]);
+
+    $response->assertOk();
+    $response->assertJson(['success' => true]);
+
+    expect($team->rosterPlayers()->count())->toBe(5);
+    expect(RosterPlayer::where('team_id', $team->id)->where('jersey_number', '3')->exists())->toBeTrue();
+    expect(RosterPlayer::where('team_id', $team->id)->where('jersey_number', '34')->exists())->toBeTrue();
+
+    // Verify in-game spreadsheet save with jersey numbers only
+    $game = Game::create([
+        'access_code' => 'JERSEY01',
+        'slug' => 'numbers-game',
+        'organization_id' => $org->id,
+        'created_by_user_id' => $user->id,
+        'sport' => 'basketball',
+        'status' => 'in_progress',
+        'home_team_id' => $team->id,
+        'home_team_name' => 'Visiting Numbers',
+        'away_team_name' => 'Opponent',
+        'current_period' => 1,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->call('saveRosterSpreadsheet', 'home', [
+            ['id' => null, 'jersey_number' => '3', 'name' => '', 'is_on_court' => true],
+            ['id' => null, 'jersey_number' => '11', 'name' => '', 'is_on_court' => true],
+            ['id' => null, 'jersey_number' => '15', 'name' => '', 'is_on_court' => true],
+            ['id' => null, 'jersey_number' => '22', 'name' => '', 'is_on_court' => true],
+            ['id' => null, 'jersey_number' => '34', 'name' => '', 'is_on_court' => true],
+            ['id' => null, 'jersey_number' => '45', 'name' => '', 'is_on_court' => false],
+        ]);
+
+    $lineups = GameLineup::where('game_id', $game->id)->where('team_side', 'home')->get();
+    expect($lineups->count())->toBe(6);
+    expect($lineups->pluck('jersey_number')->toArray())->toContain('3', '11', '15', '22', '34', '45');
+    expect($lineups->firstWhere('jersey_number', '45')->player_name)->toBe('');
+
+    // Quick add player with only jersey number
+    Livewire::actingAs($user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->set('newJersey', '99')
+        ->set('newName', '')
+        ->call('quickAddLineupPlayer');
+
+    expect(GameLineup::where('game_id', $game->id)->where('jersey_number', '99')->exists())->toBeTrue();
+
+    // Bulk paste numbers only into Volleyball operator
+    $vbGame = Game::create([
+        'access_code' => 'VBJERSEY',
+        'slug' => 'vb-numbers-game',
+        'organization_id' => $org->id,
+        'created_by_user_id' => $user->id,
+        'sport' => 'volleyball',
+        'status' => 'in_progress',
+        'home_team_name' => 'VB Home',
+        'away_team_name' => 'VB Away',
+        'current_period' => 1,
+    ]);
+
+    Livewire::actingAs($user)
+        ->test(VolleyballOperator::class, ['gameId' => $vbGame->id])
+        ->set('bulkRosterInput', "2\n4\n7\n9\n11\n15")
+        ->call('importBulkRosterToGame');
+
+    $vbLineups = GameLineup::where('game_id', $vbGame->id)->where('team_side', 'home')->get();
+    expect($vbLineups->count())->toBe(6);
+    expect($vbLineups->pluck('jersey_number')->toArray())->toContain('2', '4', '7', '9', '11', '15');
+});

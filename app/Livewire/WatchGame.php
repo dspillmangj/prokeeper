@@ -72,7 +72,7 @@ class WatchGame extends Component
             return;
         }
 
-        return redirect()->route('public.watch', $game->access_code);
+        return redirect()->route('public.live', $game->access_code);
     }
 
     public function getGameProperty(): ?Game
@@ -84,7 +84,7 @@ class WatchGame extends Component
         return Game::where('access_code', $this->code)
             ->orWhere('uuid', $this->code)
             ->orWhere('slug', $this->code)
-            ->with(['homeTeam', 'awayTeam'])
+            ->with(['homeTeam', 'awayTeam', 'createdBy', 'organization'])
             ->first();
     }
 
@@ -95,6 +95,16 @@ class WatchGame extends Component
         if (! $game) {
             return view('livewire.watch-game', [
                 'game' => null,
+                'isRestricted' => false,
+            ])->layout('layouts.public');
+        }
+
+        // Check view permissions (Free vs Pro)
+        $isAllowed = $game->canBeViewedBy(auth()->user(), null, 'live');
+        if (! $isAllowed) {
+            return view('livewire.watch-game', [
+                'game' => $game,
+                'isRestricted' => true,
             ])->layout('layouts.public');
         }
 

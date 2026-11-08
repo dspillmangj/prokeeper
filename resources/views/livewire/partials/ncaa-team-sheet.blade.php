@@ -212,10 +212,6 @@
 
         <!-- Team Timeouts Tracker -->
         <div class="col-span-4 ncaa-border p-2 print:p-1">
-            <div class="font-bold uppercase tracking-wider text-black border-b border-black pb-0.5 mb-1.5 print:mb-1 flex justify-between leading-none">
-                <span>Team Timeouts</span>
-                <span class="text-[9px]">Rem: {{ $team['timeouts_remaining'] }}</span>
-            </div>
             @php
                 $bd = $team['timeouts_breakdown'] ?? [
                     'allowed_full' => $game->full_timeouts_allowed,
@@ -228,7 +224,12 @@
                 $totalBoxes = max(1, $allowedFull + $allowed30s);
                 $usedFullCount = $bd['used_full'] ?? 0;
                 $used30sCount = $bd['used_30s'] ?? 0;
+                $usedTotalCount = $bd['used_total'] ?? ($usedFullCount + $used30sCount);
             @endphp
+            <div class="font-bold uppercase tracking-wider text-black border-b border-black pb-0.5 mb-1.5 print:mb-1 flex justify-between leading-none">
+                <span>Team Timeouts</span>
+                <span class="text-[9px]">Taken: {{ $usedTotalCount }} &bull; Rem: {{ $team['timeouts_remaining'] }}</span>
+            </div>
             <div class="grid gap-1 print:gap-0.5 text-center" style="grid-template-columns: repeat({{ $totalBoxes }}, minmax(0, 1fr));">
                 @for ($f = 1; $f <= $allowedFull; $f++)
                     @php
@@ -515,6 +516,52 @@
         </table>
     </div>
 
+    <!-- OFFICIAL PLAYER BOX STATISTICS LEDGER -->
+    <div class="ncaa-border p-2 print:p-1">
+        <div class="text-[10px] print:text-[8px] font-black uppercase tracking-wider text-black bg-slate-200 px-2 print:px-1 py-0.5 border-b border-black mb-1.5 print:mb-1 flex justify-between items-center leading-none">
+            <span>Official Box Statistics Ledger</span>
+            <span class="text-[9px] print:text-[7.5px] text-slate-600 font-mono">FGM-A &bull; 3PM-A &bull; FTM-A &bull; REB &bull; AST &bull; STL &bull; BLK &bull; SWAT &bull; TO &bull; PF &bull; PTS</span>
+        </div>
+        <table class="w-full text-center text-[9px] print:text-[7.5px] font-mono border-collapse ncaa-table">
+            <thead>
+                <tr class="bg-slate-100 text-slate-800 font-bold border-b border-black">
+                    <th class="py-1 px-1.5 text-left w-36">Player</th>
+                    <th class="py-1 px-1 w-10">#</th>
+                    <th class="py-1 px-1">FGM-A</th>
+                    <th class="py-1 px-1">3PM-A</th>
+                    <th class="py-1 px-1">FTM-A</th>
+                    <th class="py-1 px-1 font-bold">REB</th>
+                    <th class="py-1 px-1">AST</th>
+                    <th class="py-1 px-1">STL</th>
+                    <th class="py-1 px-1">BLK</th>
+                    <th class="py-1 px-1" title="Swats / Deflections">SWAT</th>
+                    <th class="py-1 px-1">TO</th>
+                    <th class="py-1 px-1">PF</th>
+                    <th class="py-1 px-1 font-black bg-slate-200">PTS</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach ($team['players'] as $bp)
+                    <tr class="border-b border-slate-300 hover:bg-slate-50">
+                        <td class="py-0.5 px-1.5 text-left font-sans font-semibold text-black truncate max-w-[130px]">{{ $bp['name'] }}</td>
+                        <td class="py-0.5 px-1 font-bold">#{{ $bp['jersey'] }}</td>
+                        <td class="py-0.5 px-1">{{ $bp['fg_str'] ?? '—' }}</td>
+                        <td class="py-0.5 px-1">{{ $bp['fg3_str'] ?? '—' }}</td>
+                        <td class="py-0.5 px-1">{{ $bp['ft_str'] ?? '—' }}</td>
+                        <td class="py-0.5 px-1 font-bold">{{ $bp['reb'] ?? 0 }}</td>
+                        <td class="py-0.5 px-1">{{ $bp['ast'] ?? 0 }}</td>
+                        <td class="py-0.5 px-1">{{ $bp['stl'] ?? 0 }}</td>
+                        <td class="py-0.5 px-1">{{ $bp['blk'] ?? 0 }}</td>
+                        <td class="py-0.5 px-1">{{ $bp['swat'] ?? 0 }}</td>
+                        <td class="py-0.5 px-1">{{ $bp['to'] ?? 0 }}</td>
+                        <td class="py-0.5 px-1">{{ $bp['pf_count'] ?? 0 }}</td>
+                        <td class="py-0.5 px-1 font-black bg-slate-100">{{ $bp['total_pts'] ?? 0 }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+
     <!-- OFFICIAL 1-160 RUNNING SCORE MATRIX -->
     <div class="ncaa-border p-2 print:p-1">
         <div class="text-[10px] print:text-[8px] font-black uppercase tracking-wider text-black bg-slate-200 px-2 print:px-1 py-0.5 border-b border-black mb-1.5 print:mb-1 flex justify-between items-center leading-none">
@@ -535,10 +582,10 @@
                             @php
                                 $ptData = $team['running_score'][$pt] ?? null;
                             @endphp
-                            <div class="h-6 print:h-[15px] border {{ $ptData ? 'border-black bg-black text-white font-bold' : 'border-slate-300 text-slate-400 bg-white' }} flex flex-col items-center justify-center leading-none overflow-hidden relative" title="Point #{{ $pt }}{{ $ptData ? ' by #' . $ptData['jersey'] . ' (' . ($ptData['period_label'] ?? ('P' . $ptData['period'])) . ')' : '' }}">
+                            <div class="h-6 print:h-[15px] border {{ $ptData ? 'border-black bg-black text-white font-bold' : 'border-slate-300 text-slate-400 bg-white' }} flex flex-col items-center justify-center leading-none overflow-hidden relative" title="Point #{{ $pt }}{{ $ptData ? ' by ' . ($ptData['jersey'] === 'TM' ? 'Team' : '#' . $ptData['jersey']) . ' (' . ($ptData['period_label'] ?? ('P' . $ptData['period'])) . ')' : '' }}">
                                 <span class="text-[7px] print:text-[6px] leading-none {{ $ptData ? 'text-slate-300' : 'text-slate-400' }}">{{ $pt }}</span>
                                 @if ($ptData)
-                                    <span class="text-[8px] print:text-[6.5px] font-bold leading-none mt-0.5 print:mt-0">#{{ $ptData['jersey'] }}</span>
+                                    <span class="text-[8px] print:text-[6.5px] font-bold leading-none mt-0.5 print:mt-0">{{ $ptData['jersey'] === 'TM' ? 'TM' : '#' . $ptData['jersey'] }}</span>
                                 @endif
                             </div>
                         @endfor

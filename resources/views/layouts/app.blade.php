@@ -50,13 +50,33 @@
                         <a href="{{ route('install') }}" class="px-3 py-2 rounded-md text-sm font-medium {{ request()->routeIs('install') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/50' }}">
                             Install App
                         </a>
+                        <a href="{{ route('billing.index') }}" class="px-3 py-2 rounded-md text-sm font-medium {{ request()->routeIs('billing.*') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/50' }}">
+                            Billing & Plans
+                        </a>
+                        <a href="{{ route('settings.security') }}" class="px-3 py-2 rounded-md text-sm font-medium {{ request()->routeIs('settings.security*') ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/50' }}">
+                            Security
+                        </a>
                     </nav>
                 </div>
 
                 <div class="flex items-center space-x-4">
                     <div class="text-right hidden sm:block">
-                        <div class="text-sm font-semibold text-slate-200">{{ auth()->user()->name }}</div>
-                        <div class="text-xs text-slate-400">{{ auth()->user()->organization?->name ?? 'Organization' }}</div>
+                        <div class="flex items-center justify-end gap-1.5">
+                            <span class="text-sm font-semibold text-slate-200">{{ auth()->user()->name }}</span>
+                            @php
+                                $plan = auth()->user()->getEffectivePlan();
+                            @endphp
+                            @if ($plan === 'enterprise')
+                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40">Enterprise</span>
+                            @elseif ($plan === 'pro')
+                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-sky-500/20 text-sky-300 border border-sky-500/40">Pro</span>
+                            @else
+                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700">Free</span>
+                            @endif
+                        </div>
+                        @if (auth()->user()->isEnterprise() && auth()->user()->organization)
+                            <div class="text-xs text-slate-400">{{ auth()->user()->organization->name }}</div>
+                        @endif
                     </div>
 
                     <form method="POST" action="{{ route('logout') }}">
@@ -74,6 +94,22 @@
         <!-- Main Content Area -->
         <main class="flex-1 py-8">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                @if (auth()->check() && !auth()->user()->hasVerifiedEmail())
+                    <div class="mb-6 p-4 rounded-xl bg-amber-950/70 border border-amber-800/80 text-amber-200 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div class="flex items-center gap-2.5">
+                            <svg class="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                            </svg>
+                            <span>Your email address is unverified. Please verify your email before creating new rosters or live games.</span>
+                        </div>
+                        <form method="POST" action="{{ route('verification.send') }}" class="shrink-0">
+                            @csrf
+                            <button type="submit" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 font-semibold text-white text-xs transition">
+                                Resend Verification Link
+                            </button>
+                        </form>
+                    </div>
+                @endif
                 @if (session('success'))
                     <div class="mb-6 p-4 rounded-lg bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-sm flex items-center justify-between">
                         <span>{{ session('success') }}</span>

@@ -18,6 +18,8 @@
          awayRotation: {{ (int)$game->away_rotation }},
          homeTimeouts: {{ (int)$game->home_timeouts_remaining }},
          awayTimeouts: {{ (int)$game->away_timeouts_remaining }},
+         homeTimeoutsTaken: {{ (int)$game->home_timeouts_used }},
+         awayTimeoutsTaken: {{ (int)$game->away_timeouts_used }},
          timeoutsPerSet: {{ (int)($game->rules['timeouts_per_set'] ?? 2) }},
          homeCourt: @js($homeCourt),
          awayCourt: @js($awayCourt),
@@ -25,6 +27,8 @@
          awayBench: @js($awayBench),
          recentEvents: @js($recentEvents),
      })">
+
+
 
     <!-- 1. TOP SCOREBOARD BAR (Compact, Zero-Waste Height, Dynamically Colored & Flippable) -->
     <div class="bg-slate-900 border-b border-slate-800 p-2 sm:p-3 shrink-0 shadow-lg rounded-2xl mb-1">
@@ -48,7 +52,15 @@
                     <h2 class="text-sm sm:text-base font-black text-white truncate leading-tight">{{ $game->home_display_name }}</h2>
                     <div class="flex items-center space-x-2 text-[10px] text-slate-400 font-mono">
                         <span>ROT: <strong class="text-white" x-text="'P' + homeRotation"></strong></span>
-                        <span>TO: <strong class="text-white" x-text="homeTimeouts"></strong></span>
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">
+                            <span class="text-[9px] uppercase font-bold text-slate-400">TO</span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-[9px] font-bold text-slate-300" title="Timeouts Taken">
+                                <span class="text-[7px] text-slate-400 uppercase font-semibold">TAKEN:</span><strong class="text-white" x-text="homeTimeoutsTaken"></strong>
+                            </span>
+                            <span class="px-1 py-0.2 rounded bg-amber-950/80 border border-amber-800/80 text-[9px] font-bold text-amber-300" title="Timeouts Remaining">
+                                <span class="text-[7px] text-amber-400 uppercase font-semibold">REM:</span><strong class="text-amber-200" x-text="homeTimeouts"></strong>
+                            </span>
+                        </span>
                     </div>
                 </div>
 
@@ -164,7 +176,15 @@
                     </div>
                     <h2 class="text-sm sm:text-base font-black text-white truncate leading-tight">{{ $game->away_display_name }}</h2>
                     <div class="flex items-center justify-end space-x-2 text-[10px] text-slate-400 font-mono">
-                        <span>TO: <strong class="text-white" x-text="awayTimeouts"></strong></span>
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">
+                            <span class="text-[9px] uppercase font-bold text-slate-400">TO</span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-[9px] font-bold text-slate-300" title="Timeouts Taken">
+                                <span class="text-[7px] text-slate-400 uppercase font-semibold">TAKEN:</span><strong class="text-white" x-text="awayTimeoutsTaken"></strong>
+                            </span>
+                            <span class="px-1 py-0.2 rounded bg-amber-950/80 border border-amber-800/80 text-[9px] font-bold text-amber-300" title="Timeouts Remaining">
+                                <span class="text-[7px] text-amber-400 uppercase font-semibold">REM:</span><strong class="text-amber-200" x-text="awayTimeouts"></strong>
+                            </span>
+                        </span>
                         <span>ROT: <strong class="text-white" x-text="'P' + awayRotation"></strong></span>
                     </div>
                 </div>
@@ -173,73 +193,310 @@
         </div>
     </div>
 
-    <!-- PROMINENT HIGH-VISIBILITY LIVE FEEDBACK & ACTION STATUS BANNER -->
-    <div class="shrink-0 mb-1 rounded-xl transition-all duration-200 border px-3 sm:px-4 py-2 flex items-center justify-between gap-3 shadow-md select-none"
-         :class="[
-             feedbackType === 'error'
-                 ? 'bg-gradient-to-r from-rose-950/95 via-red-950/90 to-rose-950/95 border-rose-500 text-rose-100 shadow-[0_0_25px_rgba(244,63,94,0.45)] ring-2 ring-rose-500/70'
-                 : (feedbackType === 'success'
-                     ? 'bg-gradient-to-r from-slate-900/95 via-emerald-950/60 to-slate-900/95 border-emerald-500/50 text-emerald-100 shadow-sm'
-                     : 'bg-gradient-to-r from-slate-900/95 via-slate-800/80 to-slate-900/95 border-slate-700/80 text-slate-100 shadow-sm')
-         ]"
-         data-testid="operator-feedback-banner">
-        
-        <!-- Left Icon & Type Badge -->
-        <div class="flex items-center gap-2 shrink-0">
-            <!-- ERROR BADGE -->
-            <template x-if="feedbackType === 'error'">
-                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-600 text-white font-black text-[11px] uppercase tracking-wider shadow-md shadow-rose-950/50 animate-pulse">
-                    <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                    </svg>
-                    <span>ALERT</span>
+    <!-- PROMINENT HIGH-VISIBILITY LIVE FEEDBACK & ACTION STATUS BANNER (SPLIT WHEN ERRORS PRESENT) -->
+    <div class="shrink-0 mb-1 select-none relative" data-testid="operator-feedback-banner">
+        <!-- CASE A: NO ERRORS -> Full-width Feedback, Status, or Attention Alert Banner -->
+        <template x-if="!errorQueue || errorQueue.length === 0">
+            <div class="rounded-xl transition-all duration-200 border px-3 sm:px-4 py-2 flex items-center justify-between gap-3 shadow-md relative overflow-hidden"
+                 :class="[
+                     (attentionAlert && attentionAlert.type !== 'error')
+                         ? (alertFlashActive
+                             ? 'bg-gradient-to-r from-rose-950 via-slate-900 to-rose-950 border-rose-500 shadow-[0_0_25px_rgba(244,63,94,0.5)] ring-2 ring-rose-500 animate-bombastic-strobe'
+                             : 'bg-gradient-to-r from-rose-950/90 via-slate-900 to-rose-950/90 border-rose-500/80 text-rose-100 shadow-[0_0_15px_rgba(244,63,94,0.3)] ring-1 ring-rose-500/80')
+                         : (feedbackType === 'success'
+                             ? 'bg-gradient-to-r from-slate-900/95 via-emerald-950/60 to-slate-900/95 border-emerald-500/50 text-emerald-100 shadow-sm'
+                             : 'bg-gradient-to-r from-slate-900/95 via-slate-800/80 to-slate-900/95 border-slate-700/80 text-slate-100 shadow-sm')
+                 ]">
+                <!-- Left Icon & Type Badge -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-white font-black text-[11px] uppercase tracking-wider shadow-sm animate-pulse bg-rose-600">
+                            <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span x-text="attentionAlert.title || 'OPERATOR ALERT'"></span>
+                        </div>
+                    </template>
+                    <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackType === 'success'">
+                        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/90 text-white font-black text-[11px] uppercase tracking-wider shadow-sm">
+                            <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span>ACTION</span>
+                        </div>
+                    </template>
+                    <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackType !== 'success'">
+                        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-blue-300 font-black text-[11px] uppercase tracking-wider shadow-sm">
+                            <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span>STATUS</span>
+                        </div>
+                    </template>
                 </div>
-            </template>
 
-            <!-- SUCCESS BADGE -->
-            <template x-if="feedbackType === 'success'">
-                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/90 text-white font-black text-[11px] uppercase tracking-wider shadow-sm">
-                    <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    <span>ACTION</span>
+                <!-- Center: Full Feedback / Attention Text -->
+                <div class="flex-1 min-w-0 text-left">
+                    <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p x-text="attentionAlert.message" 
+                               class="text-xs sm:text-sm md:text-base font-black tracking-tight leading-snug break-words text-white">
+                            </p>
+                            <span class="text-xs text-slate-300 font-medium hidden md:inline"
+                                  x-show="attentionAlert.details"
+                                  x-text="attentionAlert.details">
+                            </span>
+                            <span class="text-[10px] font-mono text-slate-400 bg-black/40 px-1.5 py-0.5 rounded border border-white/10 shrink-0"
+                                  x-show="alertRemainingSeconds > 0">
+                                Active (<span class="font-bold text-white" x-text="alertRemainingSeconds + 's'"></span>)
+                            </span>
+                        </div>
+                    </template>
+                    <template x-if="!attentionAlert || attentionAlert.type === 'error'">
+                        <p x-text="(feedbackType === 'error' || !feedbackMessage) ? 'Ready' : feedbackMessage" 
+                           class="text-xs sm:text-sm md:text-base font-extrabold tracking-tight leading-snug break-words"
+                           :class="feedbackType === 'success' ? 'text-emerald-100' : 'text-slate-100'">
+                        </p>
+                    </template>
                 </div>
-            </template>
 
-            <!-- INFO / READY BADGE -->
-            <template x-if="feedbackType !== 'error' && feedbackType !== 'success'">
-                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-blue-300 font-black text-[11px] uppercase tracking-wider shadow-sm">
-                    <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <span>STATUS</span>
+                <!-- Right Side: Quick Dismiss -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                        <button type="button"
+                                @click="dismissAttentionAlert()"
+                                class="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white font-bold text-xs transition flex items-center gap-1 cursor-pointer"
+                                title="Dismiss notice (Esc)">
+                            <span class="hidden sm:inline">Dismiss</span>
+                            <kbd class="px-1 py-0.2 rounded bg-black/40 text-[9px] font-mono border border-white/20">Esc</kbd>
+                        </button>
+                    </template>
+                    <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackMessage && feedbackMessage !== 'Ready' && feedbackType !== 'error'">
+                        <button type="button"
+                                @click="feedbackMessage = 'Ready'; feedbackType = 'info';"
+                                class="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition"
+                                title="Dismiss notice">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </template>
                 </div>
-            </template>
-        </div>
 
-        <!-- Center: Full Feedback Text (Never Truncated, High Contrast, Legible) -->
-        <div class="flex-1 min-w-0 text-left">
-            <p x-text="feedbackMessage || 'Ready'" 
-               class="text-xs sm:text-sm md:text-base font-extrabold tracking-tight leading-snug break-words"
-               :class="[
-                   feedbackType === 'error'
-                       ? 'text-rose-100'
-                       : (feedbackType === 'success' ? 'text-emerald-100' : 'text-slate-100')
-               ]">
-            </p>
-        </div>
+                <!-- Shrinking Duration Progress Bar -->
+                <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                    <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-black/40 overflow-hidden">
+                        <div class="h-full bg-rose-500 transition-all duration-1000 ease-linear"
+                             :style="{ width: alertTotalSeconds > 0 ? ((alertRemainingSeconds / alertTotalSeconds) * 100) + '%' : '0%' }">
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
 
-        <!-- Right Side: Quick Dismiss (Non-blocking, keyboard speed first) -->
-        <div class="flex items-center gap-2 shrink-0">
-            <template x-if="feedbackMessage && feedbackMessage !== 'Ready'">
-                <button type="button"
-                        @click="feedbackMessage = 'Ready'; feedbackType = 'info';"
-                        class="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition"
-                        title="Dismiss notice">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </template>
-        </div>
+        <!-- CASE B: ERRORS PRESENT -> Split Bar (Left: Feedback / Attention | Right: Error Queue & Hotkey Dismiss) -->
+        <template x-if="errorQueue && errorQueue.length > 0">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 relative">
+                <!-- LEFT HALF: LIVE FEEDBACK & ACTION STATUS / ATTENTION ALERT -->
+                <div class="rounded-xl transition-all duration-200 border px-3 sm:px-4 py-2 flex items-center justify-between gap-2.5 shadow-sm min-w-0 relative overflow-hidden"
+                     :class="[
+                         (attentionAlert && attentionAlert.type !== 'error')
+                             ? 'bg-gradient-to-r from-rose-950/90 via-slate-900 to-rose-950/90 border-rose-500 text-rose-100 shadow-sm ring-1 ring-rose-500/80'
+                             : (feedbackType === 'success'
+                                 ? 'bg-gradient-to-r from-slate-900/95 via-emerald-950/60 to-slate-900/95 border-emerald-500/50 text-emerald-100 shadow-sm'
+                                 : 'bg-gradient-to-r from-slate-900/95 via-slate-800/80 to-slate-900/95 border-slate-700/80 text-slate-100 shadow-sm')
+                     ]">
+                    <div class="flex items-center gap-2 shrink-0">
+                        <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                            <div class="flex items-center gap-1 px-2 py-0.5 rounded-lg text-white font-black text-[10px] uppercase tracking-wider shadow-sm animate-pulse bg-rose-600 shrink-0">
+                                <span x-text="attentionAlert.title || 'ALERT'"></span>
+                            </div>
+                        </template>
+                        <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackType === 'success'">
+                            <div class="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-600/90 text-white font-black text-[10px] uppercase tracking-wider shadow-sm">
+                                <svg class="w-3.5 h-3.5 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                                </svg>
+                                <span>ACTION</span>
+                            </div>
+                        </template>
+                        <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackType !== 'success'">
+                            <div class="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-800 border border-slate-700 text-blue-300 font-black text-[10px] uppercase tracking-wider shadow-sm">
+                                <svg class="w-3.5 h-3.5 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <span>STATUS</span>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="flex-1 min-w-0 text-left">
+                        <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                            <p x-text="attentionAlert.message" 
+                               class="text-xs sm:text-sm font-bold tracking-tight truncate leading-snug text-white"
+                               :title="attentionAlert.message">
+                            </p>
+                        </template>
+                        <template x-if="!attentionAlert || attentionAlert.type === 'error'">
+                            <p x-text="(feedbackType === 'error' || !feedbackMessage) ? 'Ready' : feedbackMessage" 
+                               class="text-xs sm:text-sm font-bold tracking-tight truncate leading-snug"
+                               :class="feedbackType === 'success' ? 'text-emerald-100' : 'text-slate-100'"
+                               :title="(feedbackType === 'error' || !feedbackMessage) ? 'Ready' : feedbackMessage">
+                            </p>
+                        </template>
+                    </div>
+
+                    <div class="flex items-center gap-1 shrink-0">
+                        <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                            <button type="button"
+                                    @click="dismissAttentionAlert()"
+                                    class="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition shrink-0"
+                                    title="Dismiss notice (Esc)">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </template>
+                        <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackMessage && feedbackMessage !== 'Ready' && feedbackType !== 'error'">
+                            <button type="button"
+                                    @click="feedbackMessage = 'Ready'; feedbackType = 'info';"
+                                    class="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition"
+                                    title="Dismiss notice">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- RIGHT HALF: ERROR (Front Error, Counter Badge, Hover to Expand, Hotkey Dismiss) -->
+                <div class="rounded-xl border border-rose-500/80 bg-gradient-to-r from-rose-950/95 via-red-950/90 to-rose-950/95 text-rose-100 shadow-[0_0_25px_rgba(244,63,94,0.35)] ring-1 ring-rose-500/70 px-3 sm:px-4 py-2 flex items-center justify-between gap-2.5 transition-all duration-200 min-w-0 relative">
+                    <!-- Left: Alert Badge & Front Error Text -->
+                    <div class="flex items-center gap-2 min-w-0 flex-1">
+                        <div class="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-600 text-white font-black text-[10px] uppercase tracking-wider shadow-md shadow-rose-950/50 animate-pulse shrink-0">
+                            <svg class="w-3.5 h-3.5 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                            <span>ALERT</span>
+                        </div>
+                        <div class="flex-1 min-w-0 text-left">
+                            <p x-text="frontError ? frontError.message : ''" 
+                               :title="frontError ? frontError.message : ''"
+                               class="text-xs sm:text-sm font-extrabold text-rose-100 truncate tracking-tight leading-snug">
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Right: Special Area (+N) and Hotkey Dismiss Controls -->
+                    <div class="flex items-center gap-2 shrink-0">
+                        <!-- SPECIAL HOVER/EXPAND AREA: Badge showing (+N) additional errors -->
+                        <div class="relative flex items-center"
+                             @mouseenter="openErrorHover()"
+                             @mouseleave="closeErrorHover()">
+                            <template x-if="errorQueue.length > 1">
+                                <button type="button"
+                                        @click="toggleErrorList()"
+                                        class="px-2 py-0.5 rounded-full bg-rose-600 hover:bg-rose-500 text-white font-black text-xs tracking-wider shadow-md border border-rose-400/60 hover:scale-105 active:scale-95 transition-all flex items-center gap-1 cursor-pointer"
+                                        :title="'View all ' + errorQueue.length + ' errors at a glance (Hover, click, or Alt+E)'">
+                                    <span x-text="`(+${errorQueue.length - 1})`"></span>
+                                    <svg class="w-3 h-3 text-rose-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                </button>
+                            </template>
+                            <template x-if="errorQueue.length === 1">
+                                <button type="button"
+                                        @click="toggleErrorList()"
+                                        class="p-1 rounded-lg text-rose-300 hover:text-white hover:bg-rose-800/60 transition cursor-pointer"
+                                        title="View error details (Hover, click, or Alt+E)">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                </button>
+                            </template>
+                        </div>
+
+                        <!-- DISMISS BUTTON: Dismiss front error (Hotkey: ` | Shift+` for all) -->
+                        <button type="button"
+                                @click.exact="dismissFrontError()"
+                                @click.shift="dismissAllErrors()"
+                                class="px-2 py-1 rounded-lg bg-rose-900/80 hover:bg-rose-600 border border-rose-700/70 hover:border-rose-400 text-rose-200 hover:text-white transition flex items-center gap-1.5 text-xs font-bold shadow-sm cursor-pointer"
+                                title="Dismiss error (` key, Shift+` for all)">
+                            <span class="font-mono text-[10px] bg-black/50 px-1 py-0.2 rounded text-rose-300 border border-rose-700/60">`</span>
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <!-- EXPANDED "AT A GLANCE" ERROR FLYOUT / POPOVER -->
+                    <div x-show="showErrorList"
+                         x-cloak
+                         x-transition:enter="transition ease-out duration-150"
+                         x-transition:enter-start="opacity-0 translate-y-1 scale-95"
+                         x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+                         x-transition:leave="transition ease-in duration-100"
+                         x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+                         x-transition:leave-end="opacity-0 translate-y-1 scale-95"
+                         @mouseenter="cancelCloseErrorHover()"
+                         @mouseleave="closeErrorHover()"
+                         @click.outside="showErrorList = false"
+                         class="absolute right-0 top-full mt-2 z-50 w-80 sm:w-96 md:w-[460px] max-w-[95vw] bg-slate-900 border-2 border-rose-500/80 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-rose-500/50 backdrop-blur-md">
+                        <!-- Popover Header -->
+                        <div class="px-3.5 py-2.5 bg-rose-950/80 border-b border-rose-900/60 flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <div class="p-1 rounded-md bg-rose-600 text-white shrink-0">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h4 class="text-xs font-black uppercase tracking-wider text-rose-100">Errors at a Glance</h4>
+                                        <span class="px-1.5 py-0.2 rounded-full bg-rose-500/40 text-rose-200 text-[10px] font-black border border-rose-400/30" x-text="errorQueue.length"></span>
+                                    </div>
+                                    <p class="text-[10px] text-rose-300 font-medium">Hotkey [<span class="font-mono text-white">`</span>] dismiss front • [<span class="font-mono text-white">Shift+`</span>] all • Auto-clears in 30s</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <button type="button"
+                                        @click="dismissAllErrors()"
+                                        class="px-2 py-1 rounded-lg bg-rose-800 hover:bg-rose-700 text-white text-[11px] font-black tracking-wide transition border border-rose-600/50 shadow-sm cursor-pointer"
+                                        title="Dismiss all errors (Shift+`)">
+                                    Dismiss All
+                                </button>
+                                <button type="button"
+                                        @click="showErrorList = false"
+                                        class="p-1 rounded-lg text-rose-300 hover:text-white hover:bg-rose-800/60 transition cursor-pointer"
+                                        title="Close (Esc)">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Popover Error List -->
+                        <div class="max-h-72 overflow-y-auto divide-y divide-slate-800 p-2 space-y-1.5">
+                            <template x-for="(err, index) in errorQueue" :key="err.id">
+                                <div class="p-2.5 rounded-xl transition flex items-start justify-between gap-3"
+                                     :class="index === 0 ? 'bg-rose-950/40 border border-rose-500/40' : 'bg-slate-800/60 border border-slate-700/50 hover:bg-slate-800'">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <template x-if="index === 0">
+                                                <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-rose-600 text-white tracking-wider animate-pulse">Front / Latest</span>
+                                            </template>
+                                            <template x-if="index > 0">
+                                                <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-700 text-slate-300" x-text="`#${index + 1}`"></span>
+                                            </template>
+                                            <span class="text-[10px] text-slate-400 font-mono" x-text="err.timeStr"></span>
+                                        </div>
+                                        <p class="text-xs font-semibold text-rose-100 break-words leading-relaxed" x-text="err.message"></p>
+                                    </div>
+                                    <button type="button"
+                                            @click="dismissError(err.id)"
+                                            class="p-1 rounded-lg text-slate-400 hover:text-rose-200 hover:bg-rose-900/50 transition shrink-0 cursor-pointer"
+                                            title="Dismiss this error">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Popover Footer -->
+                        <div class="px-3 py-1.5 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                            <span><kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-200 font-mono border border-slate-700">Alt+E</kbd> toggle • <kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-200 font-mono border border-slate-700">`</kbd> dismiss front • 30s auto-clear</span>
+                            <span><kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-200 font-mono border border-slate-700">Esc</kbd> to close</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
     </div>
 
     <!-- 2. CENTER TIER: ACTIVE PLAYERS GRID OR FULL-TIER ACTION PAD (Adaptive Left-to-Right Top-to-Bottom) -->
@@ -561,9 +818,9 @@
                         </div>
                     </div>
 
-                    <button @click="showLineupModal = false" 
+                    <button @click="cancelSubOperation()" 
                             class="p-1 sm:p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-rose-900/80 border border-slate-700 hover:border-rose-500 transition shadow shrink-0" 
-                            title="Close (Esc)">
+                            title="Cancel (Esc)">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
@@ -689,9 +946,14 @@
                     <div x-show="pendingSubCount() === 0"></div>
 
                     <div class="flex items-center space-x-2">
-                        <button @click="showLineupModal = false" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
-                            <span>Done (Keep Lined Up)</span>
+                        <button @click="cancelSubOperation()" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                            <span>Cancel</span>
                             <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-slate-300">Esc</span>
+                        </button>
+                        <button x-show="pendingSubCount() > 0" 
+                                @click="keepSubsWaiting()" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                            <span>Keep Waiting</span>
+                            <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-indigo-400/60 text-[8px] font-mono text-amber-300 font-bold">Tab</span>
                         </button>
                         <button x-show="pendingSubCount() > 0" 
                                 @click="openExecuteSubModal()" 
@@ -731,9 +993,9 @@
                         </div>
                     </div>
 
-                    <button @click="showExecuteSubModal = false" 
+                    <button @click="cancelSubOperation()" 
                             class="p-1 sm:p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-rose-900/80 border border-slate-700 hover:border-rose-500 transition shadow shrink-0" 
-                            title="Close (Esc)">
+                            title="Cancel (Esc)">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
@@ -918,9 +1180,13 @@
                     </button>
 
                     <div class="flex items-center space-x-2">
-                        <button @click="showExecuteSubModal = false" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
-                            <span>Cancel (Keep Waiting)</span>
+                        <button @click="cancelSubOperation()" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                            <span>Cancel</span>
                             <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-slate-300">Esc</span>
+                        </button>
+                        <button @click="keepSubsWaiting()" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                            <span>Keep Waiting</span>
+                            <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-indigo-400/60 text-[8px] font-mono text-amber-300 font-bold">Tab</span>
                         </button>
                         <button @click="executeAllPendingSubs()" 
                                 :disabled="!canExecutePendingSubs()"
@@ -947,12 +1213,17 @@
             <!-- HOME TIMEOUT -->
             <button @click="callTimeoutFast('home')" 
                     class="h-full min-h-[42px] py-1 px-1 rounded-xl bg-slate-950 hover:bg-slate-800 touch-active border text-white flex flex-col items-center justify-center min-w-0"
-                    :style="{ borderColor: homeTeamColor + '50' }">
+                    :style="{ borderColor: homeTeamColor + '50' }"
+                    :title="'Home Timeout — Taken: ' + homeTimeoutsTaken + ', Remain: ' + homeTimeouts + ' (Hotkey: F)'">
                 <div class="flex items-center gap-0.5 max-w-full truncate">
                     <span class="text-[9px] sm:text-[10px] font-black uppercase truncate" :style="{ color: homeTeamColor }">HOME TO</span>
                     <span class="px-1 py-0.2 rounded bg-slate-900 border border-slate-700 text-[7px] sm:text-[8px] font-mono font-bold text-amber-300 shrink-0">F</span>
                 </div>
-                <span class="text-[8px] sm:text-[9px] text-slate-400 font-mono truncate max-w-full" x-text="homeTimeouts + ' Left'"></span>
+                <div class="flex items-center gap-1 text-[8px] sm:text-[9px] font-mono leading-tight truncate max-w-full">
+                    <span class="text-slate-400" title="Timeouts Taken">Tk:<strong class="text-slate-200" x-text="homeTimeoutsTaken"></strong></span>
+                    <span class="text-slate-600">&bull;</span>
+                    <span class="text-amber-300" title="Timeouts Remaining">Rem:<strong class="text-amber-200" x-text="homeTimeouts"></strong></span>
+                </div>
             </button>
 
             <!-- ROTATE HOME -->
@@ -1055,12 +1326,17 @@
             <!-- AWAY TIMEOUT -->
             <button @click="callTimeoutFast('away')" 
                     class="h-full min-h-[42px] py-1 px-1 rounded-xl bg-slate-950 hover:bg-slate-800 touch-active border text-white flex flex-col items-center justify-center min-w-0"
-                    :style="{ borderColor: awayTeamColor + '50' }">
+                    :style="{ borderColor: awayTeamColor + '50' }"
+                    :title="'Away Timeout — Taken: ' + awayTimeoutsTaken + ', Remain: ' + awayTimeouts + ' (Hotkey: G)'">
                 <div class="flex items-center gap-0.5 max-w-full truncate">
                     <span class="text-[9px] sm:text-[10px] font-black uppercase truncate" :style="{ color: awayTeamColor }">AWAY TO</span>
                     <span class="px-1 py-0.2 rounded bg-slate-900 border border-slate-700 text-[7px] sm:text-[8px] font-mono font-bold text-amber-300 shrink-0">G</span>
                 </div>
-                <span class="text-[8px] sm:text-[9px] text-slate-400 font-mono truncate max-w-full" x-text="awayTimeouts + ' Left'"></span>
+                <div class="flex items-center gap-1 text-[8px] sm:text-[9px] font-mono leading-tight truncate max-w-full">
+                    <span class="text-slate-400" title="Timeouts Taken">Tk:<strong class="text-slate-200" x-text="awayTimeoutsTaken"></strong></span>
+                    <span class="text-slate-600">&bull;</span>
+                    <span class="text-amber-300" title="Timeouts Remaining">Rem:<strong class="text-amber-200" x-text="awayTimeouts"></strong></span>
+                </div>
             </button>
 
             <!-- UNDO LAST PLAY -->

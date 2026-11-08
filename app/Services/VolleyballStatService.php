@@ -201,6 +201,8 @@ class VolleyballStatService
             $lastSequence = GameEvent::where('game_id', $game->id)->max('sequence') ?? 0;
             $teamName = ($teamSide === 'home') ? ($game->home_team_name ?: 'HOME') : ($game->away_team_name ?: 'AWAY');
             $remaining = $game->$field;
+            $breakdown = $game->calculateTimeoutsBreakdown($teamSide);
+            $usedTotal = ($breakdown['used_total'] ?? 0) + 1;
 
             return GameEvent::create([
                 'game_id' => $game->id,
@@ -219,9 +221,10 @@ class VolleyballStatService
                 'home_score_after' => $game->home_score,
                 'away_score_after' => $game->away_score,
                 'is_undone' => false,
-                'description' => strtoupper($teamSide)." Timeout Called ({$remaining} remaining in Set {$game->current_period})",
+                'description' => strtoupper($teamSide)." Timeout Called ({$usedTotal} Taken, {$remaining} Remain in Set {$game->current_period})",
                 'metadata' => [
                     'timeouts_remaining' => $remaining,
+                    'timeouts_taken' => $usedTotal,
                 ],
             ]);
         });

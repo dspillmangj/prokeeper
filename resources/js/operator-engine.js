@@ -40,7 +40,7 @@ window.ProKeeperEngine = {
         'G': { name: 'Flagrant Foul', points: 0, teamTarget: 'self', isScore: false, isFoul: true, isTeamFoul: true, stat: 'fouls_flagrant', category: 'fouls' },
         'FL': { name: 'Flagrant Foul', points: 0, teamTarget: 'self', isScore: false, isFoul: true, isTeamFoul: true, stat: 'fouls_flagrant', category: 'fouls' },
         'FLAG': { name: 'Flagrant Foul', points: 0, teamTarget: 'self', isScore: false, isFoul: true, isTeamFoul: true, stat: 'fouls_flagrant', category: 'fouls' },
-        'H': { name: 'Forced Foul', points: 0, teamTarget: 'self', isScore: false, isFoul: false, isTeamFoul: false, stat: 'fouls_forced', category: 'fouls' },
+        'H': { name: 'Drawn Foul', points: 0, teamTarget: 'self', isScore: false, isFoul: false, isTeamFoul: false, stat: 'fouls_forced', category: 'fouls' },
         'TIMEOUT': { name: 'Timeout', points: 0, teamTarget: 'self', isScore: false, category: 'administrative' },
         'SCORE_ADJ': { name: 'Score Adjustment', points: 0, teamTarget: 'self', isScore: false, category: 'administrative' },
         'SUB': { name: 'Substitution', points: 0, teamTarget: 'self', isScore: false, category: 'administrative' },
@@ -86,32 +86,44 @@ window.ProKeeperEngine = {
             })(),
 
             // Ultra-Fast 0ms Local Reactive State
+            periodFormat: config.periodFormat || (sport === 'volleyball' ? 'sets' : 'quarters'),
+            otPeriodsAdded: 0,
             homeScore: config.homeScore || 0,
             awayScore: config.awayScore || 0,
             homePeriodScores: (function() {
-                const targetLen = sport === 'basketball' ? 6 : 5;
+                const minLen = sport === 'basketball' ? (config.periodFormat === 'halves' ? 2 : 4) : 5;
                 const arr = Array.isArray(config.homePeriodScores) ? [...config.homePeriodScores] : [];
-                while (arr.length < targetLen) arr.push(0);
-                return arr.slice(0, targetLen);
+                while (arr.length < minLen) arr.push(0);
+                return arr;
             })(),
             awayPeriodScores: (function() {
-                const targetLen = sport === 'basketball' ? 6 : 5;
+                const minLen = sport === 'basketball' ? (config.periodFormat === 'halves' ? 2 : 4) : 5;
                 const arr = Array.isArray(config.awayPeriodScores) ? [...config.awayPeriodScores] : [];
-                while (arr.length < targetLen) arr.push(0);
-                return arr.slice(0, targetLen);
+                while (arr.length < minLen) arr.push(0);
+                return arr;
             })(),
             currentPeriod: config.currentPeriod || 1,
-            periodName: config.periodName || (sport === 'volleyball' ? 'Set 1' : '1st Quarter'),
+            periodName: config.periodName || (sport === 'volleyball' ? 'Set 1' : (config.periodFormat === 'halves' ? '1st Half' : '1st Quarter')),
             possession: config.possession || 'home',
             server: config.server || 'home',
             homeFouls: config.homeFouls || 0,
             awayFouls: config.awayFouls || 0,
+            timeoutsFullAllowed: Number(config.timeoutsFull ?? 3),
+            timeouts30sAllowed: Number(config.timeouts30s ?? 2),
+            timeoutsOtAllowed: Number(config.timeoutsOt ?? 1),
+            timeoutsPerSet: Number(config.timeoutsPerSet ?? 2),
             homeFullTimeouts: Number(config.homeFullTimeouts ?? 3),
             home30sTimeouts: Number(config.home30sTimeouts ?? 2),
             awayFullTimeouts: Number(config.awayFullTimeouts ?? 3),
             away30sTimeouts: Number(config.away30sTimeouts ?? 2),
             homeTimeouts: Number(config.homeTimeouts ?? (sport === 'volleyball' ? (config.timeoutsPerSet ?? 2) : (Number(config.homeFullTimeouts ?? 3) + Number(config.home30sTimeouts ?? 2)))),
             awayTimeouts: Number(config.awayTimeouts ?? (sport === 'volleyball' ? (config.timeoutsPerSet ?? 2) : (Number(config.awayFullTimeouts ?? 3) + Number(config.away30sTimeouts ?? 2)))),
+            homeFullTimeoutsTaken: Number(config.homeFullTimeoutsTaken ?? 0),
+            home30sTimeoutsTaken: Number(config.home30sTimeoutsTaken ?? 0),
+            awayFullTimeoutsTaken: Number(config.awayFullTimeoutsTaken ?? 0),
+            away30sTimeoutsTaken: Number(config.away30sTimeoutsTaken ?? 0),
+            homeTimeoutsTaken: Number(config.homeTimeoutsTaken ?? (sport === 'volleyball' ? 0 : (Number(config.homeFullTimeoutsTaken ?? 0) + Number(config.home30sTimeoutsTaken ?? 0)))),
+            awayTimeoutsTaken: Number(config.awayTimeoutsTaken ?? (sport === 'volleyball' ? 0 : (Number(config.awayFullTimeoutsTaken ?? 0) + Number(config.away30sTimeoutsTaken ?? 0)))),
             homeRotation: config.homeRotation || 1,
             bonusFoulThreshold: config.bonusFoulThreshold || 5,
             doubleBonusFoulThreshold: config.doubleBonusFoulThreshold || 5,
@@ -128,9 +140,17 @@ window.ProKeeperEngine = {
             recentEvents: JSON.parse(JSON.stringify(config.recentEvents || [])),
             undoStack: [],
 
+            // Game Clock & Real-Time Sync State
+            clockSeconds: Number(config.clockSeconds ?? 480),
+            clockRunning: Boolean(config.clockRunning ?? false),
+            clockInterval: null,
+            _optimisticUuids: new Set(),
+
             // Modal & Selection State
             selectedPlayer: null,
             showLineupModal: false,
+            showRosterModal: false,
+            rosterModalTeam: 'home',
             showExecuteSubModal: false,
             showPlayByPlayModal: false,
             showAddEventModal: false,
@@ -160,8 +180,294 @@ window.ProKeeperEngine = {
             bufferTimeout: null,
             feedbackMessage: 'Ready',
             feedbackType: 'info',
+            errorQueue: [],
+            showErrorList: false,
+            _errorHoverCloseTimer: null,
+            _errorPruneInterval: null,
+            _errorTimeouts: {},
+
+            get frontError() {
+                return (this.errorQueue && this.errorQueue.length > 0) ? this.errorQueue[0] : null;
+            },
+
+            pushError(message, details = null) {
+                if (!message || typeof message !== 'string') return;
+                const trimmed = message.trim();
+                if (!trimmed) return;
+
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                // Suppress identical duplicate error if received within 1 second
+                if (this.errorQueue.length > 0 && this.errorQueue[0].message === trimmed && (Date.now() - this.errorQueue[0].timestamp) < 1000) {
+                    return;
+                }
+
+                const errId = 'err_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+                const errObj = {
+                    id: errId,
+                    message: trimmed,
+                    details: details || null,
+                    timestamp: Date.now(),
+                    timeStr: timeStr,
+                };
+
+                this.errorQueue.unshift(errObj);
+                this.saveErrorQueue();
+                this.playSound('error');
+                if (navigator.vibrate) {
+                    try { navigator.vibrate(50); } catch (e) {}
+                }
+
+                // Automatically expire error after 30 seconds
+                if (!this._errorTimeouts) this._errorTimeouts = {};
+                if (this._errorTimeouts[errId]) clearTimeout(this._errorTimeouts[errId]);
+                this._errorTimeouts[errId] = setTimeout(() => {
+                    this.expireError(errId);
+                }, 30000);
+            },
+
+            expireError(id) {
+                if (this._errorTimeouts && this._errorTimeouts[id]) {
+                    clearTimeout(this._errorTimeouts[id]);
+                    delete this._errorTimeouts[id];
+                }
+                if (!this.errorQueue || this.errorQueue.length === 0) return;
+                const idx = this.errorQueue.findIndex(e => e.id === id);
+                if (idx !== -1) {
+                    this.errorQueue.splice(idx, 1);
+                    if (this.errorQueue.length === 0) {
+                        this.showErrorList = false;
+                        if (this._errorHoverCloseTimer) {
+                            clearTimeout(this._errorHoverCloseTimer);
+                            this._errorHoverCloseTimer = null;
+                        }
+                    }
+                    this.saveErrorQueue();
+                }
+            },
+
+            pruneExpiredErrors() {
+                if (!this.errorQueue || this.errorQueue.length === 0) return;
+                const now = Date.now();
+                const before = this.errorQueue.length;
+                this.errorQueue = this.errorQueue.filter(err => {
+                    const age = now - (err.timestamp || 0);
+                    if (age >= 30000) {
+                        if (this._errorTimeouts && this._errorTimeouts[err.id]) {
+                            clearTimeout(this._errorTimeouts[err.id]);
+                            delete this._errorTimeouts[err.id];
+                        }
+                        return false;
+                    }
+                    return true;
+                });
+                if (this.errorQueue.length !== before) {
+                    if (this.errorQueue.length === 0) {
+                        this.showErrorList = false;
+                        if (this._errorHoverCloseTimer) {
+                            clearTimeout(this._errorHoverCloseTimer);
+                            this._errorHoverCloseTimer = null;
+                        }
+                    }
+                    this.saveErrorQueue();
+                }
+            },
+
+            dismissFrontError() {
+                if (!this.errorQueue || this.errorQueue.length === 0) return;
+                const front = this.errorQueue.shift();
+                if (front && this._errorTimeouts && this._errorTimeouts[front.id]) {
+                    clearTimeout(this._errorTimeouts[front.id]);
+                    delete this._errorTimeouts[front.id];
+                }
+                if (this.errorQueue.length === 0) {
+                    this.showErrorList = false;
+                    if (this._errorHoverCloseTimer) {
+                        clearTimeout(this._errorHoverCloseTimer);
+                        this._errorHoverCloseTimer = null;
+                    }
+                }
+                this.saveErrorQueue();
+                this.playSound('tap');
+            },
+
+            dismissAllErrors() {
+                if (this._errorTimeouts) {
+                    Object.values(this._errorTimeouts).forEach(t => clearTimeout(t));
+                    this._errorTimeouts = {};
+                }
+                this.errorQueue = [];
+                this.showErrorList = false;
+                if (this._errorHoverCloseTimer) {
+                    clearTimeout(this._errorHoverCloseTimer);
+                    this._errorHoverCloseTimer = null;
+                }
+                this.saveErrorQueue();
+                this.playSound('tap');
+            },
+
+            dismissError(id) {
+                if (this._errorTimeouts && this._errorTimeouts[id]) {
+                    clearTimeout(this._errorTimeouts[id]);
+                    delete this._errorTimeouts[id];
+                }
+                if (!this.errorQueue) return;
+                this.errorQueue = this.errorQueue.filter(e => e.id !== id);
+                if (this.errorQueue.length === 0) {
+                    this.showErrorList = false;
+                    if (this._errorHoverCloseTimer) {
+                        clearTimeout(this._errorHoverCloseTimer);
+                        this._errorHoverCloseTimer = null;
+                    }
+                }
+                this.saveErrorQueue();
+                this.playSound('tap');
+            },
+
+            toggleErrorList(force) {
+                if (!this.errorQueue || this.errorQueue.length === 0) {
+                    this.showErrorList = false;
+                    return;
+                }
+                this.showErrorList = typeof force === 'boolean' ? force : !this.showErrorList;
+                this.playSound('tap');
+            },
+
+            openErrorHover() {
+                if (this._errorHoverCloseTimer) {
+                    clearTimeout(this._errorHoverCloseTimer);
+                    this._errorHoverCloseTimer = null;
+                }
+                if (this.errorQueue && this.errorQueue.length > 0) {
+                    this.showErrorList = true;
+                }
+            },
+
+            closeErrorHover() {
+                if (this._errorHoverCloseTimer) {
+                    clearTimeout(this._errorHoverCloseTimer);
+                }
+                this._errorHoverCloseTimer = setTimeout(() => {
+                    this.showErrorList = false;
+                    this._errorHoverCloseTimer = null;
+                }, 350);
+            },
+
+            cancelCloseErrorHover() {
+                if (this._errorHoverCloseTimer) {
+                    clearTimeout(this._errorHoverCloseTimer);
+                    this._errorHoverCloseTimer = null;
+                }
+                if (this._errorPruneInterval) {
+                    clearInterval(this._errorPruneInterval);
+                    this._errorPruneInterval = null;
+                }
+                if (this._errorTimeouts) {
+                    Object.values(this._errorTimeouts).forEach(t => clearTimeout(t));
+                    this._errorTimeouts = {};
+                }
+            },
+
+            saveErrorQueue() {
+                try {
+                    sessionStorage.setItem(`prokeeper_errors_${this.gameId}`, JSON.stringify(this.errorQueue || []));
+                } catch (e) {}
+            },
+
+            loadErrorQueue() {
+                try {
+                    const stored = sessionStorage.getItem(`prokeeper_errors_${this.gameId}`);
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        if (Array.isArray(parsed)) {
+                            const now = Date.now();
+                            // Only load errors that are less than 30 seconds old
+                            this.errorQueue = parsed.filter(err => (now - (err.timestamp || 0)) < 30000);
+                            if (!this._errorTimeouts) this._errorTimeouts = {};
+                            this.errorQueue.forEach(err => {
+                                const remaining = Math.max(100, 30000 - (now - (err.timestamp || 0)));
+                                this._errorTimeouts[err.id] = setTimeout(() => {
+                                    this.expireError(err.id);
+                                }, remaining);
+                            });
+                        }
+                    }
+                } catch (e) {}
+            },
+            attentionAlert: null,
+            alertFlashActive: false,
+            alertFlashTimer: null,
+            alertCountdownTimer: null,
+            alertRemainingSeconds: 0,
+            alertTotalSeconds: 0,
             benchSelectSide: null,
             pendingTimeout: null,
+
+            triggerAttentionAlert(type, title, message, details = '', durationSeconds = 30, metadata = {}) {
+                // If an error is passed, route directly to pushError so errors are never duplicated
+                if (type === 'error') {
+                    this.pushError(title ? `${title}: ${message}` : message, details);
+                    return;
+                }
+
+                if (this.alertFlashTimer) {
+                    clearTimeout(this.alertFlashTimer);
+                    this.alertFlashTimer = null;
+                }
+                if (this.alertCountdownTimer) {
+                    clearInterval(this.alertCountdownTimer);
+                    this.alertCountdownTimer = null;
+                }
+
+                this.alertFlashActive = true;
+                this.alertFlashTimer = setTimeout(() => {
+                    this.alertFlashActive = false;
+                    this.alertFlashTimer = null;
+                }, 4500);
+
+                this.alertRemainingSeconds = durationSeconds;
+                this.alertTotalSeconds = durationSeconds;
+                this.attentionAlert = {
+                    type, // 'foul_out', 'bonus', 'double_bonus'
+                    title,
+                    message,
+                    details,
+                    side: metadata.side || null,
+                    jersey: metadata.jersey != null ? String(metadata.jersey) : null,
+                    name: metadata.name || null,
+                    teamName: metadata.teamName || null,
+                    createdAt: Date.now(),
+                };
+
+                this.feedbackMessage = `${title}: ${message}`;
+                this.feedbackType = 'info';
+
+                this.playSound(type);
+
+                this.alertCountdownTimer = setInterval(() => {
+                    if (this.alertRemainingSeconds > 1) {
+                        this.alertRemainingSeconds--;
+                    } else {
+                        this.dismissAttentionAlert();
+                    }
+                }, 1000);
+            },
+
+            dismissAttentionAlert() {
+                if (this.alertFlashTimer) {
+                    clearTimeout(this.alertFlashTimer);
+                    this.alertFlashTimer = null;
+                }
+                if (this.alertCountdownTimer) {
+                    clearInterval(this.alertCountdownTimer);
+                    this.alertCountdownTimer = null;
+                }
+                this.alertFlashActive = false;
+                this.attentionAlert = null;
+                this.alertRemainingSeconds = 0;
+                this.alertTotalSeconds = 0;
+            },
 
             openBenchModal(side) {
                 if (!this.canExecute('openBenchModal', 150)) return;
@@ -187,17 +493,13 @@ window.ProKeeperEngine = {
                         ? (type === '30s' ? Number(this.home30sTimeouts || 0) : Number(this.homeFullTimeouts || 0))
                         : (type === '30s' ? Number(this.away30sTimeouts || 0) : Number(this.awayFullTimeouts || 0));
                     if (count <= 0) {
-                        this.feedbackMessage = `No ${type === '30s' ? '30-Second' : 'Full'} Timeouts remaining for ${side.toUpperCase()}`;
-                        this.feedbackType = 'error';
-                        this.playSound('tap');
+                        this.pushError(`No ${type === '30s' ? '30-Second' : 'Full'} Timeouts remaining for ${side.toUpperCase()}`);
                         return;
                     }
                 } else {
                     const count = Number((side === 'home' ? this.homeTimeouts : this.awayTimeouts) || 0);
                     if (count <= 0) {
-                        this.feedbackMessage = `No Timeouts remaining for ${side.toUpperCase()}`;
-                        this.feedbackType = 'error';
-                        this.playSound('tap');
+                        this.pushError(`No Timeouts remaining for ${side.toUpperCase()}`);
                         return;
                     }
                 }
@@ -208,10 +510,19 @@ window.ProKeeperEngine = {
                 const remFull = Number((side === 'home' ? this.homeFullTimeouts : this.awayFullTimeouts) ?? 0);
                 const rem30s = Number((side === 'home' ? this.home30sTimeouts : this.away30sTimeouts) ?? 0);
                 const totalRem = Number((side === 'home' ? this.homeTimeouts : this.awayTimeouts) ?? (remFull + rem30s));
+                const takenFull = Number((side === 'home' ? this.homeFullTimeoutsTaken : this.awayFullTimeoutsTaken) ?? 0);
+                const taken30s = Number((side === 'home' ? this.home30sTimeoutsTaken : this.away30sTimeoutsTaken) ?? 0);
+                const totalTaken = Number((side === 'home' ? this.homeTimeoutsTaken : this.awayTimeoutsTaken) ?? (takenFull + taken30s));
 
                 const formattedRemaining = this.sport === 'basketball'
                     ? `${remFull} Full, ${rem30s} 30s (${totalRem} Total)`
                     : `${totalRem} left this set`;
+                const formattedTaken = this.sport === 'basketball'
+                    ? `${takenFull} Full, ${taken30s} 30s (${totalTaken} Total)`
+                    : `${totalTaken} taken this set`;
+                const formattedSummary = this.sport === 'basketball'
+                    ? `Taken: ${totalTaken} (${takenFull} Full, ${taken30s} 30s) • Remain: ${totalRem} (${remFull} Full, ${rem30s} 30s)`
+                    : `Taken: ${totalTaken} • Remain: ${totalRem} this set`;
 
                 this.pendingTimeout = {
                     side,
@@ -223,7 +534,12 @@ window.ProKeeperEngine = {
                     remFull,
                     rem30s,
                     totalRemaining: totalRem,
+                    takenFull,
+                    taken30s,
+                    totalTaken,
                     formattedRemaining,
+                    formattedTaken,
+                    formattedSummary,
                 };
                 this.playSound('tap');
             },
@@ -247,6 +563,23 @@ window.ProKeeperEngine = {
                 points: 0,
                 hoveredJersey: null,
             },
+            // 3-Second Post-Shot Keyboard Assist Window Reactive State
+            assistWindow: {
+                active: false,
+                teamSide: null,
+                shooterJersey: null,
+                shooterName: '',
+                actionCode: null,
+                points: 0,
+                eventId: null,
+                secondsRemaining: 3.0,
+                progressPercent: 100,
+                waitingForJersey: false,
+                assistBuffer: '',
+                matchedPlayer: null,
+            },
+            _assistCountdownInterval: null,
+            _assistIdleTimer: null,
             _holdTimer: null,
             _holdTriggered: false,
             _suppressNextClick: false,
@@ -297,6 +630,129 @@ window.ProKeeperEngine = {
                 }
             },
 
+            getRegularPeriodsCount() {
+                if (this.sport === 'volleyball') return 5;
+                return (this.periodFormat === 'halves') ? 2 : 4;
+            },
+
+            formatPeriodName(period) {
+                const p = Number(period) || 1;
+                if (this.sport === 'volleyball') {
+                    return `Set ${p}`;
+                }
+                if (this.periodFormat === 'halves') {
+                    if (p === 1) return '1st Half';
+                    if (p === 2) return '2nd Half';
+                    if (p === 3) return 'Overtime';
+                    if (p === 4) return '2nd Overtime';
+                    if (p === 5) return '3rd Overtime';
+                    return `OT ${p - 2}`;
+                }
+                if (p === 1) return '1st Quarter';
+                if (p === 2) return '2nd Quarter';
+                if (p === 3) return '3rd Quarter';
+                if (p === 4) return '4th Quarter';
+                if (p === 5) return 'Overtime';
+                if (p === 6) return '2nd Overtime';
+                if (p === 7) return '3rd Overtime';
+                return `Quarter ${p}`;
+            },
+
+            formatPeriodBadge(period) {
+                const p = Number(period) || 1;
+                if (this.sport === 'volleyball') {
+                    return `S${p}`;
+                }
+                if (this.periodFormat === 'halves') {
+                    if (p === 1) return 'H1';
+                    if (p === 2) return 'H2';
+                    return `OT${p - 2}`;
+                }
+                if (p <= 4) return `Q${p}`;
+                return `OT${p - 4}`;
+            },
+
+            formatPeriodTitle(period) {
+                const p = Number(period) || 1;
+                if (this.sport === 'volleyball') {
+                    return `Switch to Set ${p}`;
+                }
+                if (this.periodFormat === 'halves') {
+                    if (p === 1) return 'Switch to 1st Half';
+                    if (p === 2) return 'Switch to 2nd Half';
+                    return `Switch to Overtime ${p - 2}`;
+                }
+                if (p <= 4) return `Switch to Quarter ${p}`;
+                return `Switch to Overtime ${p - 4}`;
+            },
+
+            getDisplayedPeriods() {
+                if (this.sport === 'volleyball') {
+                    return [1, 2, 3, 4, 5];
+                }
+                const regCount = (this.periodFormat === 'halves') ? 2 : 4;
+                let highest = regCount;
+
+                if (this.currentPeriod > highest) {
+                    highest = this.currentPeriod;
+                }
+
+                const maxScoreLen = Math.max(
+                    Array.isArray(this.homePeriodScores) ? this.homePeriodScores.length : 0,
+                    Array.isArray(this.awayPeriodScores) ? this.awayPeriodScores.length : 0
+                );
+                for (let i = regCount; i < maxScoreLen; i++) {
+                    if ((this.homePeriodScores[i] || 0) > 0 || (this.awayPeriodScores[i] || 0) > 0) {
+                        highest = Math.max(highest, i + 1);
+                    }
+                }
+
+                if (Array.isArray(this.recentEvents)) {
+                    for (const ev of this.recentEvents) {
+                        const ep = Number(ev.period || 0);
+                        if (ep > highest) {
+                            highest = Math.max(highest, ep);
+                        }
+                    }
+                }
+
+                if (this.otPeriodsAdded) {
+                    highest = Math.max(highest, regCount + this.otPeriodsAdded);
+                }
+
+                highest = Math.min(6, highest);
+
+                const periods = [];
+                for (let p = 1; p <= highest; p++) {
+                    periods.push(p);
+                }
+                return periods;
+            },
+
+            canAddOvertime() {
+                if (this.sport !== 'basketball') return false;
+                const periods = this.getDisplayedPeriods();
+                return periods.length < 6;
+            },
+
+            addOvertime() {
+                if (this.sport !== 'basketball') return;
+                const regCount = (this.periodFormat === 'halves') ? 2 : 4;
+                const periods = this.getDisplayedPeriods();
+                const highest = periods[periods.length - 1] || regCount;
+                if (highest >= 6) {
+                    this.pushError('Maximum periods reached.');
+                    return;
+                }
+                const nextPeriod = highest + 1;
+                this.otPeriodsAdded = Math.max(this.otPeriodsAdded || 0, nextPeriod - regCount);
+
+                while (this.homePeriodScores.length < nextPeriod) this.homePeriodScores.push(0);
+                while (this.awayPeriodScores.length < nextPeriod) this.awayPeriodScores.push(0);
+
+                this.setPeriodFast(nextPeriod);
+            },
+
             recalculateLocalEventsAndScores() {
                 if (!Array.isArray(this.recentEvents)) return;
 
@@ -316,10 +772,17 @@ window.ProKeeperEngine = {
 
                 let runningHome = 0;
                 let runningAway = 0;
-                const homePeriod = [0, 0, 0, 0, 0, 0];
-                const awayPeriod = [0, 0, 0, 0, 0, 0];
+                const minLen = this.sport === 'basketball' ? (this.periodFormat === 'halves' ? 2 : 4) : 5;
+                const homePeriod = Array(minLen).fill(0);
+                const awayPeriod = Array(minLen).fill(0);
                 let currentHomeFouls = 0;
                 let currentAwayFouls = 0;
+                let homeTOFullUsed = 0;
+                let homeTO30sUsed = 0;
+                let awayTOFullUsed = 0;
+                let awayTO30sUsed = 0;
+                let homeTOVolleyUsed = 0;
+                let awayTOVolleyUsed = 0;
 
                 const newPlayerStats = { home: {}, away: {} };
                 const ensureP = (sd, jsy) => {
@@ -332,6 +795,7 @@ window.ProKeeperEngine = {
                             fouls_off: 0,
                             fouls_tech: 0,
                             fouls_flagrant: 0,
+                            fouls_forced: 0,
                             total_fouls: 0,
                         };
                     }
@@ -399,20 +863,97 @@ window.ProKeeperEngine = {
                             } else if (['G', 'FL', 'FLAG'].includes(code)) {
                                 st.fouls_flagrant++;
                                 st.total_fouls++;
+                            } else if (code === 'H') {
+                                st.fouls_forced = (st.fouls_forced || 0) + 1;
+                            }
+                        }
+                    }
+
+                    if (code === 'TIMEOUT') {
+                        const toType = ev.metadata?.timeout_type || 'full';
+                        if (this.sport === 'volleyball') {
+                            if (Number(p) === Number(this.currentPeriod)) {
+                                if (side === 'home') homeTOVolleyUsed++;
+                                else awayTOVolleyUsed++;
+                            }
+                        } else {
+                            if (side === 'home') {
+                                if (toType === '30s') homeTO30sUsed++;
+                                else homeTOFullUsed++;
+                            } else {
+                                if (toType === '30s') awayTO30sUsed++;
+                                else awayTOFullUsed++;
                             }
                         }
                     }
                 }
+
+                const targetLen = Math.max(minLen, this.currentPeriod, minLen + (this.otPeriodsAdded || 0));
+                while (homePeriod.length < targetLen) homePeriod.push(0);
+                while (awayPeriod.length < targetLen) awayPeriod.push(0);
 
                 this.homeScore = Math.max(0, runningHome);
                 this.awayScore = Math.max(0, runningAway);
                 this.homePeriodScores = homePeriod;
                 this.awayPeriodScores = awayPeriod;
 
+                if (this.sport === 'volleyball') {
+                    const allowedSet = Number(this.timeoutsPerSet || 2);
+                    this.homeTimeoutsTaken = homeTOVolleyUsed;
+                    this.awayTimeoutsTaken = awayTOVolleyUsed;
+                    this.homeTimeouts = Math.max(0, allowedSet - homeTOVolleyUsed);
+                    this.awayTimeouts = Math.max(0, allowedSet - awayTOVolleyUsed);
+                } else if (this.sport === 'basketball') {
+                    const regPeriods = (this.periodFormat === 'halves') ? 2 : 4;
+                    const otPeriods = Math.max(0, this.currentPeriod - regPeriods);
+                    const otAddition = otPeriods * Number(this.timeoutsOtAllowed || 1);
+                    const allowedFull = Number(this.timeoutsFullAllowed || 3);
+                    const allowed30s = Number(this.timeouts30sAllowed || 2) + otAddition;
+
+                    this.homeFullTimeoutsTaken = homeTOFullUsed;
+                    this.home30sTimeoutsTaken = homeTO30sUsed;
+                    this.homeTimeoutsTaken = homeTOFullUsed + homeTO30sUsed;
+
+                    this.awayFullTimeoutsTaken = awayTOFullUsed;
+                    this.away30sTimeoutsTaken = awayTO30sUsed;
+                    this.awayTimeoutsTaken = awayTOFullUsed + awayTO30sUsed;
+
+                    this.homeFullTimeouts = Math.max(0, allowedFull - homeTOFullUsed);
+                    this.home30sTimeouts = Math.max(0, allowed30s - homeTO30sUsed);
+                    this.homeTimeouts = this.homeFullTimeouts + this.home30sTimeouts;
+
+                    this.awayFullTimeouts = Math.max(0, allowedFull - awayTOFullUsed);
+                    this.away30sTimeouts = Math.max(0, allowed30s - awayTO30sUsed);
+                    this.awayTimeouts = this.awayFullTimeouts + this.away30sTimeouts;
+                }
+
                 if (this.sport === 'basketball') {
                     this.homeFouls = currentHomeFouls;
                     this.awayFouls = currentAwayFouls;
                     this.playerStats = newPlayerStats;
+
+                    // Automatically dismiss active foul-out alert if undo restored them below the foul limit
+                    if (this.attentionAlert && this.attentionAlert.type === 'foul_out') {
+                        const alSide = this.attentionAlert.side;
+                        const alJersey = this.attentionAlert.jersey;
+                        if (alSide && alJersey) {
+                            const curStat = this.getPlayerStat(alSide, alJersey);
+                            if (curStat.total_fouls < (this.playerFoulLimit || 5)) {
+                                this.dismissAttentionAlert();
+                            }
+                        }
+                    }
+                    // Automatically dismiss active bonus alert if undo restored fouls below the threshold
+                    if (this.attentionAlert && (this.attentionAlert.type === 'bonus' || this.attentionAlert.type === 'double_bonus')) {
+                        const alSide = this.attentionAlert.side;
+                        if (alSide) {
+                            const curFouls = alSide === 'home' ? this.homeFouls : this.awayFouls;
+                            const thresh = this.attentionAlert.type === 'double_bonus' ? this.doubleBonusFoulThreshold : this.bonusFoulThreshold;
+                            if (curFouls < thresh) {
+                                this.dismissAttentionAlert();
+                            }
+                        }
+                    }
                 }
             },
 
@@ -427,6 +968,7 @@ window.ProKeeperEngine = {
                         const off = Number(st.fouls_off || 0);
                         const tech = Number(st.fouls_tech || 0);
                         const flagrant = Number(st.fouls_flagrant || 0);
+                        const forced = Number(st.fouls_forced || 0);
                         const total = Number(st.total_fouls || (pers + off + tech + flagrant));
                         this.playerStats[side][j] = {
                             points: Number(st.points || 0),
@@ -434,6 +976,7 @@ window.ProKeeperEngine = {
                             fouls_off: off,
                             fouls_tech: tech,
                             fouls_flagrant: flagrant,
+                            fouls_forced: forced,
                             total_fouls: total,
                         };
                     }
@@ -453,6 +996,7 @@ window.ProKeeperEngine = {
                         fouls_off: 0,
                         fouls_tech: 0,
                         fouls_flagrant: 0,
+                        fouls_forced: 0,
                         total_fouls: 0,
                     };
                 }
@@ -506,9 +1050,55 @@ window.ProKeeperEngine = {
 
                 this.recentEvents.unshift(localEvent);
                 this.recalculateLocalEventsAndScores();
-                this.playSound(points > 0 ? 'score' : 'tap');
-                this.feedbackMessage = `Logged: ${desc}`;
-                this.feedbackType = 'success';
+                let manualAlertTriggered = false;
+                if (this.sport === 'basketball' && ['F', 'R', 'T', 'G', 'FL', 'FLAG'].includes(actionCode)) {
+                    const st = jersey ? this.getPlayerStat(teamSide, jersey) : null;
+                    const foulLimit = this.playerFoulLimit || 5;
+                    const foulingTeamName = teamSide === 'home' ? this.homeTeamName : this.awayTeamName;
+                    const shootingTeamName = teamSide === 'home' ? this.awayTeamName : this.homeTeamName;
+                    const curTeamFouls = teamSide === 'home' ? this.homeFouls : this.awayFouls;
+                    const bonusThresh = this.bonusFoulThreshold || (this.periodFormat === 'halves' ? 7 : 5);
+                    const doubleBonusThresh = this.doubleBonusFoulThreshold || (this.periodFormat === 'halves' ? 10 : 5);
+
+                    if (st && st.total_fouls >= foulLimit) {
+                        manualAlertTriggered = true;
+                        this.triggerAttentionAlert(
+                            'foul_out',
+                            'PLAYER FOULED OUT',
+                            `#${jersey} ${playerName || ''} (${foulingTeamName}) has reached ${st.total_fouls} fouls and must be substituted.`,
+                            'Disqualified from play. Immediate substitution required.',
+                            60,
+                            { side: teamSide, jersey, name: playerName, teamName: foulingTeamName }
+                        );
+                    } else if (doubleBonusThresh > bonusThresh && curTeamFouls >= doubleBonusThresh) {
+                        manualAlertTriggered = true;
+                        this.triggerAttentionAlert(
+                            'double_bonus',
+                            'DOUBLE BONUS ACTIVE',
+                            `${foulingTeamName} is at ${curTeamFouls} team fouls in Period ${this.currentPeriod}.`,
+                            `${shootingTeamName} shoots 2 Free Throws on all common fouls.`,
+                            45,
+                            { side: teamSide, teamName: foulingTeamName, fouls: curTeamFouls }
+                        );
+                    } else if (curTeamFouls >= bonusThresh) {
+                        manualAlertTriggered = true;
+                        const bonusType = this.periodFormat === 'halves' ? '1-and-1 Free Throws' : '2 Free Throws';
+                        this.triggerAttentionAlert(
+                            'bonus',
+                            'TEAM BONUS ACTIVE',
+                            `${foulingTeamName} is at ${curTeamFouls} team fouls in Period ${this.currentPeriod}.`,
+                            `${shootingTeamName} shoots ${bonusType} on all common fouls.`,
+                            45,
+                            { side: teamSide, teamName: foulingTeamName, fouls: curTeamFouls }
+                        );
+                    }
+                }
+
+                if (!manualAlertTriggered) {
+                    this.playSound(points > 0 ? 'score' : 'tap');
+                    this.feedbackMessage = `Logged: ${desc}`;
+                    this.feedbackType = 'success';
+                }
                 this.showAddEventModal = false;
 
                 this.enqueueSync('createManualEvent', [{
@@ -795,8 +1385,13 @@ window.ProKeeperEngine = {
 
             executeAllPendingSubs() {
                 if (!this.canExecutePendingSubs()) {
-                    this.feedbackMessage = 'Please select the required number of outgoing players.';
-                    this.feedbackType = 'error';
+                    this.triggerAttentionAlert(
+                        'error',
+                        'SUBSTITUTION INCOMPLETE',
+                        'Please select the required number of outgoing players.',
+                        'Every incoming player must be matched with an outgoing court player.',
+                        10
+                    );
                     return;
                 }
                 if (!this.canExecute('executeAllPendingSubs', 350)) return;
@@ -835,6 +1430,14 @@ window.ProKeeperEngine = {
                     this.feedbackMessage = `${executedPairs.length} substitution(s) entered the game`;
                     this.feedbackType = 'success';
                     this.playSound('score');
+
+                    // If the player who fouled out was subbed out, dismiss the attention alert
+                    if (this.attentionAlert && this.attentionAlert.type === 'foul_out') {
+                        const outFouled = String(this.attentionAlert.jersey);
+                        if (executedPairs.some(p => String(p.outJ) === outFouled)) {
+                            this.dismissAttentionAlert();
+                        }
+                    }
                 }
 
                 // Reset queue
@@ -847,6 +1450,29 @@ window.ProKeeperEngine = {
             clearPendingSubs() {
                 this.pendingSubs = { home: [], away: [] };
                 this.selectedOutSubs = { home: [], away: [] };
+                this.playSound('tap');
+            },
+
+            cancelSubOperation() {
+                this.pendingSubs = { home: [], away: [] };
+                this.selectedOutSubs = { home: [], away: [] };
+                this.preSelectedOutSubs = null;
+                this.showLineupModal = false;
+                this.showExecuteSubModal = false;
+                this.feedbackMessage = 'Substitution canceled';
+                this.feedbackType = 'info';
+                this.playSound('tap');
+            },
+
+            keepSubsWaiting() {
+                this.showLineupModal = false;
+                this.showExecuteSubModal = false;
+                this.selectedOutSubs = { home: [], away: [] };
+                const count = this.pendingSubCount();
+                if (count > 0) {
+                    this.feedbackMessage = `${count} substitution(s) waiting at table`;
+                    this.feedbackType = 'info';
+                }
                 this.playSound('tap');
             },
 
@@ -913,6 +1539,12 @@ window.ProKeeperEngine = {
                     home30sTimeouts: Number(this.home30sTimeouts || 0),
                     awayFullTimeouts: Number(this.awayFullTimeouts || 0),
                     away30sTimeouts: Number(this.away30sTimeouts || 0),
+                    homeTimeoutsTaken: Number(this.homeTimeoutsTaken || 0),
+                    awayTimeoutsTaken: Number(this.awayTimeoutsTaken || 0),
+                    homeFullTimeoutsTaken: Number(this.homeFullTimeoutsTaken || 0),
+                    home30sTimeoutsTaken: Number(this.home30sTimeoutsTaken || 0),
+                    awayFullTimeoutsTaken: Number(this.awayFullTimeoutsTaken || 0),
+                    away30sTimeoutsTaken: Number(this.away30sTimeoutsTaken || 0),
                     homeRotation: Number(this.homeRotation || 1),
                     awayRotation: Number(this.awayRotation || 1),
                 };
@@ -1017,12 +1649,15 @@ window.ProKeeperEngine = {
                             } else {
                                 this.homeScore = Number(config.homeScore || 0);
                                 this.awayScore = Number(config.awayScore || 0);
-                                this.homePeriodScores = Array.isArray(config.homePeriodScores) ? [...config.homePeriodScores] : [0, 0, 0, 0];
-                                this.awayPeriodScores = Array.isArray(config.awayPeriodScores) ? [...config.awayPeriodScores] : [0, 0, 0, 0];
+                                const defaultLen = (config.periodFormat === 'halves') ? 2 : (sport === 'volleyball' ? 5 : 4);
+                                const defScores = Array(defaultLen).fill(0);
+                                this.homePeriodScores = Array.isArray(config.homePeriodScores) ? [...config.homePeriodScores] : [...defScores];
+                                this.awayPeriodScores = Array.isArray(config.awayPeriodScores) ? [...config.awayPeriodScores] : [...defScores];
                             }
 
                             if (typeof s.currentPeriod !== 'undefined' && s.currentPeriod >= (config.currentPeriod || 1)) {
                                 this.currentPeriod = s.currentPeriod;
+                                this.periodName = this.formatPeriodName(this.currentPeriod);
                             }
                             if (s.possession) this.possession = s.possession;
                             if (s.server) this.server = s.server;
@@ -1039,6 +1674,12 @@ window.ProKeeperEngine = {
                             if (typeof s.home30sTimeouts !== 'undefined') this.home30sTimeouts = s.home30sTimeouts;
                             if (typeof s.awayFullTimeouts !== 'undefined') this.awayFullTimeouts = s.awayFullTimeouts;
                             if (typeof s.away30sTimeouts !== 'undefined') this.away30sTimeouts = s.away30sTimeouts;
+                            if (typeof s.homeTimeoutsTaken !== 'undefined') this.homeTimeoutsTaken = s.homeTimeoutsTaken;
+                            if (typeof s.awayTimeoutsTaken !== 'undefined') this.awayTimeoutsTaken = s.awayTimeoutsTaken;
+                            if (typeof s.homeFullTimeoutsTaken !== 'undefined') this.homeFullTimeoutsTaken = s.homeFullTimeoutsTaken;
+                            if (typeof s.home30sTimeoutsTaken !== 'undefined') this.home30sTimeoutsTaken = s.home30sTimeoutsTaken;
+                            if (typeof s.awayFullTimeoutsTaken !== 'undefined') this.awayFullTimeoutsTaken = s.awayFullTimeoutsTaken;
+                            if (typeof s.away30sTimeoutsTaken !== 'undefined') this.away30sTimeoutsTaken = s.away30sTimeoutsTaken;
                             if (typeof s.homeRotation !== 'undefined') this.homeRotation = s.homeRotation;
                             if (typeof s.awayRotation !== 'undefined') this.awayRotation = s.awayRotation;
                             if (parsed.homeCourt && Array.isArray(parsed.homeCourt) && parsed.homeCourt.length > 0) this.homeCourt = parsed.homeCourt;
@@ -1069,11 +1710,59 @@ window.ProKeeperEngine = {
                 this.updateCssVariables();
                 this.loadQueue();
                 this.loadLocalState();
+                this.loadErrorQueue();
+
+                this.pruneExpiredErrors();
+                if (this._errorPruneInterval) clearInterval(this._errorPruneInterval);
+                this._errorPruneInterval = setInterval(() => {
+                    this.pruneExpiredErrors();
+                }, 1000);
+
+                this._operatorErrorListener = (event) => {
+                    const data = event.detail?.[0] || event.detail;
+                    const msg = typeof data === 'string' ? data : (data?.message || 'Error occurred');
+                    this.pushError(msg);
+                };
+                window.addEventListener('operator-error', this._operatorErrorListener);
+
+                if (typeof this.$watch === 'function') {
+                    this.$watch('feedbackType', (newVal) => {
+                        if (newVal === 'error') {
+                            if (this.feedbackMessage && this.feedbackMessage !== 'Ready') {
+                                this.pushError(this.feedbackMessage);
+                            }
+                            this.feedbackType = 'info';
+                            this.feedbackMessage = 'Ready';
+                        }
+                    });
+
+                    if (this.$wire) {
+                        this.$watch('$wire.feedbackMessage', (newVal) => {
+                            if (!newVal) return;
+                            if (this.$wire.feedbackType === 'error') {
+                                this.pushError(newVal);
+                            }
+                        });
+                    }
+                }
 
                 if (this.sport === 'basketball') {
                     this.initPlayerStats(config.homeStats || [], config.awayStats || []);
                 }
                 this.recalculateLocalEventsAndScores();
+                this.syncClockTimer();
+
+                // Real-Time Reverb WebSocket Listener
+                if (typeof window !== 'undefined' && window.Echo && this.gameId) {
+                    try {
+                        window.Echo.channel(`game.${this.gameId}`)
+                            .listen('.game.event', (payload) => {
+                                this.handleRemoteGameEvent(payload);
+                            });
+                    } catch (e) {
+                        console.warn('Echo channel setup notice:', e);
+                    }
+                }
 
                 this._colorsListener = (event) => {
                     const data = event.detail?.[0] || event.detail;
@@ -1169,6 +1858,12 @@ window.ProKeeperEngine = {
                         if (typeof data.home30sTimeouts !== 'undefined') this.home30sTimeouts = Number(data.home30sTimeouts);
                         if (typeof data.awayFullTimeouts !== 'undefined') this.awayFullTimeouts = Number(data.awayFullTimeouts);
                         if (typeof data.away30sTimeouts !== 'undefined') this.away30sTimeouts = Number(data.away30sTimeouts);
+                        if (typeof data.homeTimeoutsTaken !== 'undefined') this.homeTimeoutsTaken = Number(data.homeTimeoutsTaken);
+                        if (typeof data.awayTimeoutsTaken !== 'undefined') this.awayTimeoutsTaken = Number(data.awayTimeoutsTaken);
+                        if (typeof data.homeFullTimeoutsTaken !== 'undefined') this.homeFullTimeoutsTaken = Number(data.homeFullTimeoutsTaken);
+                        if (typeof data.home30sTimeoutsTaken !== 'undefined') this.home30sTimeoutsTaken = Number(data.home30sTimeoutsTaken);
+                        if (typeof data.awayFullTimeoutsTaken !== 'undefined') this.awayFullTimeoutsTaken = Number(data.awayFullTimeoutsTaken);
+                        if (typeof data.away30sTimeoutsTaken !== 'undefined') this.away30sTimeoutsTaken = Number(data.away30sTimeoutsTaken);
                         if (typeof data.homeRotation !== 'undefined') this.homeRotation = Number(data.homeRotation);
                         if (typeof data.awayRotation !== 'undefined') this.awayRotation = Number(data.awayRotation);
                         if (data.homeCourt || data.awayCourt || data.homeBench || data.awayBench) {
@@ -1179,8 +1874,12 @@ window.ProKeeperEngine = {
                         }
                         this.recalculateLocalEventsAndScores();
                         if (data.feedbackMessage) {
-                            this.feedbackMessage = data.feedbackMessage;
-                            if (data.feedbackType) this.feedbackType = data.feedbackType;
+                            if (data.feedbackType === 'error') {
+                                this.pushError(data.feedbackMessage);
+                            } else {
+                                this.feedbackMessage = data.feedbackMessage;
+                                if (data.feedbackType) this.feedbackType = data.feedbackType;
+                            }
                         }
                         this.saveLocalState();
                     }
@@ -1202,6 +1901,14 @@ window.ProKeeperEngine = {
             },
 
             destroy() {
+                if (this.alertFlashTimer) {
+                    clearTimeout(this.alertFlashTimer);
+                    this.alertFlashTimer = null;
+                }
+                if (this.alertCountdownTimer) {
+                    clearInterval(this.alertCountdownTimer);
+                    this.alertCountdownTimer = null;
+                }
                 if (window._activeOperator === this) {
                     window._activeOperator = null;
                 }
@@ -1219,6 +1926,21 @@ window.ProKeeperEngine = {
                 }
                 if (this._gameStateListener) {
                     window.removeEventListener('game-state-updated', this._gameStateListener);
+                }
+                if (this._operatorErrorListener) {
+                    window.removeEventListener('operator-error', this._operatorErrorListener);
+                }
+                if (this._errorHoverCloseTimer) {
+                    clearTimeout(this._errorHoverCloseTimer);
+                    this._errorHoverCloseTimer = null;
+                }
+                if (this._errorPruneInterval) {
+                    clearInterval(this._errorPruneInterval);
+                    this._errorPruneInterval = null;
+                }
+                if (this._errorTimeouts) {
+                    Object.values(this._errorTimeouts).forEach(t => clearTimeout(t));
+                    this._errorTimeouts = {};
                 }
                 if (window._operatorSyncInterval) {
                     clearInterval(window._operatorSyncInterval);
@@ -1254,6 +1976,13 @@ window.ProKeeperEngine = {
                 if (document.activeElement && typeof document.activeElement.blur === 'function') {
                     document.activeElement.blur();
                 }
+                this.dismissAttentionAlert();
+                if (this.showLineupModal || this.showExecuteSubModal) {
+                    this.pendingSubs = { home: [], away: [] };
+                    this.preSelectedOutSubs = null;
+                    this.feedbackMessage = 'Substitution canceled';
+                    this.feedbackType = 'info';
+                }
                 this.selectedPlayer = null;
                 this.benchSelectSide = null;
                 this.pendingTimeout = null;
@@ -1261,8 +1990,23 @@ window.ProKeeperEngine = {
                 this.showExecuteSubModal = false;
                 this.showPlayByPlayModal = false;
                 this.showAddEventModal = false;
+                this.showRosterModal = false;
                 this.editingEvent = null;
                 this.showSubSheet = false;
+                this.showErrorList = false;
+                this.closeAssistWindow();
+                if (this._errorHoverCloseTimer) {
+                    clearTimeout(this._errorHoverCloseTimer);
+                    this._errorHoverCloseTimer = null;
+                }
+                if (this._errorPruneInterval) {
+                    clearInterval(this._errorPruneInterval);
+                    this._errorPruneInterval = null;
+                }
+                if (this._errorTimeouts) {
+                    Object.values(this._errorTimeouts).forEach(t => clearTimeout(t));
+                    this._errorTimeouts = {};
+                }
                 this.selectedOutSubs = { home: [], away: [] };
                 this.jerseyBuffer = '';
                 if (this.bufferTimeout) {
@@ -1296,12 +2040,168 @@ window.ProKeeperEngine = {
                 this.playSound('tap');
             },
 
+            // 0ms Roster Modal Controls
+            openRosterModal(teamSide = 'home') {
+                this.rosterModalTeam = teamSide;
+                this.showRosterModal = true;
+                this.playSound('tap');
+            },
+
+            closeRosterModal() {
+                this.showRosterModal = false;
+                this.playSound('tap');
+            },
+
+            // Game Clock Display & Controls
+            formatClock(seconds) {
+                const s = Math.max(0, Number(seconds || 0));
+                const min = Math.floor(s / 60);
+                const sec = Math.floor(s % 60);
+                return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+            },
+
+            syncClockTimer() {
+                if (this.clockRunning) {
+                    if (!this.clockInterval) {
+                        this.clockInterval = setInterval(() => {
+                            if (this.clockSeconds > 0) {
+                                this.clockSeconds--;
+                            } else {
+                                this.clockRunning = false;
+                                clearInterval(this.clockInterval);
+                                this.clockInterval = null;
+                                this.playSound('tap');
+                            }
+                        }, 1000);
+                    }
+                } else {
+                    if (this.clockInterval) {
+                        clearInterval(this.clockInterval);
+                        this.clockInterval = null;
+                    }
+                }
+            },
+
+            toggleClockFast() {
+                this.clockRunning = !this.clockRunning;
+                this.syncClockTimer();
+                this.playSound('tap');
+                this.feedbackMessage = this.clockRunning ? 'Clock Running' : 'Clock Stopped';
+                this.feedbackType = 'info';
+
+                if (window.Livewire) {
+                    const el = document.querySelector('[wire\\:id]');
+                    if (el) {
+                        const comp = window.Livewire.find(el.getAttribute('wire:id'));
+                        if (comp && typeof comp.toggleClock === 'function') {
+                            comp.toggleClock(this.clockRunning, this.clockSeconds);
+                        }
+                    }
+                }
+            },
+
+            syncClockFast(seconds) {
+                this.clockSeconds = Math.max(0, Number(seconds || 0));
+                this.playSound('tap');
+                this.feedbackMessage = `Clock synced to ${this.formatClock(this.clockSeconds)}`;
+                this.feedbackType = 'info';
+
+                if (window.Livewire) {
+                    const el = document.querySelector('[wire\\:id]');
+                    if (el) {
+                        const comp = window.Livewire.find(el.getAttribute('wire:id'));
+                        if (comp && typeof comp.syncClock === 'function') {
+                            comp.syncClock(this.clockSeconds);
+                        }
+                    }
+                }
+            },
+
+            parseClockShortcut(input) {
+                if (!input || typeof input !== 'string') return null;
+                const trimmed = input.trim().toLowerCase();
+
+                // Format 1: tMMSS (e.g. t2000, t0800, t0530, t0005)
+                const m1 = trimmed.match(/^t([0-9]{2})([0-9]{2})$/);
+                if (m1) {
+                    return (parseInt(m1[1], 10) * 60) + parseInt(m1[2], 10);
+                }
+                // Format 1b: tMMSSf (5 digits e.g. t00055 -> 5.5s -> 5s)
+                const m1b = trimmed.match(/^t([0-9]{2})([0-9]{2})([0-9])$/);
+                if (m1b) {
+                    return (parseInt(m1b[1], 10) * 60) + parseInt(m1b[2], 10);
+                }
+                // Format 2: tM:SS or tMM:SS (e.g. t8:00, t20:00, t0:30)
+                const m2 = trimmed.match(/^t([0-9]{1,2}):([0-9]{2})$/);
+                if (m2) {
+                    return (parseInt(m2[1], 10) * 60) + parseInt(m2[2], 10);
+                }
+                // Format 3: tSS (e.g. t45 -> 45s)
+                const m3 = trimmed.match(/^t([0-9]{1,2})$/);
+                if (m3) {
+                    return parseInt(m3[1], 10);
+                }
+                return null;
+            },
+
+            handleRemoteGameEvent(payload) {
+                if (!payload || !payload.gameState) return;
+
+                if (payload.clientUuid && this._optimisticUuids && this._optimisticUuids.has(payload.clientUuid)) {
+                    this._optimisticUuids.delete(payload.clientUuid);
+                    return;
+                }
+
+                const s = payload.gameState;
+                if (typeof s.homeScore !== 'undefined') this.homeScore = s.homeScore;
+                if (typeof s.awayScore !== 'undefined') this.awayScore = s.awayScore;
+                if (s.homePeriodScores) this.homePeriodScores = [...s.homePeriodScores];
+                if (s.awayPeriodScores) this.awayPeriodScores = [...s.awayPeriodScores];
+                if (typeof s.homeFouls !== 'undefined') this.homeFouls = s.homeFouls;
+                if (typeof s.awayFouls !== 'undefined') this.awayFouls = s.awayFouls;
+                if (typeof s.homeTimeouts !== 'undefined') this.homeTimeouts = s.homeTimeouts;
+                if (typeof s.awayTimeouts !== 'undefined') this.awayTimeouts = s.awayTimeouts;
+                if (s.possessionArrow) this.possession = s.possessionArrow;
+                if (typeof s.clockSeconds !== 'undefined') this.clockSeconds = s.clockSeconds;
+                if (typeof s.clockRunning !== 'undefined') {
+                    this.clockRunning = s.clockRunning;
+                    this.syncClockTimer();
+                }
+
+                if (payload.eventData && Array.isArray(this.recentEvents)) {
+                    const existingIdx = this.recentEvents.findIndex(ev => ev.id === payload.eventData.id || (payload.clientUuid && ev.uuid === payload.clientUuid));
+                    if (existingIdx !== -1) {
+                        if (payload.mutationType === 'delete') {
+                            this.recentEvents.splice(existingIdx, 1);
+                        } else {
+                            this.recentEvents[existingIdx] = { ...this.recentEvents[existingIdx], ...payload.eventData };
+                        }
+                    } else if (payload.mutationType !== 'delete') {
+                        this.recentEvents.unshift(payload.eventData);
+                    }
+                }
+
+                this.syncStatus = 'synced';
+            },
+
             handleKeyDown(e) {
                 // Prevent OS key-repeat auto-firing when holding keys down
                 if (e.repeat) return;
 
-                // ESCAPE KEY: Universally escape from any state/modal back to main dashboard instantly
+                // ESCAPE KEY: Close expanded error list first if open, or universally escape from any state/modal back to main dashboard instantly
                 if (e.key === 'Escape' || e.code === 'Escape') {
+                    if (this.showErrorList) {
+                        e.preventDefault();
+                        this.showErrorList = false;
+                        this.playSound('tap');
+                        return;
+                    }
+                    if (this.attentionAlert) {
+                        e.preventDefault();
+                        this.dismissAttentionAlert();
+                        this.playSound('tap');
+                        return;
+                    }
                     e.preventDefault();
                     this.escapeToMainDashboard();
                     return;
@@ -1319,6 +2219,27 @@ window.ProKeeperEngine = {
                 // Blur any focused button on hotkey triggers to prevent browser duplicate Space/Enter click
                 if (document.activeElement?.tagName === 'BUTTON') {
                     document.activeElement.blur();
+                }
+
+                // ERROR DISMISSAL & TOGGLE HOTKEYS
+                // Hotkey for expanding/toggling error list: Alt+E
+                if ((e.code === 'KeyE' && e.altKey) || (e.key.toLowerCase() === 'e' && e.altKey)) {
+                    e.preventDefault();
+                    this.toggleErrorList();
+                    return;
+                }
+
+                // Error Dismissal: ` (Backquote) dismisses front error; Shift+` (Tilde ~) dismisses all errors
+                if (this.errorQueue && this.errorQueue.length > 0) {
+                    if (e.key === '`' || e.code === 'Backquote' || e.key === '~' || e.key === 'Delete') {
+                        e.preventDefault();
+                        if (e.shiftKey || e.key === '~') {
+                            this.dismissAllErrors();
+                        } else {
+                            this.dismissFrontError();
+                        }
+                        return;
+                    }
                 }
 
                 // PENDING TIMEOUT CONFIRMATION SHORTCUTS
@@ -1373,8 +2294,7 @@ window.ProKeeperEngine = {
                         if (matched) {
                             this.selectBenchPlayer(matched, this.benchSelectSide);
                         } else {
-                            this.feedbackMessage = `No bench player found with Jersey #${searchNum}`;
-                            this.feedbackType = 'error';
+                            this.pushError(`No bench player found with Jersey #${searchNum}`);
                         }
                         return;
                     }
@@ -1436,8 +2356,7 @@ window.ProKeeperEngine = {
                         if (this.canExecutePendingSubs()) {
                             this.executeAllPendingSubs();
                         } else {
-                            this.feedbackMessage = 'Select required number of OUT players first';
-                            this.feedbackType = 'error';
+                            this.pushError('Select required number of OUT players first');
                         }
                         return;
                     }
@@ -1446,10 +2365,14 @@ window.ProKeeperEngine = {
                         this.openLineupModal();
                         return;
                     }
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        this.keepSubsWaiting();
+                        return;
+                    }
                     if (e.key === 'Escape') {
                         e.preventDefault();
-                        this.showExecuteSubModal = false;
-                        this.playSound('tap');
+                        this.cancelSubOperation();
                         return;
                     }
 
@@ -1488,8 +2411,7 @@ window.ProKeeperEngine = {
                         if (matched) {
                             this.toggleSelectedOut(targetSide, matched.jersey_number);
                         } else {
-                            this.feedbackMessage = `${targetName} player #${searchNum} is not on the court`;
-                            this.feedbackType = 'error';
+                            this.pushError(`${targetName} player #${searchNum} is not on the court`);
                         }
                         return;
                     }
@@ -1507,8 +2429,7 @@ window.ProKeeperEngine = {
                         if (matched) {
                             this.toggleSelectedOut(targetSide, matched.jersey_number);
                         } else {
-                            this.feedbackMessage = `${targetName} player #${searchNum} is not on the court`;
-                            this.feedbackType = 'error';
+                            this.pushError(`${targetName} player #${searchNum} is not on the court`);
                         }
                         return;
                     }
@@ -1543,10 +2464,14 @@ window.ProKeeperEngine = {
                         this.clearPendingSubs();
                         return;
                     }
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        this.keepSubsWaiting();
+                        return;
+                    }
                     if (e.key === 'Escape') {
                         e.preventDefault();
-                        this.showLineupModal = false;
-                        this.playSound('tap');
+                        this.cancelSubOperation();
                         return;
                     }
 
@@ -1585,8 +2510,7 @@ window.ProKeeperEngine = {
                         if (matched) {
                             this.togglePendingSub(targetSide, matched);
                         } else {
-                            this.feedbackMessage = `${targetName} player #${searchNum} is not on the bench`;
-                            this.feedbackType = 'error';
+                            this.pushError(`${targetName} player #${searchNum} is not on the bench`);
                         }
                         return;
                     }
@@ -1604,8 +2528,7 @@ window.ProKeeperEngine = {
                         if (matched) {
                             this.togglePendingSub(targetSide, matched);
                         } else {
-                            this.feedbackMessage = `${targetName} player #${searchNum} is not on the bench`;
-                            this.feedbackType = 'error';
+                            this.pushError(`${targetName} player #${searchNum} is not on the bench`);
                         }
                         return;
                     }
@@ -1690,7 +2613,158 @@ window.ProKeeperEngine = {
                     }
                 }
 
-                // 6. MAIN DASHBOARD NUMBER ENTRY (Buffer jersey # -> Press [-] for Left Team or [=] for Right Team)
+                // 5.5. POST-SHOT 3-SECOND KEYBOARD ASSIST WINDOW SHORTCUTS
+                if (this.assistWindow && this.assistWindow.active) {
+                    const k = e.key.toUpperCase();
+
+                    // If operator has already pressed 'A' and we are waiting for teammate jersey:
+                    if (this.assistWindow.waitingForJersey) {
+                        // Enter or Space: confirm current buffer immediately
+                        if (e.key === 'Enter' || e.code === 'Space' || e.key === ' ') {
+                            e.preventDefault();
+                            if (this.assistWindow.assistBuffer) {
+                                this.commitAssist(this.assistWindow.assistBuffer);
+                            }
+                            return;
+                        }
+
+                        // Escape: cancel assist window
+                        if (e.key === 'Escape' || e.code === 'Escape') {
+                            e.preventDefault();
+                            this.closeAssistWindow();
+                            this.playSound('tap');
+                            return;
+                        }
+
+                        // Backspace: delete last digit or reset to waiting state
+                        if (e.key === 'Backspace') {
+                            e.preventDefault();
+                            if (this._assistIdleTimer) {
+                                clearTimeout(this._assistIdleTimer);
+                                this._assistIdleTimer = null;
+                            }
+                            if (this.assistWindow.assistBuffer.length > 0) {
+                                this.assistWindow.assistBuffer = this.assistWindow.assistBuffer.slice(0, -1);
+                                const side = this.assistWindow.teamSide;
+                                const court = (side === 'home' ? this.homeCourt : this.awayCourt) || [];
+                                const bench = (side === 'home' ? this.homeBench : this.awayBench) || [];
+                                this.assistWindow.matchedPlayer = [...court, ...bench].find(p => p && String(p.jersey_number) === this.assistWindow.assistBuffer && String(p.jersey_number) !== String(this.assistWindow.shooterJersey)) || null;
+                            } else {
+                                this.assistWindow.waitingForJersey = false;
+                            }
+                            this.playSound('tap');
+                            return;
+                        }
+
+                        // Number digit entry (0-9)
+                        if (e.key >= '0' && e.key <= '9') {
+                            e.preventDefault();
+                            if (this._assistIdleTimer) {
+                                clearTimeout(this._assistIdleTimer);
+                                this._assistIdleTimer = null;
+                            }
+
+                            this.assistWindow.assistBuffer += e.key;
+                            const currentBuffer = this.assistWindow.assistBuffer;
+                            const side = this.assistWindow.teamSide;
+                            const court = (side === 'home' ? this.homeCourt : this.awayCourt) || [];
+                            const bench = (side === 'home' ? this.homeBench : this.awayBench) || [];
+                            this.assistWindow.matchedPlayer = [...court, ...bench].find(p => p && String(p.jersey_number) === currentBuffer && String(p.jersey_number) !== String(this.assistWindow.shooterJersey)) || null;
+
+                            // Option B: 400ms idle timer auto-commits if no further digits typed
+                            this._assistIdleTimer = setTimeout(() => {
+                                if (this.assistWindow && this.assistWindow.active && this.assistWindow.assistBuffer) {
+                                    this.commitAssist(this.assistWindow.assistBuffer);
+                                }
+                            }, 400);
+                            return;
+                        }
+
+                        // If any other key is pressed while waiting for jersey, cancel assist window
+                        this.closeAssistWindow();
+                    } else {
+                        // Operator has NOT pressed 'A' yet:
+                        // If 'A' is pressed: enter jersey listening mode!
+                        if (k === 'A') {
+                            e.preventDefault();
+                            this.assistWindow.waitingForJersey = true;
+                            this.assistWindow.assistBuffer = '';
+                            this.assistWindow.matchedPlayer = null;
+                            this.playSound('tap');
+                            return;
+                        }
+
+                        // If Escape: dismiss assist window
+                        if (e.key === 'Escape' || e.code === 'Escape') {
+                            e.preventDefault();
+                            this.closeAssistWindow();
+                            this.playSound('tap');
+                            return;
+                        }
+
+                        // If user starts typing jersey digits for the next play (0-9):
+                        // Close assist window quietly and let section 6 handle number buffering!
+                        if (e.key >= '0' && e.key <= '9') {
+                            this.closeAssistWindow();
+                        }
+                    }
+                }
+
+                // 6. MAIN DASHBOARD NUMBER ENTRY & CLOCK SHORTCUTS
+                // Clock Sync Hotkey Shorthand: typing 't' or 'T' initiates clock buffer (e.g. t0800, t2000, t0530, t0005, t00055, t8:00)
+                if ((e.key === 't' || e.key === 'T') && !this.jerseyBuffer && !this.selectedPlayer) {
+                    e.preventDefault();
+                    this.jerseyBuffer = 't';
+                    clearTimeout(this.bufferTimeout);
+                    this.feedbackMessage = 'Clock Sync: Type time (e.g. t0800, t2000, t0530) & press Enter';
+                    this.feedbackType = 'info';
+                    this.bufferTimeout = setTimeout(() => {
+                        if (this.jerseyBuffer === 't') {
+                            this.jerseyBuffer = '';
+                            this.feedbackMessage = '';
+                        }
+                    }, 4000);
+                    return;
+                }
+
+                // If currently buffering clock time (starts with 't'), allow 0-9 and ':'
+                if (this.jerseyBuffer && (this.jerseyBuffer.startsWith('t') || this.jerseyBuffer.startsWith('T'))) {
+                    if ((e.key >= '0' && e.key <= '9') || e.key === ':') {
+                        e.preventDefault();
+                        this.jerseyBuffer += e.key;
+                        clearTimeout(this.bufferTimeout);
+                        this.feedbackMessage = `Clock Sync: ${this.jerseyBuffer} — Press [Enter] to Sync`;
+                        this.feedbackType = 'info';
+                        this.bufferTimeout = setTimeout(() => {
+                            this.jerseyBuffer = '';
+                            this.feedbackMessage = '';
+                        }, 5000);
+                        return;
+                    }
+
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        clearTimeout(this.bufferTimeout);
+                        const parsed = this.parseClockShortcut(this.jerseyBuffer);
+                        if (parsed !== null) {
+                            this.syncClockFast(parsed);
+                        } else {
+                            this.pushError(`Invalid clock format: ${this.jerseyBuffer}`);
+                        }
+                        this.jerseyBuffer = '';
+                        return;
+                    }
+
+                    if (e.key === 'Escape' || e.key === 'Backspace') {
+                        e.preventDefault();
+                        clearTimeout(this.bufferTimeout);
+                        this.jerseyBuffer = '';
+                        this.feedbackMessage = 'Clock sync cancelled';
+                        this.feedbackType = 'info';
+                        return;
+                    }
+                }
+
                 if (e.key >= '0' && e.key <= '9') {
                     e.preventDefault();
                     this.jerseyBuffer += e.key;
@@ -1733,8 +2807,7 @@ window.ProKeeperEngine = {
                             this.feedbackMessage = `${targetName} #${searchNum} (${benchP.player_name}) [Bench]`;
                             this.feedbackType = 'info';
                         } else {
-                            this.feedbackMessage = `No ${targetName} player found with Jersey #${searchNum}`;
-                            this.feedbackType = 'error';
+                            this.pushError(`No ${targetName} player found with Jersey #${searchNum}`);
                         }
                     }
                     return;
@@ -1761,14 +2834,13 @@ window.ProKeeperEngine = {
                             this.feedbackMessage = `${targetName} #${searchNum} (${benchP.player_name}) [Bench]`;
                             this.feedbackType = 'info';
                         } else {
-                            this.feedbackMessage = `No ${targetName} player found with Jersey #${searchNum}`;
-                            this.feedbackType = 'error';
+                            this.pushError(`No ${targetName} player found with Jersey #${searchNum}`);
                         }
                     }
                     return;
                 }
 
-                // Spacebar: Toggle server/possession, or prompt if jerseyBuffer is typed
+                // Spacebar: Toggle Clock in Basketball, Server in Volleyball
                 if (e.code === 'Space' || e.key === ' ') {
                     e.preventDefault();
                     if (this.jerseyBuffer) {
@@ -1781,7 +2853,7 @@ window.ProKeeperEngine = {
 
                     // Default Space action if no jersey was typed
                     if (this.sport === 'basketball') {
-                        this.togglePossession();
+                        this.toggleClockFast();
                     } else {
                         this.toggleServer();
                     }
@@ -1870,28 +2942,16 @@ window.ProKeeperEngine = {
                         this.openLineupModal();
                         return;
                     }
-                    // Left Hand Team Roster Modal: 'R'
+                    // Left Hand Team Roster Modal: 'R' (Instant 0ms Modal)
                     if (k === 'R') {
                         e.preventDefault();
-                        try {
-                            const wireEl = document.querySelector('[wire\\:id]');
-                            if (wireEl && window.Livewire) {
-                                window.Livewire.find(wireEl.getAttribute('wire:id'))?.call('openRosterModal', leftTeam);
-                                this.playSound('tap');
-                            }
-                        } catch (err) {}
+                        this.openRosterModal(leftTeam);
                         return;
                     }
-                    // Right Hand Team Roster Modal: 'T'
+                    // Right Hand Team Roster Modal: 'T' (Instant 0ms Modal)
                     if (k === 'T') {
                         e.preventDefault();
-                        try {
-                            const wireEl = document.querySelector('[wire\\:id]');
-                            if (wireEl && window.Livewire) {
-                                window.Livewire.find(wireEl.getAttribute('wire:id'))?.call('openRosterModal', rightTeam);
-                                this.playSound('tap');
-                            }
-                        } catch (err) {}
+                        this.openRosterModal(rightTeam);
                         return;
                     }
                     // Basketball Possession
@@ -2002,6 +3062,162 @@ window.ProKeeperEngine = {
                 this.executeAction(code, assistJersey);
             },
 
+            // 3-Second Post-Shot Keyboard Assist Window Engine
+            startAssistWindow(data) {
+                if (this.sport !== 'basketball') return;
+                this.closeAssistWindow();
+
+                const totalSeconds = 3.0;
+                this.assistWindow = {
+                    active: true,
+                    teamSide: data.teamSide,
+                    shooterJersey: String(data.shooterJersey),
+                    shooterName: data.shooterName || ('#' + data.shooterJersey),
+                    actionCode: data.actionCode,
+                    points: data.points || (data.actionCode === 'M' ? 3 : 2),
+                    eventId: data.eventId,
+                    secondsRemaining: totalSeconds,
+                    progressPercent: 100,
+                    waitingForJersey: false,
+                    assistBuffer: '',
+                    matchedPlayer: null,
+                };
+
+                const intervalMs = 50;
+                this._assistCountdownInterval = setInterval(() => {
+                    if (!this.assistWindow || !this.assistWindow.active) {
+                        this.closeAssistWindow();
+                        return;
+                    }
+                    // Pause countdown while operator is actively typing teammate jersey
+                    if (this.assistWindow.waitingForJersey) return;
+
+                    this.assistWindow.secondsRemaining = Math.max(0, this.assistWindow.secondsRemaining - (intervalMs / 1000));
+                    this.assistWindow.progressPercent = Math.max(0, (this.assistWindow.secondsRemaining / totalSeconds) * 100);
+
+                    if (this.assistWindow.secondsRemaining <= 0) {
+                        this.closeAssistWindow();
+                    }
+                }, intervalMs);
+            },
+
+            closeAssistWindow() {
+                if (this._assistCountdownInterval) {
+                    clearInterval(this._assistCountdownInterval);
+                    this._assistCountdownInterval = null;
+                }
+                if (this._assistIdleTimer) {
+                    clearTimeout(this._assistIdleTimer);
+                    this._assistIdleTimer = null;
+                }
+                this.assistWindow = {
+                    active: false,
+                    teamSide: null,
+                    shooterJersey: null,
+                    shooterName: '',
+                    actionCode: null,
+                    points: 0,
+                    eventId: null,
+                    secondsRemaining: 3.0,
+                    progressPercent: 100,
+                    waitingForJersey: false,
+                    assistBuffer: '',
+                    matchedPlayer: null,
+                };
+            },
+
+            commitAssist(assistJersey) {
+                if (!this.assistWindow || !this.assistWindow.active) return;
+                const jerseyStr = String(assistJersey ?? '').trim();
+                if (!jerseyStr) return;
+
+                if (this._assistIdleTimer) {
+                    clearTimeout(this._assistIdleTimer);
+                    this._assistIdleTimer = null;
+                }
+
+                const side = this.assistWindow.teamSide;
+                const shooterJersey = this.assistWindow.shooterJersey;
+                const eventId = this.assistWindow.eventId;
+
+                // Validate: cannot assist own basket
+                if (jerseyStr === String(shooterJersey)) {
+                    this.feedbackMessage = `Shooter #${jerseyStr} cannot assist their own basket`;
+                    this.feedbackType = 'error';
+                    this.playSound('tap');
+                    this.assistWindow.assistBuffer = '';
+                    this.assistWindow.matchedPlayer = null;
+                    return;
+                }
+
+                // Check player on court or bench for the scoring team
+                const court = (side === 'home' ? this.homeCourt : this.awayCourt) || [];
+                const bench = (side === 'home' ? this.homeBench : this.awayBench) || [];
+                const allPlayers = [...court, ...bench];
+                const matched = allPlayers.find(p => p && String(p.jersey_number) === jerseyStr);
+
+                if (!matched) {
+                    const teamName = side === 'home' ? this.homeTeamName : this.awayTeamName;
+                    this.feedbackMessage = `No ${teamName} player found with Jersey #${jerseyStr}`;
+                    this.feedbackType = 'error';
+                    this.playSound('tap');
+                    this.assistWindow.assistBuffer = '';
+                    this.assistWindow.matchedPlayer = null;
+                    return;
+                }
+
+                const assistName = matched.player_name || ('#' + jerseyStr);
+
+                // Update event in local recentEvents
+                let targetEvent = null;
+                if (Array.isArray(this.recentEvents)) {
+                    targetEvent = this.recentEvents.find(e => String(e.id) === String(eventId));
+                    if (!targetEvent) {
+                        targetEvent = this.recentEvents.find(e => e.team_side === side && (e.action_code === 'X' || e.action_code === 'M') && !e.is_undone);
+                    }
+                }
+
+                if (targetEvent) {
+                    targetEvent.assist_jersey_number = jerseyStr;
+                    const pts = targetEvent.points || (targetEvent.action_code === 'M' ? 3 : 2);
+                    const ptsSuffix = pts > 0 ? ` (+${pts} pts)` : '';
+                    const cleanDesc = (targetEvent.description || '').replace(/\s*\(Ast:\s*#[^)]+\)/i, '');
+                    targetEvent.description = `${cleanDesc} (Ast: #${jerseyStr} ${assistName})`.trim();
+                }
+
+                // Update local player stats
+                const astStat = this.getPlayerStat(side, jerseyStr);
+                astStat.ast = (astStat.ast || 0) + 1;
+
+                // Update top undo snapshot if it exists
+                if (this.undoStack && this.undoStack.length > 0) {
+                    const top = this.undoStack[this.undoStack.length - 1];
+                    if (top && top.type === 'stat' && top.meta) {
+                        top.meta.assistJersey = jerseyStr;
+                    }
+                }
+
+                this.recalculateLocalEventsAndScores();
+                this.saveLocalState();
+                this.playSound('tap');
+
+                const teamDisplayName = side === 'home' ? this.homeTeamName : this.awayTeamName;
+                this.feedbackMessage = `✓ ${teamDisplayName} #${shooterJersey}: Assist credited to #${jerseyStr} ${assistName}`;
+                this.feedbackType = 'success';
+
+                // Check syncQueue: if original mutation hasn't synced yet, update its args
+                const queued = this.syncQueue.find(item => String(item.id) === String(eventId));
+                if (queued && queued.method === 'recordQuickStat') {
+                    queued.args[3] = jerseyStr;
+                    this.saveQueue();
+                } else {
+                    const numericId = typeof targetEvent?.id === 'number' ? targetEvent.id : null;
+                    this.enqueueSync('attachAssistToEvent', [side, jerseyStr, numericId], 'stats');
+                }
+
+                this.closeAssistWindow();
+            },
+
             onShotButtonPointerDown(e, actionCode) {
                 if (this.sport !== 'basketball' || !this.selectedPlayer) return;
                 if (e.button !== undefined && e.button !== 0) return;
@@ -2078,6 +3294,7 @@ window.ProKeeperEngine = {
             openActionPad(side, jersey, name, id) {
                 if (!this.canExecute('openActionPad', 150)) return;
                 this.closeAssistModal();
+                this.closeAssistWindow();
                 this.selectedPlayer = { side, jersey, name, id };
                 this.playSound('tap');
             },
@@ -2096,6 +3313,7 @@ window.ProKeeperEngine = {
 
                 let actionDef;
                 let playSoundType = 'tap';
+                let alertTriggered = false;
 
                 if (this.sport === 'basketball') {
                     actionDef = ProKeeperEngine.basketballActions[actionCode] || { name: actionCode, points: 0 };
@@ -2108,13 +3326,16 @@ window.ProKeeperEngine = {
                         playSoundType = 'score';
                     }
 
+                    const oldTeamFouls = side === 'home' ? this.homeFouls : this.awayFouls;
                     if (actionDef.isTeamFoul) {
                         if (side === 'home') this.homeFouls += 1;
                         else this.awayFouls += 1;
                     }
+                    const newTeamFouls = side === 'home' ? this.homeFouls : this.awayFouls;
 
                     // 0ms instant local player stats update
                     const pStat = this.getPlayerStat(side, jersey);
+                    const oldTotalFouls = pStat.total_fouls;
                     if (pts > 0) pStat.points += pts;
                     if (actionCode === 'F') {
                         pStat.fouls_pers += 1;
@@ -2128,6 +3349,57 @@ window.ProKeeperEngine = {
                     } else if (['G', 'FL', 'FLAG'].includes(actionCode)) {
                         pStat.fouls_flagrant += 1;
                         pStat.total_fouls += 1;
+                    } else if (actionCode === 'H') {
+                        pStat.fouls_forced = (pStat.fouls_forced || 0) + 1;
+                    }
+
+                    const foulLimit = this.playerFoulLimit || 5;
+                    const isFouledOut = pStat.total_fouls >= foulLimit;
+                    const justFouledOut = isFouledOut && oldTotalFouls < foulLimit;
+
+                    const bonusThresh = this.bonusFoulThreshold || (this.periodFormat === 'halves' ? 7 : 5);
+                    const doubleBonusThresh = this.doubleBonusFoulThreshold || (this.periodFormat === 'halves' ? 10 : 5);
+                    const justEnteredDoubleBonus = actionDef.isTeamFoul && doubleBonusThresh > bonusThresh && newTeamFouls >= doubleBonusThresh && oldTeamFouls < doubleBonusThresh;
+                    const justEnteredBonus = actionDef.isTeamFoul && !justEnteredDoubleBonus && newTeamFouls >= bonusThresh && oldTeamFouls < bonusThresh;
+
+                    const foulingTeamName = (side === 'home' ? this.homeTeamName : this.awayTeamName) || (side === 'home' ? 'Home' : 'Away');
+                    const opposingTeamName = (side === 'home' ? this.awayTeamName : this.homeTeamName) || (side === 'home' ? 'Away' : 'Home');
+
+                    if (justFouledOut) {
+                        alertTriggered = true;
+                        let extraBonusNote = '';
+                        if (justEnteredDoubleBonus) extraBonusNote = ` • ${foulingTeamName} also reached Double Bonus!`;
+                        else if (justEnteredBonus) extraBonusNote = ` • ${foulingTeamName} also reached Bonus!`;
+
+                        this.triggerAttentionAlert(
+                            'foul_out',
+                            'PLAYER FOULED OUT',
+                            `#${jersey} ${name} (${foulingTeamName}) has reached ${pStat.total_fouls} fouls and must be substituted.${extraBonusNote}`,
+                            'Official disqualification rules apply. Press S or click to substitute immediately.',
+                            60,
+                            { side, jersey, name, teamName: foulingTeamName }
+                        );
+                    } else if (justEnteredDoubleBonus) {
+                        alertTriggered = true;
+                        this.triggerAttentionAlert(
+                            'double_bonus',
+                            'DOUBLE BONUS ACTIVE',
+                            `${foulingTeamName} reached ${newTeamFouls} team fouls in Period ${this.currentPeriod}.`,
+                            `${opposingTeamName} shoots 2 Free Throws on all common fouls.`,
+                            45,
+                            { side, teamName: foulingTeamName, fouls: newTeamFouls }
+                        );
+                    } else if (justEnteredBonus) {
+                        alertTriggered = true;
+                        const bonusType = this.periodFormat === 'halves' ? '1-and-1 Free Throws' : '2 Free Throws';
+                        this.triggerAttentionAlert(
+                            'bonus',
+                            'TEAM BONUS ACTIVE',
+                            `${foulingTeamName} reached ${newTeamFouls} team fouls in Period ${this.currentPeriod}.`,
+                            `${opposingTeamName} shoots ${bonusType} on all common fouls.`,
+                            45,
+                            { side, teamName: foulingTeamName, fouls: newTeamFouls }
+                        );
                     }
                 } else {
                     actionDef = ProKeeperEngine.volleyballActions[actionCode] || { name: actionCode, points: 0 };
@@ -2176,9 +3448,11 @@ window.ProKeeperEngine = {
                 });
                 this.recalculateLocalEventsAndScores();
 
-                this.feedbackMessage = eventDesc;
-                this.feedbackType = 'success';
-                this.playSound(playSoundType);
+                if (!alertTriggered) {
+                    this.feedbackMessage = eventDesc;
+                    this.feedbackType = 'success';
+                    this.playSound(playSoundType);
+                }
 
                 // Close selection overlay instantly
                 this.selectedPlayer = null;
@@ -2189,6 +3463,18 @@ window.ProKeeperEngine = {
                 // Queue mutation for non-blocking asynchronous sync
                 const syncArgs = assistJersey ? [side, jersey, actionCode, assistJersey] : [side, jersey, actionCode];
                 this.enqueueSync('recordQuickStat', syncArgs, 'stats', mutId);
+
+                // If basketball made field goal without assist, initiate 3-second keyboard assist window
+                if (this.sport === 'basketball' && (actionCode === 'X' || actionCode === 'M') && !assistJersey) {
+                    this.startAssistWindow({
+                        teamSide: side,
+                        shooterJersey: jersey,
+                        shooterName: name,
+                        actionCode: actionCode,
+                        points: pts,
+                        eventId: mutId,
+                    });
+                }
             },
 
             // 0ms Direct Score Adjustment (+1, +2, +3, -1)
@@ -2311,6 +3597,11 @@ window.ProKeeperEngine = {
                 this.subOutJersey = '';
                 this.subInJersey = '';
 
+                // If the player substituted out had an active foul-out alert, dismiss it
+                if (this.attentionAlert && this.attentionAlert.type === 'foul_out' && String(this.attentionAlert.jersey) === outJ) {
+                    this.dismissAttentionAlert();
+                }
+
                 this.enqueueSync('setAndExecuteSub', [side, outJ, inJ], 'lineup', mutId);
             },
 
@@ -2370,26 +3661,20 @@ window.ProKeeperEngine = {
                     if (type === '30s') {
                         const count = (side === 'home') ? this.home30sTimeouts : this.away30sTimeouts;
                         if (count <= 0) {
-                            this.feedbackMessage = `No 30-Second Timeouts remaining for ${side.toUpperCase()}`;
-                            this.feedbackType = 'error';
-                            this.playSound('tap');
+                            this.pushError(`No 30-Second Timeouts remaining for ${side.toUpperCase()}`);
                             return;
                         }
                     } else {
                         const count = (side === 'home') ? this.homeFullTimeouts : this.awayFullTimeouts;
                         if (count <= 0) {
-                            this.feedbackMessage = `No Full Timeouts remaining for ${side.toUpperCase()}`;
-                            this.feedbackType = 'error';
-                            this.playSound('tap');
+                            this.pushError(`No Full Timeouts remaining for ${side.toUpperCase()}`);
                             return;
                         }
                     }
                 } else {
                     const count = (side === 'home') ? this.homeTimeouts : this.awayTimeouts;
                     if (count <= 0) {
-                        this.feedbackMessage = `No Timeouts remaining for ${side.toUpperCase()}`;
-                        this.feedbackType = 'error';
-                        this.playSound('tap');
+                        this.pushError(`No Timeouts remaining for ${side.toUpperCase()}`);
                         return;
                     }
                 }
@@ -2403,35 +3688,52 @@ window.ProKeeperEngine = {
                     away30sTimeouts: this.away30sTimeouts,
                     homeTimeouts: this.homeTimeouts,
                     awayTimeouts: this.awayTimeouts,
+                    homeFullTimeoutsTaken: this.homeFullTimeoutsTaken,
+                    home30sTimeoutsTaken: this.home30sTimeoutsTaken,
+                    awayFullTimeoutsTaken: this.awayFullTimeoutsTaken,
+                    away30sTimeoutsTaken: this.away30sTimeoutsTaken,
+                    homeTimeoutsTaken: this.homeTimeoutsTaken,
+                    awayTimeoutsTaken: this.awayTimeoutsTaken,
                 });
 
                 if (this.sport === 'basketball') {
                     if (side === 'home') {
                         if (type === '30s' && this.home30sTimeouts > 0) {
                             this.home30sTimeouts -= 1;
+                            this.home30sTimeoutsTaken = Number(this.home30sTimeoutsTaken || 0) + 1;
                         } else if (type !== '30s' && this.homeFullTimeouts > 0) {
                             this.homeFullTimeouts -= 1;
+                            this.homeFullTimeoutsTaken = Number(this.homeFullTimeoutsTaken || 0) + 1;
                         }
                         if (this.homeTimeouts > 0) this.homeTimeouts -= 1;
+                        this.homeTimeoutsTaken = Number(this.homeTimeoutsTaken || 0) + 1;
                     } else if (side === 'away') {
                         if (type === '30s' && this.away30sTimeouts > 0) {
                             this.away30sTimeouts -= 1;
+                            this.away30sTimeoutsTaken = Number(this.away30sTimeoutsTaken || 0) + 1;
                         } else if (type !== '30s' && this.awayFullTimeouts > 0) {
                             this.awayFullTimeouts -= 1;
+                            this.awayFullTimeoutsTaken = Number(this.awayFullTimeoutsTaken || 0) + 1;
                         }
                         if (this.awayTimeouts > 0) this.awayTimeouts -= 1;
+                        this.awayTimeoutsTaken = Number(this.awayTimeoutsTaken || 0) + 1;
                     }
                 } else {
                     if (side === 'home' && this.homeTimeouts > 0) {
                         this.homeTimeouts -= 1;
+                        this.homeTimeoutsTaken = Number(this.homeTimeoutsTaken || 0) + 1;
                     } else if (side === 'away' && this.awayTimeouts > 0) {
                         this.awayTimeouts -= 1;
+                        this.awayTimeoutsTaken = Number(this.awayTimeoutsTaken || 0) + 1;
                     }
                 }
 
                 const remaining = Number((side === 'home' ? this.homeTimeouts : this.awayTimeouts) || 0);
                 const remFull = Number((side === 'home' ? this.homeFullTimeouts : this.awayFullTimeouts) || 0);
                 const rem30s = Number((side === 'home' ? this.home30sTimeouts : this.away30sTimeouts) || 0);
+                const takenTotal = Number((side === 'home' ? this.homeTimeoutsTaken : this.awayTimeoutsTaken) || 0);
+                const takenFull = Number((side === 'home' ? this.homeFullTimeoutsTaken : this.awayFullTimeoutsTaken) || 0);
+                const taken30s = Number((side === 'home' ? this.home30sTimeoutsTaken : this.away30sTimeoutsTaken) || 0);
                 const teamName = (side === 'home' ? this.homeTeamName : this.awayTeamName) || (side === 'home' ? 'HOME' : 'AWAY');
                 const typeLabel = (type === '30s') ? '30-Second' : 'Full (60s)';
 
@@ -2452,32 +3754,36 @@ window.ProKeeperEngine = {
                     home_score_after: this.homeScore,
                     away_score_after: this.awayScore,
                     description: this.sport === 'basketball'
-                        ? `${side.toUpperCase()} ${typeLabel} Timeout (${remFull} Full, ${rem30s} 30s remaining)`
-                        : `${side.toUpperCase()} Timeout (${remaining} left)`,
+                        ? `${side.toUpperCase()} ${typeLabel} Timeout (${takenTotal} Taken [${takenFull}F/${taken30s}s], ${remaining} Remain [${remFull}F/${rem30s}s])`
+                        : `${side.toUpperCase()} Timeout (${takenTotal} Taken, ${remaining} Remain this set)`,
                     metadata: {
                         timeout_type: type,
                         timeouts_remaining: remaining,
                         full_timeouts_remaining: remFull,
-                        thirty_second_timeouts_remaining: rem30s
+                        thirty_second_timeouts_remaining: rem30s,
+                        timeouts_taken: takenTotal,
+                        full_timeouts_taken: takenFull,
+                        thirty_second_timeouts_taken: taken30s,
                     }
                 };
                 this.recentEvents.unshift(timeoutEvent);
 
                 this.playSound('tap');
                 this.feedbackMessage = this.sport === 'basketball'
-                    ? `${typeLabel} Timeout charged to ${side.toUpperCase()} (${remFull} Full, ${rem30s} 30s remaining)`
-                    : `Timeout charged to ${side.toUpperCase()} (${remaining} remaining)`;
+                    ? `${typeLabel} Timeout charged to ${side.toUpperCase()} (Taken: ${takenTotal} • Remain: ${remaining})`
+                    : `Timeout charged to ${side.toUpperCase()} (Taken: ${takenTotal} • Remain: ${remaining})`;
                 this.enqueueSync('callTimeout', [side, type], 'timeouts', mutId);
             },
 
             // 0ms Advance Period / Set
             nextPeriodFast() {
                 if (this.sport === 'basketball' && this.currentPeriod >= 6) {
-                    this.feedbackMessage = 'Maximum of 6 periods reached (2nd Overtime).';
-                    this.feedbackType = 'error';
+                    this.pushError('Maximum of 6 periods reached.');
                     return;
                 }
                 if (!this.canExecute('nextPeriod', 600)) return;
+
+                this.dismissAttentionAlert();
 
                 this.pushUndoSnapshot('period', {
                     currentPeriod: this.currentPeriod,
@@ -2486,19 +3792,21 @@ window.ProKeeperEngine = {
                 });
 
                 this.currentPeriod += 1;
-                this.periodName = this.sport === 'volleyball' 
-                    ? `Set ${this.currentPeriod}` 
-                    : (this.currentPeriod <= 4 ? `Q${this.currentPeriod}` : `OT${this.currentPeriod - 4}`);
+                this.periodName = this.formatPeriodName(this.currentPeriod);
                 this.homeFouls = 0;
                 this.awayFouls = 0;
+
+                while (this.homePeriodScores.length < this.currentPeriod) this.homePeriodScores.push(0);
+                while (this.awayPeriodScores.length < this.currentPeriod) this.awayPeriodScores.push(0);
 
                 if (this.sport === 'volleyball') {
                     const perSet = Number(config.timeoutsPerSet || 2);
                     this.homeTimeouts = perSet;
                     this.awayTimeouts = perSet;
                 } else if (this.sport === 'basketball') {
-                    const regPeriods = (config.periodFormat === 'halves') ? 2 : 4;
+                    const regPeriods = (this.periodFormat === 'halves') ? 2 : 4;
                     if (this.currentPeriod > regPeriods) {
+                        this.otPeriodsAdded = Math.max(this.otPeriodsAdded || 0, this.currentPeriod - regPeriods);
                         const otAddition = Number(config.timeoutsOt ?? 1);
                         this.home30sTimeouts = Number(this.home30sTimeouts || 0) + otAddition;
                         this.away30sTimeouts = Number(this.away30sTimeouts || 0) + otAddition;
@@ -2538,11 +3846,12 @@ window.ProKeeperEngine = {
                 const target = Number(period);
                 if (!target || target < 1 || target === this.currentPeriod) return;
                 if (this.sport === 'basketball' && target > 6) {
-                    this.feedbackMessage = 'Basketball is limited to 6 periods (Q1-Q4, OT1, OT2).';
-                    this.feedbackType = 'error';
+                    this.pushError('Basketball is limited to 6 periods.');
                     return;
                 }
                 if (!this.canExecute('setPeriodFast', 200)) return;
+
+                this.dismissAttentionAlert();
 
                 this.pushUndoSnapshot('period', {
                     currentPeriod: this.currentPeriod,
@@ -2551,13 +3860,15 @@ window.ProKeeperEngine = {
                 });
 
                 this.currentPeriod = target;
-                this.periodName = this.sport === 'volleyball' 
-                    ? `Set ${this.currentPeriod}` 
-                    : (this.currentPeriod <= 4 ? `Q${this.currentPeriod}` : `OT${this.currentPeriod - 4}`);
+                this.periodName = this.formatPeriodName(this.currentPeriod);
 
-                const maxLen = this.sport === 'basketball' ? Math.min(6, target) : target;
-                while (this.homePeriodScores.length < maxLen) this.homePeriodScores.push(0);
-                while (this.awayPeriodScores.length < maxLen) this.awayPeriodScores.push(0);
+                const regPeriods = (this.periodFormat === 'halves') ? 2 : 4;
+                if (this.sport === 'basketball' && this.currentPeriod > regPeriods) {
+                    this.otPeriodsAdded = Math.max(this.otPeriodsAdded || 0, this.currentPeriod - regPeriods);
+                }
+
+                while (this.homePeriodScores.length < target) this.homePeriodScores.push(0);
+                while (this.awayPeriodScores.length < target) this.awayPeriodScores.push(0);
 
                 this.homeFouls = 0;
                 this.awayFouls = 0;
@@ -2614,6 +3925,7 @@ window.ProKeeperEngine = {
                 this.undoStack.push({
                     type,
                     meta,
+                    currentPeriod: this.currentPeriod,
                     homeScore: this.homeScore,
                     awayScore: this.awayScore,
                     homePeriodScores: [...this.homePeriodScores],
@@ -2626,6 +3938,12 @@ window.ProKeeperEngine = {
                     away30sTimeouts: this.away30sTimeouts,
                     homeTimeouts: this.homeTimeouts,
                     awayTimeouts: this.awayTimeouts,
+                    homeFullTimeoutsTaken: this.homeFullTimeoutsTaken,
+                    home30sTimeoutsTaken: this.home30sTimeoutsTaken,
+                    awayFullTimeoutsTaken: this.awayFullTimeoutsTaken,
+                    away30sTimeoutsTaken: this.away30sTimeoutsTaken,
+                    homeTimeoutsTaken: this.homeTimeoutsTaken,
+                    awayTimeoutsTaken: this.awayTimeoutsTaken,
                     possession: this.possession,
                     server: this.server,
                     homeRotation: this.homeRotation,
@@ -2639,6 +3957,10 @@ window.ProKeeperEngine = {
             },
 
             restoreSnapshot(s) {
+                if (s.currentPeriod !== undefined) {
+                    this.currentPeriod = s.currentPeriod;
+                    this.periodName = this.formatPeriodName(this.currentPeriod);
+                }
                 this.homeScore = s.homeScore;
                 this.awayScore = s.awayScore;
                 this.homePeriodScores = [...s.homePeriodScores];
@@ -2649,6 +3971,12 @@ window.ProKeeperEngine = {
                 if (s.home30sTimeouts !== undefined) this.home30sTimeouts = s.home30sTimeouts;
                 if (s.awayFullTimeouts !== undefined) this.awayFullTimeouts = s.awayFullTimeouts;
                 if (s.away30sTimeouts !== undefined) this.away30sTimeouts = s.away30sTimeouts;
+                if (s.homeFullTimeoutsTaken !== undefined) this.homeFullTimeoutsTaken = s.homeFullTimeoutsTaken;
+                if (s.home30sTimeoutsTaken !== undefined) this.home30sTimeoutsTaken = s.home30sTimeoutsTaken;
+                if (s.awayFullTimeoutsTaken !== undefined) this.awayFullTimeoutsTaken = s.awayFullTimeoutsTaken;
+                if (s.away30sTimeoutsTaken !== undefined) this.away30sTimeoutsTaken = s.away30sTimeoutsTaken;
+                if (s.homeTimeoutsTaken !== undefined) this.homeTimeoutsTaken = s.homeTimeoutsTaken;
+                if (s.awayTimeoutsTaken !== undefined) this.awayTimeoutsTaken = s.awayTimeoutsTaken;
                 this.homeTimeouts = s.homeTimeouts;
                 this.awayTimeouts = s.awayTimeouts;
                 this.possession = s.possession;

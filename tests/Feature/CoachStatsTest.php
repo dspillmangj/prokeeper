@@ -7,13 +7,12 @@ use App\Models\GameEvent;
 use App\Models\GameLineup;
 use App\Models\Organization;
 use App\Models\User;
+use App\Models\VolleyballStat;
 use Livewire\Livewire;
 
 test('stats prompt renders successfully without code', function () {
     $response = $this->get('/stats');
-    $response->assertStatus(200);
-    $response->assertSee('Coach Live Stats');
-    $response->assertSee('GAME CODE');
+    $response->assertRedirect(route('public.live.prompt'));
 });
 
 test('submitting invalid code displays error message in livewire coach stats', function () {
@@ -61,6 +60,7 @@ test('coach stats renders home and away box scores with period line score', func
         'email' => 'stats@example.com',
         'password' => bcrypt('password'),
         'role' => 'admin',
+        'plan' => 'pro',
     ]);
 
     $game = Game::create([
@@ -140,7 +140,7 @@ test('coach stats renders home and away box scores with period line score', func
         'is_undone' => false,
     ]);
 
-    $response = $this->get("/stats/{$game->access_code}");
+    $response = $this->get("/stats/{$game->access_code}?token={$game->stats_token}");
     $response->assertStatus(200);
     $response->assertSee('Eagles');
     $response->assertSee('Hawks');
@@ -236,6 +236,7 @@ test('coach stats pdf export generates valid 2-page landscape pdf', function () 
         'email' => 'pdf@example.com',
         'password' => bcrypt('password'),
         'role' => 'admin',
+        'plan' => 'pro',
     ]);
 
     $game = Game::create([
@@ -261,8 +262,177 @@ test('coach stats pdf export generates valid 2-page landscape pdf', function () 
         'is_starter' => true,
     ]);
 
-    $response = $this->get("/export/stats/{$game->access_code}.pdf");
+    $response = $this->get("/export/stats/{$game->access_code}.pdf?token={$game->stats_token}");
     $response->assertStatus(200);
     $response->assertHeader('content-type', 'application/pdf');
     $this->assertStringContainsString("ProKeeper-CoachStats-{$game->access_code}.pdf", $response->headers->get('content-disposition'));
+});
+
+test('coach stats page displays every recorded basketball statistic including swat, turnover breakdown, and flagrant/drawn fouls', function () {
+    $org = Organization::create(['name' => 'AllStats Org', 'slug' => 'allstats-org']);
+    $user = User::create([
+        'organization_id' => $org->id,
+        'name' => 'Stats Coach',
+        'email' => 'allstats@example.com',
+        'password' => bcrypt('password'),
+        'role' => 'admin',
+        'plan' => 'pro',
+    ]);
+
+    $game = Game::create([
+        'access_code' => 'ALL999',
+        'slug' => 'all-stats-game',
+        'organization_id' => $org->id,
+        'created_by_user_id' => $user->id,
+        'sport' => 'basketball',
+        'status' => 'in_progress',
+        'home_team_name' => 'Home Knights',
+        'away_team_name' => 'Away Dragons',
+        'home_score' => 60,
+        'away_score' => 55,
+        'current_period' => 3,
+        'period_format' => 'quarters',
+    ]);
+
+    GameLineup::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '15',
+        'player_name' => 'Elite AllAround',
+        'position' => 'SF',
+        'is_starter' => true,
+    ]);
+
+    BasketballStat::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '15',
+        'player_name' => 'Elite AllAround',
+        'points' => 25,
+        'fgm' => 9,
+        'fga' => 16,
+        'fg3m' => 3,
+        'fg3a' => 6,
+        'ftm' => 4,
+        'fta' => 5,
+        'oreb' => 3,
+        'dreb' => 7,
+        'reb' => 10,
+        'ast' => 7,
+        'stl' => 4,
+        'blk' => 2,
+        'swat' => 3,
+        'to_pass' => 1,
+        'to_fumble' => 1,
+        'to_violation' => 1,
+        'turnovers' => 3,
+        'fouls_pers' => 2,
+        'fouls_off' => 1,
+        'fouls_tech' => 1,
+        'fouls_flagrant' => 1,
+        'fouls_forced' => 5,
+        'total_fouls' => 5,
+        'seconds_played' => 1440,
+    ]);
+
+    $response = $this->get("/stats/{$game->access_code}?token={$game->stats_token}");
+    $response->assertStatus(200);
+
+    // Verify all stat headers and abbreviations are present
+    $response->assertSee('SWAT');
+    $response->assertSee('TO:P');
+    $response->assertSee('TO:F');
+    $response->assertSee('TO:V');
+    $response->assertSee('OF');
+    $response->assertSee('TF');
+    $response->assertSee('FF');
+    $response->assertSee('FD');
+    $response->assertSee('TOT F');
+    $response->assertSee('eFG%');
+    $response->assertSee('A/TO');
+
+    // Verify player values
+    $response->assertSee('Elite AllAround');
+    $response->assertSee('#15');
+});
+
+test('coach stats renders volleyball game with set line score and all volleyball statistics', function () {
+    $org = Organization::create(['name' => 'Volley Org', 'slug' => 'volley-org']);
+    $user = User::create([
+        'organization_id' => $org->id,
+        'name' => 'Volley Coach',
+        'email' => 'vcoach@example.com',
+        'password' => bcrypt('password'),
+        'role' => 'admin',
+        'plan' => 'pro',
+    ]);
+
+    $game = Game::create([
+        'access_code' => 'VB1234',
+        'slug' => 'vb-coach-game',
+        'organization_id' => $org->id,
+        'created_by_user_id' => $user->id,
+        'sport' => 'volleyball',
+        'status' => 'in_progress',
+        'home_team_name' => 'Volley Aces',
+        'away_team_name' => 'Net Spikers',
+        'home_score' => 50,
+        'away_score' => 45,
+        'current_period' => 2,
+        'home_period_scores' => [25, 25, 0, 0, 0],
+        'away_period_scores' => [20, 22, 0, 0, 0],
+    ]);
+
+    GameLineup::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '12',
+        'player_name' => 'Kerri Walsh',
+        'position' => 'OH',
+        'is_starter' => true,
+    ]);
+
+    VolleyballStat::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '12',
+        'player_name' => 'Kerri Walsh',
+        'sets_played' => 2,
+        'kills' => 12,
+        'attack_errors' => 2,
+        'attack_attempts' => 25,
+        'hitting_percentage' => 0.400,
+        'assists' => 3,
+        'service_aces' => 4,
+        'service_errors' => 1,
+        'service_attempts' => 15,
+        'digs' => 8,
+        'block_solos' => 2,
+        'block_assists' => 2,
+        'total_blocks' => 3.0,
+        'ball_handling_errors' => 0,
+        'reception_errors' => 1,
+        'total_points' => 17.0,
+    ]);
+
+    $response = $this->get("/stats/{$game->access_code}?token={$game->stats_token}");
+    $response->assertStatus(200);
+
+    // Verify volleyball specific elements
+    $response->assertSee('VOLLEYBALL');
+    $response->assertSee('Set-by-Set Line Score');
+    $response->assertSee('Set 1');
+    $response->assertSee('Set 2');
+    $response->assertSee('Kerri Walsh');
+    $response->assertSee('HIT%');
+    $response->assertSee('ACE');
+    $response->assertSee('DIG');
+    $response->assertSee('TB');
+    $response->assertSee('BHE');
+    $response->assertSee('RE');
+
+    // Test Volleyball PDF export
+    $pdfResponse = $this->get("/export/stats/{$game->access_code}.pdf?token={$game->stats_token}");
+    $pdfResponse->assertStatus(200);
+    $pdfResponse->assertHeader('content-type', 'application/pdf');
 });

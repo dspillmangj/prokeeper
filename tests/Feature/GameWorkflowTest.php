@@ -16,6 +16,8 @@ beforeEach(function () {
         'password' => bcrypt('password'),
         'organization_id' => $this->org->id,
         'role' => 'admin',
+        'email_verified_at' => now(),
+        'plan' => 'pro',
     ]);
 
     $this->game = Game::create([
@@ -37,7 +39,7 @@ test('public live scoreboard renders successfully', function () {
 });
 
 test('public scorebook renders successfully', function () {
-    $response = $this->get(route('public.scorebook', 'EAG999'));
+    $response = $this->get(route('public.scorebook', ['code' => 'EAG999', 'token' => $this->game->scorebook_token]));
     $response->assertStatus(200);
     $response->assertSee('OFFICIAL BASKETBALL SCOREBOOK', false);
     $response->assertSee('Running Score Progression');
@@ -46,7 +48,7 @@ test('public scorebook renders successfully', function () {
 });
 
 test('PDF download route generates PDF stream', function () {
-    $response = $this->get(route('games.pdf', 'EAG999'));
+    $response = $this->get(route('games.pdf', ['code' => 'EAG999', 'token' => $this->game->scorebook_token]));
     $response->assertStatus(200);
     $response->assertHeader('content-type', 'application/pdf');
 });
@@ -70,4 +72,3 @@ test('operator view renders redesigned bench slot, action pad rebound boxes, and
     $response->assertSee('SUBSTITUTE PLAYERS');
     $response->assertSee('SEND IN');
 });
-

@@ -94,6 +94,26 @@ test('handles rebounds and fouls correctly', function () {
     expect($stat23->total_fouls)->toBe(1);
 });
 
+test('processes drawn foul with shortcut H correctly', function () {
+    $res = $this->service->processKeyboardInput($this->game, '23-H');
+    expect($res['success'])->toBeTrue();
+    expect($res['message'])->toContain('Drawn Foul');
+
+    $this->game->refresh();
+    // Drawn foul does not increment own team fouls
+    expect($this->game->home_fouls_current_period)->toBe(0);
+
+    $stat23 = BasketballStat::where('game_id', $this->game->id)->where('jersey_number', '23')->first();
+    expect($stat23->fouls_forced)->toBe(1);
+    // Drawn foul does NOT increment player total fouls towards fouling out
+    expect($stat23->total_fouls)->toBe(0);
+
+    // Test undo reverts fouls_forced
+    $this->service->undoLastEvent($this->game);
+    $stat23AfterUndo = BasketballStat::where('game_id', $this->game->id)->where('jersey_number', '23')->first();
+    expect($stat23AfterUndo->fouls_forced)->toBe(0);
+});
+
 test('undoes plays with mathematical consistency', function () {
     $this->service->processKeyboardInput($this->game, '23-X'); // +2 pts
     $this->service->processKeyboardInput($this->game, '11=M'); // +3 pts
@@ -279,3 +299,55 @@ test('audits fouls system: personal, offensive, and flagrant count as team fouls
     expect($stat23->total_fouls)->toBe(4);
 });
 
+test('processes 23-xa7 continuous keyboard input with assist', function () {
+    GameLineup::create([
+        'game_id' => $this->game->id,
+        'team_side' => 'home',
+        'jersey_number' => '7',
+        'player_name' => 'Toni Kukoc',
+        'is_on_court' => true,
+    ]);
+
+    $res = $this->service->processKeyboardInput($this->game, '23-xa7');
+    expect($res['success'])->toBeTrue();
+
+    $this->game->refresh();
+    expect($this->game->home_score)->toBe(2);
+
+    $lastEvent = GameEvent::where('game_id', $this->game->id)->latest('sequence')->first();
+    expect($lastEvent->action_code)->toBe('X');
+    expect($lastEvent->jersey_number)->toBe('23');
+    expect($lastEvent->assist_jersey_number)->toBe('7');
+    expect($lastEvent->description)->toContain('Ast: #7 Toni Kukoc');
+
+    $stat7 = BasketballStat::where('game_id', $this->game->id)->where('jersey_number', '7')->first();
+    expect($stat7->ast)->toBe(1);
+});
+
+test('attaches assist retroactively to last made shot', function () {
+    GameLineup::create([
+        'game_id' => $this->game->id,
+        'team_side' => 'home',
+        'jersey_number' => '7',
+        'player_name' => 'Toni Kukoc',
+        'is_on_court' => true,
+    ]);
+
+    // 1. Initial made shot without assist
+    $resShot = $this->service->recordStat($this->game, 'home', '23', 'X');
+    expect($resShot['success'])->toBeTrue();
+
+    $event = $resShot['event'];
+    expect($event->assist_jersey_number)->toBeNull();
+
+    // 2. Attach assist within window
+    $resAssist = $this->service->attachAssist($this->game, 'home', '7', $event->id);
+    expect($resAssist['success'])->toBeTrue();
+
+    $event->refresh();
+    expect($event->assist_jersey_number)->toBe('7');
+    expect($event->description)->toContain('Ast: #7 Toni Kukoc');
+
+    $stat7 = BasketballStat::where('game_id', $this->game->id)->where('jersey_number', '7')->first();
+    expect($stat7->ast)->toBe(1);
+});

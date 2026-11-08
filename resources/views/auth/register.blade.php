@@ -32,15 +32,8 @@
             <form method="POST" action="{{ route('register.post') }}" class="space-y-4">
                 @csrf
                 <div>
-                    <label for="organization_name" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">School / Organization Name</label>
-                    <input type="text" id="organization_name" name="organization_name" value="{{ old('organization_name') }}" required autofocus
-                           class="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm"
-                           placeholder="Lighthouse Christian Academy">
-                </div>
-
-                <div>
                     <label for="name" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Your Full Name</label>
-                    <input type="text" id="name" name="name" value="{{ old('name') }}" required
+                    <input type="text" id="name" name="name" value="{{ old('name') }}" required autofocus
                            class="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm"
                            placeholder="Coach Miller">
                 </div>

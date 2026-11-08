@@ -7,6 +7,7 @@ use App\Models\GameEvent;
 use App\Models\GameLineup;
 use App\Models\Organization;
 use App\Models\User;
+use App\Models\VolleyballStat;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
@@ -22,6 +23,7 @@ beforeEach(function () {
         'password' => bcrypt('password'),
         'organization_id' => $this->org->id,
         'role' => 'admin',
+        'plan' => 'pro',
     ]);
 
     $this->game = Game::create([
@@ -94,7 +96,7 @@ test('operator header displays Official Scorebook button for basketball games', 
     $response = $this->actingAs($this->user)->get(route('games.operator', $this->game->uuid));
     $response->assertStatus(200);
     $response->assertSee('Official Scorebook');
-    $response->assertSee(route('public.scorebook', $this->game->access_code));
+    $response->assertSee(route('public.scorebook', ['code' => $this->game->access_code, 'token' => $this->game->scorebook_token]));
 });
 
 test('operator header displays Share button with escapable modal and all three spectator routes', function () {
@@ -103,14 +105,14 @@ test('operator header displays Share button with escapable modal and all three s
     $response->assertDontSee('<span>Fan Live</span>', false);
     $response->assertSee('<span>Share</span>', false);
     $response->assertSee($this->game->access_code);
-    $response->assertSee(route('public.scoreboard', $this->game->access_code));
-    $response->assertSee(route('public.scorebook', $this->game->access_code));
+    $response->assertSee(route('public.stats', ['code' => $this->game->access_code, 'token' => $this->game->stats_token]));
+    $response->assertSee(route('public.scorebook', ['code' => $this->game->access_code, 'token' => $this->game->scorebook_token]));
     $response->assertSee(route('public.live', $this->game->access_code));
     $response->assertSee('showShareModal');
 });
 
 test('scorebook renders 2-page official ledger layout with 4 quarters regulation format by default', function () {
-    $response = $this->get(route('public.scorebook', $this->game->access_code));
+    $response = $this->get(route('public.scorebook', ['code' => $this->game->access_code, 'token' => $this->game->scorebook_token]));
     $response->assertStatus(200);
 
     // Page 1 Home & Page 2 Away
@@ -158,7 +160,7 @@ test('scorebook dynamically reflects 2 halves format when set by operator or pre
     ];
     $this->game->save();
 
-    $response = $this->get(route('public.scorebook', $this->game->access_code));
+    $response = $this->get(route('public.scorebook', ['code' => $this->game->access_code, 'token' => $this->game->scorebook_token]));
     $response->assertStatus(200);
 
     $response->assertSee('2 HALVES');
@@ -197,7 +199,7 @@ test('operator can configure game-level details including date, venue, officials
     expect($this->game->settings['officials']['official_scorer'])->toBe('Alice Walker');
 
     // Verify it renders on official scorebook page
-    $scorebookResponse = $this->get(route('public.scorebook', $this->game->access_code));
+    $scorebookResponse = $this->get(route('public.scorebook', ['code' => $this->game->access_code, 'token' => $this->game->scorebook_token]));
     $scorebookResponse->assertStatus(200);
     $scorebookResponse->assertSee('Cameron Indoor Stadium');
     $scorebookResponse->assertSee('Ted Valentine');
@@ -205,7 +207,7 @@ test('operator can configure game-level details including date, venue, officials
 });
 
 test('scorebook page contains landscape print directive and 2-page print layout', function () {
-    $response = $this->get(route('public.scorebook', $this->game->access_code));
+    $response = $this->get(route('public.scorebook', ['code' => $this->game->access_code, 'token' => $this->game->scorebook_token]));
     $response->assertStatus(200);
     $response->assertSee('size: letter landscape;', false);
     $response->assertSee('ncaa-page-sheet', false);
@@ -213,7 +215,7 @@ test('scorebook page contains landscape print directive and 2-page print layout'
 });
 
 test('scorebook PDF export downloads in letter landscape orientation', function () {
-    $response = $this->get(route('games.pdf', $this->game->access_code));
+    $response = $this->get(route('games.pdf', ['code' => $this->game->access_code, 'token' => $this->game->scorebook_token]));
     $response->assertStatus(200);
     $response->assertHeader('content-disposition', 'attachment; filename=ProKeeper-Scorebook-'.$this->game->access_code.'.pdf');
 });
@@ -245,7 +247,7 @@ test('officials can draw or type signature or initials in scorebook and persist 
     expect($this->game->settings['signatures']['official_scorer']['font_style'])->toBe('dancing_script');
 
     // Verify rendered on scorebook page
-    $response = $this->get(route('public.scorebook', $this->game->access_code));
+    $response = $this->get(route('public.scorebook', ['code' => $this->game->access_code, 'token' => $this->game->scorebook_token]));
     $response->assertStatus(200);
     $response->assertSee('Marcus Taylor');
     $response->assertSee('Sarah Jenkins');
@@ -258,4 +260,147 @@ test('officials can draw or type signature or initials in scorebook and persist 
 
     $this->game->refresh();
     expect(isset($this->game->settings['signatures']['referee']))->toBeFalse();
+});
+
+test('scorebook parses standard operator action codes X, M, B, V in quarter scoring and includes flagrant fouls in team fouls', function () {
+    $game = Game::create([
+        'organization_id' => $this->org->id,
+        'created_by_user_id' => $this->user->id,
+        'home_team_name' => 'Duke Blue',
+        'away_team_name' => 'UNC White',
+        'sport' => 'basketball',
+        'status' => 'active',
+        'period' => 1,
+        'home_score' => 6,
+        'away_score' => 2,
+        'access_code' => 'NCAA99',
+        'slug' => 'duke-unc-ncaa99',
+        'uuid' => (string) Str::uuid(),
+    ]);
+
+    GameLineup::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '30',
+        'player_name' => 'Kyle Filipowski',
+        'is_starter' => true,
+    ]);
+
+    // 2pt make using standard operator code 'X'
+    GameEvent::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '30',
+        'action_code' => 'X',
+        'action_type' => '2pt_make',
+        'action_name' => '2pt MAKE',
+        'points' => 2,
+        'period' => 1,
+        'sequence' => 1,
+    ]);
+
+    // 3pt make using standard operator code 'M'
+    GameEvent::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '30',
+        'action_code' => 'M',
+        'action_type' => '3pt_make',
+        'action_name' => '3pt MAKE',
+        'points' => 3,
+        'period' => 1,
+        'sequence' => 2,
+    ]);
+
+    // FT make using standard operator code 'B'
+    GameEvent::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '30',
+        'action_code' => 'B',
+        'action_type' => 'ft_make',
+        'action_name' => 'FT MAKE',
+        'points' => 1,
+        'period' => 1,
+        'sequence' => 3,
+    ]);
+
+    // Flagrant foul using 'FLAG'
+    GameEvent::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '30',
+        'action_code' => 'FLAG',
+        'action_type' => 'foul_flagrant',
+        'action_name' => 'Flagrant Foul',
+        'points' => 0,
+        'period' => 1,
+        'sequence' => 4,
+    ]);
+
+    $response = $this->get(route('public.scorebook', ['code' => $game->access_code, 'token' => $game->scorebook_token]));
+    $response->assertStatus(200);
+
+    // Verify Official Box Statistics Ledger is rendered
+    $response->assertSee('Official Box Statistics Ledger');
+    $response->assertSee('Kyle Filipowski');
+});
+
+test('scorebook renders official volleyball ledger and signatures for volleyball games', function () {
+    $game = Game::create([
+        'organization_id' => $this->org->id,
+        'created_by_user_id' => $this->user->id,
+        'home_team_name' => 'Texas Longhorns',
+        'away_team_name' => 'Nebraska Huskers',
+        'sport' => 'volleyball',
+        'status' => 'active',
+        'period' => 2,
+        'home_score' => 25,
+        'away_score' => 23,
+        'home_period_scores' => [25, 0, 0, 0, 0],
+        'away_period_scores' => [23, 0, 0, 0, 0],
+        'access_code' => 'VB2026',
+        'slug' => 'texas-vs-nebraska-vb2026',
+        'uuid' => (string) Str::uuid(),
+    ]);
+
+    GameLineup::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '02',
+        'player_name' => 'Logan Eggleston',
+        'position' => 'OH',
+        'is_starter' => true,
+    ]);
+
+    VolleyballStat::create([
+        'game_id' => $game->id,
+        'team_side' => 'home',
+        'jersey_number' => '02',
+        'player_name' => 'Logan Eggleston',
+        'sets_played' => 1,
+        'kills' => 8,
+        'attack_errors' => 1,
+        'attack_attempts' => 16,
+        'hitting_percentage' => 0.438,
+        'service_aces' => 2,
+        'digs' => 5,
+        'total_blocks' => 1.5,
+        'total_points' => 11.5,
+    ]);
+
+    $response = $this->get(route('public.scorebook', ['code' => $game->access_code, 'token' => $game->scorebook_token]));
+    $response->assertStatus(200);
+
+    // Verify Volleyball scorebook elements
+    $response->assertSee('OFFICIAL VOLLEYBALL SCOREBOOK');
+    $response->assertSee('Logan Eggleston');
+    $response->assertSee('FIRST REFEREE (R1)');
+    $response->assertSee('SECOND REFEREE (R2)');
+    $response->assertSee('LIBERO TRACKER');
+
+    // Test Volleyball Scorebook PDF export
+    $pdfResponse = $this->get(route('games.pdf', ['code' => $game->access_code, 'token' => $game->scorebook_token]));
+    $pdfResponse->assertStatus(200);
+    $pdfResponse->assertHeader('content-disposition', 'attachment; filename=ProKeeper-Scorebook-'.$game->access_code.'.pdf');
 });

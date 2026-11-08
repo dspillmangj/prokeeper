@@ -34,6 +34,15 @@ class VolleyballStat extends Model
         'total_points',
     ];
 
+    protected $attributes = [
+        'player_name' => '',
+    ];
+
+    public function setPlayerNameAttribute($value): void
+    {
+        $this->attributes['player_name'] = $value ?? '';
+    }
+
     public function game(): BelongsTo
     {
         return $this->belongsTo(Game::class);

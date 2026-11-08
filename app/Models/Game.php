@@ -15,6 +15,8 @@ class Game extends Model
     protected $fillable = [
         'uuid',
         'access_code',
+        'scorebook_token',
+        'stats_token',
         'slug',
         'organization_id',
         'created_by_user_id',
@@ -65,6 +67,12 @@ class Game extends Model
             if (empty($game->access_code)) {
                 $game->access_code = strtoupper(Str::random(6));
             }
+            if (empty($game->scorebook_token)) {
+                $game->scorebook_token = Str::random(32);
+            }
+            if (empty($game->stats_token)) {
+                $game->stats_token = Str::random(32);
+            }
             if (empty($game->slug)) {
                 $home = Str::slug($game->home_team_name ?: 'home');
                 $away = Str::slug($game->away_team_name ?: 'away');
@@ -81,6 +89,108 @@ class Game extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function gameShares(): HasMany
+    {
+        return $this->hasMany(GameShare::class);
+    }
+
+    public function isHostPro(): bool
+    {
+        if ($this->createdBy && $this->createdBy->isPro()) {
+            return true;
+        }
+
+        if ($this->organization && $this->organization->isEnterprise()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public function canBeOperatedBy(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->isAdmin() || $this->created_by_user_id === $user->id) {
+            return true;
+        }
+
+        // Same organization members
+        if ($this->organization_id && $user->organization_id === $this->organization_id) {
+            return true;
+        }
+
+        // Shared with edit permission
+        return $this->gameShares()
+            ->where(function ($q) use ($user) {
+                $q->where('shared_with_user_id', $user->id)
+                    ->orWhere('shared_with_email', $user->email);
+            })
+            ->where('permission', 'edit')
+            ->exists();
+    }
+
+    public function canBeViewedBy(?User $user, ?string $token = null, string $viewType = 'live'): bool
+    {
+        // 1. If game host is on Free plan: ONLY the authenticated creator or org owner can view
+        if (! $this->isHostPro()) {
+            if (! $user) {
+                return false;
+            }
+
+            return $user->id === $this->created_by_user_id ||
+                ($this->organization_id && $user->organization_id === $this->organization_id);
+        }
+
+        // 2. Pro / Enterprise host:
+        // Live View is public to anyone with the game code
+        if ($viewType === 'live') {
+            return true;
+        }
+
+        // Scorebook view: requires matching scorebook_token, or authenticated access
+        if ($viewType === 'scorebook') {
+            if ($token && hash_equals((string) $this->scorebook_token, (string) $token)) {
+                return true;
+            }
+
+            if ($user && ($user->id === $this->created_by_user_id || $user->organization_id === $this->organization_id)) {
+                return true;
+            }
+
+            if ($user && $this->gameShares()->where(function ($q) use ($user) {
+                $q->where('shared_with_user_id', $user->id)->orWhere('shared_with_email', $user->email);
+            })->exists()) {
+                return true;
+            }
+
+            return false;
+        }
+
+        // Stats view: requires matching stats_token, or authenticated access
+        if ($viewType === 'stats') {
+            if ($token && hash_equals((string) $this->stats_token, (string) $token)) {
+                return true;
+            }
+
+            if ($user && ($user->id === $this->created_by_user_id || $user->organization_id === $this->organization_id)) {
+                return true;
+            }
+
+            if ($user && $this->gameShares()->where(function ($q) use ($user) {
+                $q->where('shared_with_user_id', $user->id)->orWhere('shared_with_email', $user->email);
+            })->exists()) {
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
     }
 
     public function homeTeam(): BelongsTo
@@ -223,13 +333,62 @@ class Game extends Model
         return $this->calculateTimeoutsBreakdown('away');
     }
 
+    public function getHomeTimeoutsUsedAttribute(): int
+    {
+        return (int) ($this->home_timeouts_breakdown['used_total'] ?? 0);
+    }
+
+    public function getAwayTimeoutsUsedAttribute(): int
+    {
+        return (int) ($this->away_timeouts_breakdown['used_total'] ?? 0);
+    }
+
+    public function getHomeTimeoutsTakenAttribute(): int
+    {
+        return $this->home_timeouts_used;
+    }
+
+    public function getAwayTimeoutsTakenAttribute(): int
+    {
+        return $this->away_timeouts_used;
+    }
+
     public function calculateTimeoutsBreakdown(string $teamSide): array
     {
+        if ($this->sport === 'volleyball') {
+            $allowedTotal = (int) ($this->rules['timeouts_per_set'] ?? 2);
+            $timeoutEvents = $this->events()
+                ->where('team_side', $teamSide)
+                ->where('action_code', 'TIMEOUT')
+                ->where('period', $this->current_period)
+                ->where('is_undone', false)
+                ->get();
+
+            $usedTotal = $timeoutEvents->count();
+            $remTotal = ($teamSide === 'home') ? (int) $this->home_timeouts_remaining : (int) $this->away_timeouts_remaining;
+
+            return [
+                'allowed_full' => $allowedTotal,
+                'allowed_30s' => 0,
+                'allowed_ot' => 0,
+                'allowed_total' => $allowedTotal,
+                'ot_periods' => 0,
+                'used_full' => $usedTotal,
+                'used_30s' => 0,
+                'used_total' => $usedTotal,
+                'rem_full' => $remTotal,
+                'rem_30s' => 0,
+                'rem_total' => $remTotal,
+                'events' => $timeoutEvents,
+            ];
+        }
+
         $allowedFull = $this->full_timeouts_allowed;
         $regPeriods = ($this->period_format === 'halves') ? 2 : 4;
         $otPeriods = max(0, (int) $this->current_period - $regPeriods);
         $otTimeouts = $otPeriods * $this->ot_timeouts_allowed;
         $allowed30s = $this->thirty_second_timeouts_allowed + $otTimeouts;
+        $allowedTotal = $allowedFull + $allowed30s;
 
         $timeoutEvents = $this->events()
             ->where('team_side', $teamSide)
@@ -258,9 +417,11 @@ class Game extends Model
             'allowed_full' => $allowedFull,
             'allowed_30s' => $allowed30s,
             'allowed_ot' => $this->ot_timeouts_allowed,
+            'allowed_total' => $allowedTotal,
             'ot_periods' => $otPeriods,
             'used_full' => $usedFull,
             'used_30s' => $used30s,
+            'used_total' => $usedFull + $used30s,
             'rem_full' => $remFull,
             'rem_30s' => $rem30s,
             'rem_total' => $remTotal,

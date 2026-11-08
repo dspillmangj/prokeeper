@@ -12,7 +12,7 @@
             Back to Teams
         </a>
         <h1 class="text-2xl font-black text-white">Create New Team</h1>
-        <p class="text-sm text-slate-400 mt-1">Set up a team program for your organization.</p>
+        <p class="text-sm text-slate-400 mt-1">Set up a team program and roster.</p>
     </div>
 
     <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-xl">

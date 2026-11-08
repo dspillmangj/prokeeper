@@ -25,11 +25,20 @@ class GameLineup extends Model
         'subbed_in_at_clock',
     ];
 
+    protected $attributes = [
+        'player_name' => '',
+    ];
+
     protected $casts = [
         'is_starter' => 'boolean',
         'is_on_court' => 'boolean',
         'is_libero' => 'boolean',
     ];
+
+    public function setPlayerNameAttribute($value): void
+    {
+        $this->attributes['player_name'] = $value ?? '';
+    }
 
     public function game(): BelongsTo
     {

@@ -2,12 +2,22 @@
     @php
         $officials = $game->settings['officials'] ?? [];
         $signatures = $game->settings['signatures'] ?? [];
-        $rolesList = [
-            'official_scorer' => ['label' => 'Official Scorer', 'badge' => 'Scorer', 'desc' => 'Primary Table Scorekeeper'],
-            'referee' => ['label' => 'Lead Referee', 'badge' => 'Referee', 'desc' => 'Crew Chief / Head Official'],
-            'umpire1' => ['label' => 'Umpire 1', 'badge' => 'Umpire 1', 'desc' => 'Second Floor Official'],
-            'umpire2' => ['label' => 'Umpire 2', 'badge' => 'Umpire 2', 'desc' => 'Third Floor Official'],
-        ];
+        $isVolleyball = ($game->sport === 'volleyball');
+        if ($isVolleyball) {
+            $rolesList = [
+                'official_scorer' => ['label' => 'Official Scorer', 'badge' => 'Scorer', 'desc' => 'Primary Match Scorekeeper'],
+                'first_referee' => ['label' => 'First Referee (R1)', 'badge' => 'R1', 'desc' => 'Lead Match Referee'],
+                'second_referee' => ['label' => 'Second Referee (R2)', 'badge' => 'R2', 'desc' => 'Second Floor Official'],
+                'libero_tracker' => ['label' => 'Libero Tracker', 'badge' => 'Libero', 'desc' => 'Assistant Scorer / Tracking'],
+            ];
+        } else {
+            $rolesList = [
+                'official_scorer' => ['label' => 'Official Scorer', 'badge' => 'Scorer', 'desc' => 'Primary Table Scorekeeper'],
+                'referee' => ['label' => 'Lead Referee', 'badge' => 'Referee', 'desc' => 'Crew Chief / Head Official'],
+                'umpire1' => ['label' => 'Umpire 1', 'badge' => 'Umpire 1', 'desc' => 'Second Floor Official'],
+                'umpire2' => ['label' => 'Umpire 2', 'badge' => 'Umpire 2', 'desc' => 'Third Floor Official'],
+            ];
+        }
     @endphp
 
     <div class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none animate-fade-in"

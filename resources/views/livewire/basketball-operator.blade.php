@@ -9,8 +9,8 @@
          broadcastFlip: @js((bool)($game->settings['broadcast_flip'] ?? false)),
          homeScore: {{ (int)$game->home_score }},
          awayScore: {{ (int)$game->away_score }},
-         homePeriodScores: @js($game->home_period_scores ?? [0, 0, 0, 0, 0, 0]),
-         awayPeriodScores: @js($game->away_period_scores ?? [0, 0, 0, 0, 0, 0]),
+         homePeriodScores: @js($game->home_period_scores ?? ($game->period_format === 'halves' ? [0, 0] : [0, 0, 0, 0])),
+         awayPeriodScores: @js($game->away_period_scores ?? ($game->period_format === 'halves' ? [0, 0] : [0, 0, 0, 0])),
          currentPeriod: {{ (int)$game->current_period }},
          periodName: '{{ $game->period_name }}',
          possession: '{{ $game->possession_arrow ?? 'home' }}',
@@ -22,6 +22,12 @@
          away30sTimeouts: {{ (int)($game->away_timeouts_breakdown['rem_30s'] ?? 2) }},
          homeTimeouts: {{ (int)$game->home_timeouts_remaining }},
          awayTimeouts: {{ (int)$game->away_timeouts_remaining }},
+         homeFullTimeoutsTaken: {{ (int)($game->home_timeouts_breakdown['used_full'] ?? 0) }},
+         home30sTimeoutsTaken: {{ (int)($game->home_timeouts_breakdown['used_30s'] ?? 0) }},
+         awayFullTimeoutsTaken: {{ (int)($game->away_timeouts_breakdown['used_full'] ?? 0) }},
+         away30sTimeoutsTaken: {{ (int)($game->away_timeouts_breakdown['used_30s'] ?? 0) }},
+         homeTimeoutsTaken: {{ (int)($game->home_timeouts_breakdown['used_total'] ?? 0) }},
+         awayTimeoutsTaken: {{ (int)($game->away_timeouts_breakdown['used_total'] ?? 0) }},
          periodFormat: '{{ $game->period_format }}',
          timeoutsOt: {{ (int)$game->ot_timeouts_allowed }},
          timeoutsFull: {{ (int)$game->full_timeouts_allowed }},
@@ -36,7 +42,11 @@
          doubleBonusFoulThreshold: {{ (int) $game->double_bonus_threshold }},
          playerFoulLimit: {{ (int) $game->player_foul_limit }},
          recentEvents: @js($recentEvents),
+         clockSeconds: {{ (int)$game->clock_seconds_remaining }},
+         clockRunning: @js((bool)$game->clock_running),
      })">
+
+
 
     <!-- 1. TOP SCOREBOARD BAR (Compact, Zero-Waste Height, Dynamically Colored & Flippable) -->
     <div class="bg-slate-900 border-b border-slate-800 p-2 sm:p-3 shrink-0 shadow-lg rounded-2xl mb-1">
@@ -46,45 +56,63 @@
             <div class="flex-1 min-w-0 flex items-center justify-between p-2 sm:p-2.5 rounded-xl border transition-all"
                  :class="[
                      isFlipped ? 'order-3' : 'order-1',
-                     homeFouls >= {{ $game->double_bonus_threshold }}
-                         ? 'ring-2 ring-rose-500 border-rose-500 shadow-[0_0_25px_rgba(244,63,94,0.45)] animate-pulse'
-                         : (homeFouls >= {{ $game->bonus_threshold }}
-                             ? 'ring-2 ring-amber-400 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
-                             : (possession === 'home' ? 'shadow-lg ring-1 ring-white/30' : 'bg-slate-950 border-slate-800'))
+                     possession === 'home'
+                         ? 'ring-2 ring-amber-400 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
+                         : (homeFouls >= doubleBonusFoulThreshold
+                             ? 'ring-2 ring-rose-500 border-rose-500 shadow-[0_0_25px_rgba(244,63,94,0.5)] animate-pulse'
+                             : (homeFouls >= bonusFoulThreshold
+                                 ? 'ring-2 ring-amber-400 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.4)] animate-pulse'
+                                 : 'bg-slate-950 border-slate-800'))
                  ]"
                  :style="possession === 'home' ? { backgroundColor: homeTeamColor + '26', borderColor: homeTeamColor } : { borderColor: homeTeamColor + '40' }">
                 <div class="space-y-1 truncate mr-2">
-                    <div class="flex items-center space-x-1.5">
+                    <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
                         <span class="w-2.5 h-2.5 rounded-full shadow-sm" :style="{ backgroundColor: homeTeamColor }"></span>
                         <span class="text-[10px] font-black uppercase tracking-wider" :style="{ color: homeTeamColor }">HOME</span>
                         <template x-if="possession === 'home'">
-                            <span class="px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 text-[9px] font-black tracking-wider uppercase">POSS</span>
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-400 text-slate-950 font-black text-[10px] sm:text-xs tracking-wider uppercase shadow-[0_0_12px_rgba(251,191,36,0.7)] border border-amber-200 animate-pulse">
+                                <span x-show="!isFlipped" class="font-black text-xs leading-none">◀</span>
+                                <span>POSS ARROW</span>
+                                <span x-show="isFlipped" class="font-black text-xs leading-none">▶</span>
+                            </span>
                         </template>
                     </div>
                     <h2 class="text-sm sm:text-base font-black text-white truncate leading-tight">{{ $game->home_display_name }}</h2>
                     <div class="flex items-center gap-1.5 flex-wrap">
                         <!-- Prominent Team Fouls Display -->
                         <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border transition-all font-mono"
-                             :class="homeFouls >= {{ $game->double_bonus_threshold }}
-                                ? 'bg-rose-950/90 border-rose-500 text-rose-200 ring-1 ring-rose-500 shadow-md shadow-rose-900/40 animate-pulse'
-                                : (homeFouls >= {{ $game->bonus_threshold }}
-                                    ? 'bg-amber-950/90 border-amber-500 text-amber-200 ring-1 ring-amber-500 shadow-md shadow-amber-900/40'
+                             :class="homeFouls >= doubleBonusFoulThreshold
+                                ? 'bg-rose-950/90 border-rose-500 text-rose-200 ring-2 ring-rose-500 shadow-md shadow-rose-900/50 animate-pulse'
+                                : (homeFouls >= bonusFoulThreshold
+                                    ? 'bg-amber-950/90 border-amber-500 text-amber-200 ring-2 ring-amber-500 shadow-md shadow-amber-900/50 animate-pulse'
                                     : 'bg-slate-900 border-slate-700/80 text-slate-300')">
                             <span class="text-[9px] uppercase tracking-wider font-extrabold text-slate-400">FOULS</span>
                             <span class="text-sm sm:text-base font-black text-white leading-none" x-text="homeFouls"></span>
                         </div>
-                        <template x-if="homeFouls >= {{ $game->double_bonus_threshold }}">
-                            <span class="px-1.5 py-0.5 rounded-lg bg-rose-600 text-white font-black text-[9px] tracking-wider uppercase border border-rose-300 shadow-lg shadow-rose-600/50 flex items-center gap-1 animate-pulse">
+                        <template x-if="homeFouls >= doubleBonusFoulThreshold">
+                            <span class="px-2 py-0.5 rounded-lg bg-rose-600 text-white font-black text-[9px] tracking-wider uppercase border border-rose-300 shadow-lg shadow-rose-600/50 flex items-center gap-1 animate-pulse">
                                 <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
                                 DOUBLE BONUS
                             </span>
                         </template>
-                        <template x-if="homeFouls >= {{ $game->bonus_threshold }} && homeFouls < {{ $game->double_bonus_threshold }}">
-                            <span class="px-1.5 py-0.5 rounded-lg bg-amber-500 text-slate-950 font-black text-[9px] tracking-wider uppercase border border-amber-300 shadow-md shadow-amber-500/40 flex items-center gap-1">
+                        <template x-if="homeFouls >= bonusFoulThreshold && homeFouls < doubleBonusFoulThreshold">
+                            <span class="px-2 py-0.5 rounded-lg bg-amber-500 text-slate-950 font-black text-[9px] tracking-wider uppercase border border-amber-300 shadow-md shadow-amber-500/40 flex items-center gap-1 animate-pulse">
                                 <span class="w-1.5 h-1.5 rounded-full bg-slate-950"></span>
                                 BONUS
                             </span>
                         </template>
+
+                        <!-- Prominent Timeouts Display: Taken vs Remaining -->
+                        <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-slate-900 border border-slate-700/80 font-mono shadow-sm"
+                             title="Home Timeouts: Taken vs Remaining">
+                            <span class="text-[9px] uppercase tracking-wider font-extrabold text-slate-400">TO</span>
+                            <span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[9px] sm:text-[10px] font-bold border border-slate-700" title="Timeouts Taken">
+                                <span class="text-[8px] text-slate-400 uppercase font-semibold">TAKEN:</span><strong class="text-white" x-text="homeTimeoutsTaken"></strong>
+                            </span>
+                            <span class="px-1.5 py-0.2 rounded bg-amber-950/80 text-amber-300 text-[9px] sm:text-[10px] font-bold border border-amber-800/80" title="Timeouts Remaining">
+                                <span class="text-[8px] text-amber-400 uppercase font-semibold">REM:</span><strong class="text-amber-200" x-text="homeTimeouts"></strong>
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -96,23 +124,33 @@
                         <button type="button" 
                                 @click="requestTimeout('home', 'full')" 
                                 class="h-7 sm:h-8 px-1.5 sm:px-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-500 touch-active text-white flex items-center gap-1 transition shadow-sm"
-                                :title="'Home Full Timeout (Hotkey: ' + (isFlipped ? 'G' : 'F') + ')'">
+                                :title="'Home Full Timeout — Taken: ' + homeFullTimeoutsTaken + ', Remaining: ' + homeFullTimeouts + ' (Hotkey: ' + (isFlipped ? 'G' : 'F') + ')'">
                             <span class="text-[9px] sm:text-[10px] font-black uppercase tracking-tight">Full</span>
-                            <span class="px-1 py-0.2 rounded text-[8px] font-mono font-bold text-white" :style="{ backgroundColor: homeTeamColor + '40', border: '1px solid ' + homeTeamColor }" x-text="homeFullTimeouts"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-slate-300" title="Full Timeouts Taken">
+                                <span class="text-[7px] text-slate-400 uppercase font-semibold">TK:</span><span x-text="homeFullTimeoutsTaken"></span>
+                            </span>
+                            <span class="px-1 py-0.2 rounded text-[8px] font-mono font-bold text-white" :style="{ backgroundColor: homeTeamColor + '40', border: '1px solid ' + homeTeamColor }" title="Full Timeouts Remaining">
+                                <span class="text-[7px] text-slate-300 uppercase font-semibold">REM:</span><span x-text="homeFullTimeouts"></span>
+                            </span>
                             <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-700 text-[8px] font-mono font-bold text-amber-300" x-text="isFlipped ? 'G' : 'F'"></span>
                         </button>
                         <!-- 30s TO -->
                         <button type="button" 
                                 @click="requestTimeout('home', '30s')" 
                                 class="h-7 sm:h-8 px-1.5 sm:px-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-500 touch-active text-amber-300 flex items-center gap-1 transition shadow-sm"
-                                :title="'Home 30s Timeout (Hotkey: ' + (isFlipped ? 'J' : 'H') + ')'">
+                                :title="'Home 30s Timeout — Taken: ' + home30sTimeoutsTaken + ', Remaining: ' + home30sTimeouts + ' (Hotkey: ' + (isFlipped ? 'J' : 'H') + ')'">
                             <span class="text-[9px] sm:text-[10px] font-black uppercase tracking-tight text-white">30s</span>
-                            <span class="px-1 py-0.2 rounded bg-amber-950/80 border border-amber-800/80 text-[8px] font-mono font-bold text-amber-300" x-text="home30sTimeouts"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-slate-300" title="30s Timeouts Taken">
+                                <span class="text-[7px] text-slate-400 uppercase font-semibold">TK:</span><span x-text="home30sTimeoutsTaken"></span>
+                            </span>
+                            <span class="px-1 py-0.2 rounded bg-amber-950/80 border border-amber-800/80 text-[8px] font-mono font-bold text-amber-300" title="30s Timeouts Remaining">
+                                <span class="text-[7px] text-amber-400 uppercase font-semibold">REM:</span><span x-text="home30sTimeouts"></span>
+                            </span>
                             <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-700 text-[8px] font-mono font-bold text-amber-300" x-text="isFlipped ? 'J' : 'H'"></span>
                         </button>
                         <!-- Roster -->
                         <button type="button" 
-                                @click="@this.openRosterModal('home'); playSound('tap')" 
+                                @click="openRosterModal('home')" 
                                 class="h-7 sm:h-8 px-1.5 sm:px-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-500 touch-active text-cyan-300 flex items-center gap-1 transition shadow-sm"
                                 :title="'Home Roster (Hotkey: ' + (isFlipped ? 'T' : 'R') + ')'">
                             <svg class="w-3.5 h-3.5 text-cyan-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -167,25 +205,104 @@
                     </button>
                 </div>
 
-                <!-- Complete 6-Period Score Strip (Q1, Q2, Q3, Q4, OT1, OT2 in 1 Row) -->
-                <div class="grid grid-cols-6 gap-1 w-full font-mono">
-                    <template x-for="(s, idx) in [0, 1, 2, 3, 4, 5]" :key="idx">
+                <!-- HIGH-VISIBILITY GAME CLOCK & SCOREBOARD DRIFT SYNC -->
+                <div class="w-full bg-slate-950/95 border border-slate-800 rounded-xl p-1.5 flex items-center justify-between gap-1.5 shadow-inner">
+                    <!-- Start/Stop Toggle & Clock Display -->
+                    <div class="flex items-center gap-2">
                         <button type="button"
-                                @click="setPeriodFast(idx + 1)"
-                                class="py-1 px-0.5 rounded-lg transition touch-active font-mono cursor-pointer flex flex-col items-center justify-center border text-center select-none"
-                                :class="(idx + 1) === currentPeriod 
+                                @click="toggleClockFast()"
+                                class="px-2 py-0.5 rounded-lg font-black text-[10px] sm:text-xs flex items-center gap-1 transition shadow touch-active cursor-pointer"
+                                :class="clockRunning 
+                                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-2 ring-emerald-400 shadow-emerald-900/50 animate-pulse' 
+                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'"
+                                title="Toggle Clock Start/Stop (Hotkey: Space)">
+                            <span class="w-2 h-2 rounded-full" :class="clockRunning ? 'bg-white animate-ping' : 'bg-rose-500'"></span>
+                            <span x-text="clockRunning ? 'RUN' : 'STOP'"></span>
+                            <span class="px-1 py-0.2 rounded bg-black/40 text-[7px] font-mono text-amber-300">Space</span>
+                        </button>
+                        <span class="font-mono text-2xl sm:text-3xl font-black text-white tracking-wider tabular-nums leading-none scoreboard-glow"
+                              x-text="formatClock(clockSeconds)"></span>
+                    </div>
+
+                    <!-- Quick Drift Adjustments (+/- 1m, +/- 1s) & Physical Scoreboard Hotkey Hint -->
+                    <div class="flex items-center gap-1 text-[9px] font-mono">
+                        <button type="button" @click="syncClockFast(clockSeconds + 60)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700" title="Add 1 minute">+1m</button>
+                        <button type="button" @click="syncClockFast(clockSeconds - 60)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700" title="Minus 1 minute">-1m</button>
+                        <button type="button" @click="syncClockFast(clockSeconds + 1)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700" title="Add 1 second">+1s</button>
+                        <button type="button" @click="syncClockFast(clockSeconds - 1)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700" title="Minus 1 second">-1s</button>
+                        <span class="hidden md:inline px-1 py-0.5 rounded bg-slate-900 text-amber-300/80 text-[8px] font-bold border border-slate-800" title="Quick keyboard sync: Type t0800 or t2000 & press Enter">
+                            [tMMSS]
+                        </span>
+                    </div>
+                </div>
+
+                <!-- DEDICATED HIGH-VISIBILITY POSSESSION ARROW DISPLAY (Tabletop Scorer Box Style) -->
+                <div @click="togglePossession()" 
+                     class="w-full bg-slate-950/95 hover:bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner flex items-center justify-between gap-1.5 cursor-pointer touch-active transition-all select-none group"
+                     title="Click to Flip Possession Arrow (Hotkey: P or Space)">
+                    
+                    <!-- LEFT TEAM ARROW -->
+                    <div class="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-1 px-2 rounded-lg font-mono font-black text-[11px] sm:text-xs transition-all duration-200"
+                         :class="(isFlipped ? possession === 'away' : possession === 'home')
+                            ? 'bg-amber-400 text-slate-950 shadow-[0_0_16px_rgba(251,191,36,0.7)] ring-2 ring-amber-300 font-black'
+                            : 'text-slate-600 bg-slate-900/60 hover:text-slate-400 border border-transparent'">
+                        <span class="text-xs transition-transform inline-block"
+                              :class="(isFlipped ? possession === 'away' : possession === 'home') ? 'animate-pulse scale-125 font-black' : 'opacity-40'">◀</span>
+                        <span class="truncate uppercase tracking-wider" x-text="isFlipped ? awayTeamName : homeTeamName"></span>
+                    </div>
+
+                    <!-- CENTER DIVIDER BADGE -->
+                    <div class="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 border border-slate-700/80 text-[9px] font-mono font-black text-amber-300 tracking-widest uppercase shadow-sm">
+                        <span>POSS</span>
+                        <span class="px-1 py-0.2 rounded bg-slate-950 text-[8px] text-slate-400 font-bold">P</span>
+                    </div>
+
+                    <!-- RIGHT TEAM ARROW -->
+                    <div class="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-1 px-2 rounded-lg font-mono font-black text-[11px] sm:text-xs transition-all duration-200"
+                         :class="(isFlipped ? possession === 'home' : possession === 'away')
+                            ? 'bg-amber-400 text-slate-950 shadow-[0_0_16px_rgba(251,191,36,0.7)] ring-2 ring-amber-300 font-black'
+                            : 'text-slate-600 bg-slate-900/60 hover:text-slate-400 border border-transparent'">
+                        <span class="truncate uppercase tracking-wider" x-text="isFlipped ? homeTeamName : awayTeamName"></span>
+                        <span class="text-xs transition-transform inline-block"
+                              :class="(isFlipped ? possession === 'home' : possession === 'away') ? 'animate-pulse scale-125 font-black' : 'opacity-40'">▶</span>
+                    </div>
+                </div>
+
+                <!-- Dynamic Period Score Strip (4 Quarters or 2 Halves + Overtimes as needed) -->
+                <div class="flex items-stretch gap-1 w-full font-mono">
+                    <template x-for="p in getDisplayedPeriods()" :key="p">
+                        <button type="button"
+                                @click="setPeriodFast(p)"
+                                class="flex-1 min-w-0 py-1 px-0.5 rounded-lg transition touch-active font-mono cursor-pointer flex flex-col items-center justify-center border text-center select-none"
+                                :class="p === currentPeriod 
                                     ? 'bg-blue-600 text-white font-black border-blue-400 shadow-md shadow-blue-600/30 ring-1 ring-white/60' 
-                                    : (((homePeriodScores[idx] || 0) > 0 || (awayPeriodScores[idx] || 0) > 0)
+                                    : (((homePeriodScores[p - 1] || 0) > 0 || (awayPeriodScores[p - 1] || 0) > 0)
                                         ? 'bg-slate-950 text-slate-200 hover:text-white hover:bg-slate-800 border-slate-700'
                                         : 'bg-slate-950/70 text-slate-400 hover:text-slate-200 hover:bg-slate-900 border-slate-800/80')"
-                                :title="'Switch to ' + ((idx + 1) <= 4 ? 'Quarter ' + (idx + 1) : 'Overtime ' + (idx + 1 - 4))">
+                                :title="formatPeriodTitle(p)">
                             <span class="text-[9px] sm:text-[10px] font-black uppercase tracking-tight leading-tight"
-                                  :class="(idx + 1) === currentPeriod ? 'text-amber-300' : 'text-slate-400'"
-                                  x-text="(idx + 1) <= 4 ? 'Q' + (idx + 1) : 'OT' + (idx + 1 - 4)">
+                                  :class="p === currentPeriod ? 'text-amber-300' : 'text-slate-400'"
+                                  x-text="formatPeriodBadge(p)">
                             </span>
-                            <span class="text-[8px] sm:text-[9px] font-bold mt-0.5 leading-tight"
-                                  :class="(idx + 1) === currentPeriod ? 'text-white font-black' : 'text-slate-300'"
-                                  x-text="(homePeriodScores[idx] || 0) + '-' + (awayPeriodScores[idx] || 0)">
+                            <span class="text-[8px] sm:text-[9px] font-bold mt-0.5 leading-tight truncate max-w-full"
+                                  :class="p === currentPeriod ? 'text-white font-black' : 'text-slate-300'"
+                                  x-text="(homePeriodScores[p - 1] || 0) + '-' + (awayPeriodScores[p - 1] || 0)">
+                            </span>
+                        </button>
+                    </template>
+
+                    <!-- Add Overtime Button -->
+                    <template x-if="canAddOvertime()">
+                        <button type="button"
+                                @click="addOvertime()"
+                                class="py-1 px-1.5 sm:px-2 rounded-lg transition touch-active font-mono cursor-pointer flex flex-col items-center justify-center border border-dashed border-slate-700 hover:border-amber-400 bg-slate-950/60 hover:bg-slate-900 text-slate-400 hover:text-amber-300 select-none shrink-0"
+                                title="Add Overtime (+ OT)">
+                            <span class="text-[10px] sm:text-xs font-black leading-tight flex items-center gap-0.5 text-amber-400">
+                                <svg class="w-2.5 h-2.5 sm:w-3 sm:h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+                                <span class="text-[9px] uppercase tracking-tight">OT</span>
+                            </span>
+                            <span class="text-[7px] sm:text-[8px] font-bold mt-0.5 leading-tight text-slate-400">
+                                ADD
                             </span>
                         </button>
                     </template>
@@ -196,11 +313,13 @@
             <div class="flex-1 min-w-0 flex items-center justify-between p-2 sm:p-2.5 rounded-xl border transition-all"
                  :class="[
                      isFlipped ? 'order-1' : 'order-3',
-                     awayFouls >= {{ $game->double_bonus_threshold }}
-                         ? 'ring-2 ring-rose-500 border-rose-500 shadow-[0_0_25px_rgba(244,63,94,0.45)] animate-pulse'
-                         : (awayFouls >= {{ $game->bonus_threshold }}
-                             ? 'ring-2 ring-amber-400 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
-                             : (possession === 'away' ? 'shadow-lg ring-1 ring-white/30' : 'bg-slate-950 border-slate-800'))
+                     possession === 'away'
+                         ? 'ring-2 ring-amber-400 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
+                         : (awayFouls >= doubleBonusFoulThreshold
+                             ? 'ring-2 ring-rose-500 border-rose-500 shadow-[0_0_25px_rgba(244,63,94,0.5)] animate-pulse'
+                             : (awayFouls >= bonusFoulThreshold
+                                 ? 'ring-2 ring-amber-400 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.4)] animate-pulse'
+                                 : 'bg-slate-950 border-slate-800'))
                  ]"
                  :style="possession === 'away' ? { backgroundColor: awayTeamColor + '26', borderColor: awayTeamColor } : { borderColor: awayTeamColor + '40' }">
                 <!-- Score Counter & Direct Touch +/- + Away Timeouts & Roster -->
@@ -229,23 +348,33 @@
                         <button type="button" 
                                 @click="requestTimeout('away', 'full')" 
                                 class="h-7 sm:h-8 px-1.5 sm:px-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-500 touch-active text-white flex items-center gap-1 transition shadow-sm"
-                                :title="'Away Full Timeout (Hotkey: ' + (isFlipped ? 'F' : 'G') + ')'">
+                                :title="'Away Full Timeout — Taken: ' + awayFullTimeoutsTaken + ', Remaining: ' + awayFullTimeouts + ' (Hotkey: ' + (isFlipped ? 'F' : 'G') + ')'">
                             <span class="text-[9px] sm:text-[10px] font-black uppercase tracking-tight">Full</span>
-                            <span class="px-1 py-0.2 rounded text-[8px] font-mono font-bold text-white" :style="{ backgroundColor: awayTeamColor + '40', border: '1px solid ' + awayTeamColor }" x-text="awayFullTimeouts"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-slate-300" title="Full Timeouts Taken">
+                                <span class="text-[7px] text-slate-400 uppercase font-semibold">TK:</span><span x-text="awayFullTimeoutsTaken"></span>
+                            </span>
+                            <span class="px-1 py-0.2 rounded text-[8px] font-mono font-bold text-white" :style="{ backgroundColor: awayTeamColor + '40', border: '1px solid ' + awayTeamColor }" title="Full Timeouts Remaining">
+                                <span class="text-[7px] text-slate-300 uppercase font-semibold">REM:</span><span x-text="awayFullTimeouts"></span>
+                            </span>
                             <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-700 text-[8px] font-mono font-bold text-amber-300" x-text="isFlipped ? 'F' : 'G'"></span>
                         </button>
                         <!-- 30s TO -->
                         <button type="button" 
                                 @click="requestTimeout('away', '30s')" 
                                 class="h-7 sm:h-8 px-1.5 sm:px-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-500 touch-active text-amber-300 flex items-center gap-1 transition shadow-sm"
-                                :title="'Away 30s Timeout (Hotkey: ' + (isFlipped ? 'H' : 'J') + ')'">
+                                :title="'Away 30s Timeout — Taken: ' + away30sTimeoutsTaken + ', Remaining: ' + away30sTimeouts + ' (Hotkey: ' + (isFlipped ? 'H' : 'J') + ')'">
                             <span class="text-[9px] sm:text-[10px] font-black uppercase tracking-tight text-white">30s</span>
-                            <span class="px-1 py-0.2 rounded bg-amber-950/80 border border-amber-800/80 text-[8px] font-mono font-bold text-amber-300" x-text="away30sTimeouts"></span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 border border-slate-700 text-[8px] font-mono font-bold text-slate-300" title="30s Timeouts Taken">
+                                <span class="text-[7px] text-slate-400 uppercase font-semibold">TK:</span><span x-text="away30sTimeoutsTaken"></span>
+                            </span>
+                            <span class="px-1 py-0.2 rounded bg-amber-950/80 border border-amber-800/80 text-[8px] font-mono font-bold text-amber-300" title="30s Timeouts Remaining">
+                                <span class="text-[7px] text-amber-400 uppercase font-semibold">REM:</span><span x-text="away30sTimeouts"></span>
+                            </span>
                             <span class="px-1 py-0.2 rounded bg-slate-950 border border-slate-700 text-[8px] font-mono font-bold text-amber-300" x-text="isFlipped ? 'H' : 'J'"></span>
                         </button>
                         <!-- Roster -->
                         <button type="button" 
-                                @click="@this.openRosterModal('away'); playSound('tap')" 
+                                @click="openRosterModal('away')" 
                                 class="h-7 sm:h-8 px-1.5 sm:px-2 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-500 touch-active text-cyan-300 flex items-center gap-1 transition shadow-sm"
                                 :title="'Away Roster (Hotkey: ' + (isFlipped ? 'R' : 'T') + ')'">
                             <svg class="w-3.5 h-3.5 text-cyan-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -255,33 +384,48 @@
                 </div>
 
                 <div class="space-y-1 truncate text-right ml-2">
-                    <div class="flex items-center justify-end space-x-1.5">
+                    <div class="flex items-center justify-end space-x-1.5 flex-wrap gap-y-1">
                         <template x-if="possession === 'away'">
-                            <span class="px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 text-[9px] font-black tracking-wider uppercase">POSS</span>
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-400 text-slate-950 font-black text-[10px] sm:text-xs tracking-wider uppercase shadow-[0_0_12px_rgba(251,191,36,0.7)] border border-amber-200 animate-pulse">
+                                <span x-show="isFlipped" class="font-black text-xs leading-none">◀</span>
+                                <span>POSS ARROW</span>
+                                <span x-show="!isFlipped" class="font-black text-xs leading-none">▶</span>
+                            </span>
                         </template>
                         <span class="text-[10px] font-black uppercase tracking-wider" :style="{ color: awayTeamColor }">AWAY</span>
                         <span class="w-2.5 h-2.5 rounded-full shadow-sm" :style="{ backgroundColor: awayTeamColor }"></span>
                     </div>
                     <h2 class="text-sm sm:text-base font-black text-white truncate leading-tight">{{ $game->away_display_name }}</h2>
                     <div class="flex items-center justify-end gap-1.5 flex-wrap">
-                        <template x-if="awayFouls >= {{ $game->double_bonus_threshold }}">
-                            <span class="px-1.5 py-0.5 rounded-lg bg-rose-600 text-white font-black text-[9px] tracking-wider uppercase border border-rose-300 shadow-lg shadow-rose-600/50 flex items-center gap-1 animate-pulse">
+                        <!-- Prominent Timeouts Display: Taken vs Remaining -->
+                        <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-slate-900 border border-slate-700/80 font-mono shadow-sm"
+                             title="Away Timeouts: Taken vs Remaining">
+                            <span class="text-[9px] uppercase tracking-wider font-extrabold text-slate-400">TO</span>
+                            <span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 text-[9px] sm:text-[10px] font-bold border border-slate-700" title="Timeouts Taken">
+                                <span class="text-[8px] text-slate-400 uppercase font-semibold">TAKEN:</span><strong class="text-white" x-text="awayTimeoutsTaken"></strong>
+                            </span>
+                            <span class="px-1.5 py-0.2 rounded bg-amber-950/80 text-amber-300 text-[9px] sm:text-[10px] font-bold border border-amber-800/80" title="Timeouts Remaining">
+                                <span class="text-[8px] text-amber-400 uppercase font-semibold">REM:</span><strong class="text-amber-200" x-text="awayTimeouts"></strong>
+                            </span>
+                        </div>
+                        <template x-if="awayFouls >= doubleBonusFoulThreshold">
+                            <span class="px-2 py-0.5 rounded-lg bg-rose-600 text-white font-black text-[9px] tracking-wider uppercase border border-rose-300 shadow-lg shadow-rose-600/50 flex items-center gap-1 animate-pulse">
                                 <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
                                 DOUBLE BONUS
                             </span>
                         </template>
-                        <template x-if="awayFouls >= {{ $game->bonus_threshold }} && awayFouls < {{ $game->double_bonus_threshold }}">
-                            <span class="px-1.5 py-0.5 rounded-lg bg-amber-500 text-slate-950 font-black text-[9px] tracking-wider uppercase border border-amber-300 shadow-md shadow-amber-500/40 flex items-center gap-1">
+                        <template x-if="awayFouls >= bonusFoulThreshold && awayFouls < doubleBonusFoulThreshold">
+                            <span class="px-2 py-0.5 rounded-lg bg-amber-500 text-slate-950 font-black text-[9px] tracking-wider uppercase border border-amber-300 shadow-md shadow-amber-500/40 flex items-center gap-1 animate-pulse">
                                 <span class="w-1.5 h-1.5 rounded-full bg-slate-950"></span>
                                 BONUS
                             </span>
                         </template>
                         <!-- Prominent Team Fouls Display -->
                         <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border transition-all font-mono"
-                             :class="awayFouls >= {{ $game->double_bonus_threshold }}
-                                ? 'bg-rose-950/90 border-rose-500 text-rose-200 ring-1 ring-rose-500 shadow-md shadow-rose-900/40 animate-pulse'
-                                : (awayFouls >= {{ $game->bonus_threshold }}
-                                    ? 'bg-amber-950/90 border-amber-500 text-amber-200 ring-1 ring-amber-500 shadow-md shadow-amber-900/40'
+                             :class="awayFouls >= doubleBonusFoulThreshold
+                                ? 'bg-rose-950/90 border-rose-500 text-rose-200 ring-2 ring-rose-500 shadow-md shadow-rose-900/50 animate-pulse'
+                                : (awayFouls >= bonusFoulThreshold
+                                    ? 'bg-amber-950/90 border-amber-500 text-amber-200 ring-2 ring-amber-500 shadow-md shadow-amber-900/50 animate-pulse'
                                     : 'bg-slate-900 border-slate-700/80 text-slate-300')">
                             <span class="text-[9px] uppercase tracking-wider font-extrabold text-slate-400">FOULS</span>
                             <span class="text-sm sm:text-base font-black text-white leading-none" x-text="awayFouls"></span>
@@ -293,72 +437,464 @@
         </div>
     </div>
 
-    <!-- PROMINENT HIGH-VISIBILITY LIVE FEEDBACK & ACTION STATUS BANNER -->
-    <div class="shrink-0 mb-1 rounded-xl transition-all duration-200 border px-3 sm:px-4 py-2 flex items-center justify-between gap-3 shadow-md select-none"
-         :class="[
-             feedbackType === 'error'
-                 ? 'bg-gradient-to-r from-rose-950/95 via-red-950/90 to-rose-950/95 border-rose-500 text-rose-100 shadow-[0_0_25px_rgba(244,63,94,0.45)] ring-2 ring-rose-500/70'
-                 : (feedbackType === 'success'
-                     ? 'bg-gradient-to-r from-slate-900/95 via-emerald-950/60 to-slate-900/95 border-emerald-500/50 text-emerald-100 shadow-sm'
-                     : 'bg-gradient-to-r from-slate-900/95 via-slate-800/80 to-slate-900/95 border-slate-700/80 text-slate-100 shadow-sm')
-         ]"
-         data-testid="operator-feedback-banner">
+    <!-- PROMINENT HIGH-VISIBILITY LIVE FEEDBACK & ACTION STATUS BANNER (SPLIT WHEN ERRORS PRESENT) -->
+    <div class="shrink-0 mb-1 select-none relative" data-testid="operator-feedback-banner">
+        <!-- CASE A: NO ERRORS -> Full-width Feedback, Status, or Attention Alert Banner -->
+        <template x-if="!errorQueue || errorQueue.length === 0">
+            <div class="rounded-xl transition-all duration-200 border px-3 sm:px-4 py-2 flex items-center justify-between gap-3 shadow-md relative overflow-hidden"
+                 :class="[
+                     (attentionAlert && attentionAlert.type !== 'error')
+                         ? (attentionAlert.type === 'foul_out'
+                             ? (alertFlashActive
+                                 ? 'bg-gradient-to-r from-red-950/95 via-slate-900 to-red-950/95 border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.5)] ring-2 ring-red-500 animate-bombastic-strobe hazard-stripes-red'
+                                 : 'bg-gradient-to-r from-red-950/90 via-slate-900 to-red-950/90 border-red-500/80 shadow-[0_0_15px_rgba(239,68,68,0.3)] ring-1 ring-red-500/80')
+                             : (attentionAlert.type === 'double_bonus'
+                                 ? (alertFlashActive
+                                     ? 'bg-gradient-to-r from-fuchsia-950/95 via-slate-900 to-purple-950/95 border-fuchsia-400 shadow-[0_0_25px_rgba(217,70,239,0.5)] ring-2 ring-fuchsia-400 animate-bombastic-strobe'
+                                     : 'bg-gradient-to-r from-fuchsia-950/90 via-slate-900 to-purple-950/90 border-fuchsia-400/80 shadow-[0_0_15px_rgba(217,70,239,0.3)] ring-1 ring-fuchsia-400/80')
+                                 : (attentionAlert.type === 'bonus'
+                                     ? (alertFlashActive
+                                         ? 'bg-gradient-to-r from-amber-950/95 via-slate-900 to-amber-950/95 border-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.5)] ring-2 ring-amber-400 animate-bombastic-strobe hazard-stripes-amber'
+                                         : 'bg-gradient-to-r from-amber-950/90 via-slate-900 to-amber-950/90 border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.3)] ring-1 ring-amber-400/80')
+                                     : 'bg-gradient-to-r from-rose-950/90 via-slate-900 to-rose-950/90 border-rose-500 text-rose-100 shadow-[0_0_15px_rgba(244,63,94,0.3)] ring-1 ring-rose-500/80')))
+                         : (feedbackType === 'success'
+                             ? 'bg-gradient-to-r from-slate-900/95 via-emerald-950/60 to-slate-900/95 border-emerald-500/50 text-emerald-100 shadow-sm'
+                             : 'bg-gradient-to-r from-slate-900/95 via-slate-800/80 to-slate-900/95 border-slate-700/80 text-slate-100 shadow-sm')
+                 ]">
+                <!-- Left Icon & Type Badge -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-white font-black text-[11px] uppercase tracking-wider shadow-sm animate-pulse"
+                             :class="[
+                                 attentionAlert.type === 'foul_out' ? 'bg-red-600' : (
+                                     attentionAlert.type === 'double_bonus' ? 'bg-fuchsia-600' : (
+                                         attentionAlert.type === 'bonus' ? 'bg-amber-500 text-slate-950' : 'bg-rose-600'
+                                     )
+                                 )
+                             ]">
+                            <template x-if="attentionAlert.type === 'foul_out'">
+                                <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                            </template>
+                            <template x-if="attentionAlert.type === 'double_bonus'">
+                                <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            </template>
+                            <template x-if="attentionAlert.type === 'bonus'">
+                                <svg class="w-4 h-4 text-slate-950 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                            </template>
+                            <span x-text="attentionAlert.title || (attentionAlert.type === 'foul_out' ? 'PLAYER FOULED OUT' : (attentionAlert.type === 'double_bonus' ? 'DOUBLE BONUS' : 'BONUS'))"></span>
+                        </div>
+                    </template>
+                    <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackType === 'success'">
+                        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/90 text-white font-black text-[11px] uppercase tracking-wider shadow-sm">
+                            <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span>ACTION</span>
+                        </div>
+                    </template>
+                    <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackType !== 'success'">
+                        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-blue-300 font-black text-[11px] uppercase tracking-wider shadow-sm">
+                            <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span>STATUS</span>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Center: Full Feedback / Attention Text -->
+                <div class="flex-1 min-w-0 text-left">
+                    <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p x-text="attentionAlert.message" 
+                               class="text-xs sm:text-sm md:text-base font-black tracking-tight leading-snug break-words text-white">
+                            </p>
+                            <span class="text-xs text-slate-300 font-medium hidden md:inline"
+                                  x-show="attentionAlert.details"
+                                  x-text="attentionAlert.details">
+                            </span>
+                            <span class="text-[10px] font-mono text-slate-400 bg-black/40 px-1.5 py-0.5 rounded border border-white/10 shrink-0"
+                                  x-show="alertRemainingSeconds > 0">
+                                Active (<span class="font-bold text-white" x-text="alertRemainingSeconds + 's'"></span>)
+                            </span>
+                        </div>
+                    </template>
+                    <template x-if="!attentionAlert || attentionAlert.type === 'error'">
+                        <p x-text="(feedbackType === 'error' || !feedbackMessage) ? 'Ready' : feedbackMessage" 
+                           class="text-xs sm:text-sm md:text-base font-extrabold tracking-tight leading-snug break-words"
+                           :class="feedbackType === 'success' ? 'text-emerald-100' : 'text-slate-100'">
+                        </p>
+                    </template>
+                </div>
+
+                <!-- Right Side: Action & Quick Dismiss -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <template x-if="attentionAlert && attentionAlert.type === 'foul_out' && attentionAlert.jersey">
+                        <button type="button"
+                                @click="quickSubForPlayer(attentionAlert.side, attentionAlert.jersey)"
+                                class="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase tracking-wider shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                                title="Substitute this player immediately">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                            <span>Sub Out [S]</span>
+                        </button>
+                    </template>
+                    <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                        <button type="button"
+                                @click="dismissAttentionAlert()"
+                                class="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white font-bold text-xs transition flex items-center gap-1 cursor-pointer"
+                                title="Dismiss notice (Esc)">
+                            <span class="hidden sm:inline">Dismiss</span>
+                            <kbd class="px-1 py-0.2 rounded bg-black/40 text-[9px] font-mono border border-white/20">Esc</kbd>
+                        </button>
+                    </template>
+                    <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackMessage && feedbackMessage !== 'Ready' && feedbackType !== 'error'">
+                        <button type="button"
+                                @click="feedbackMessage = 'Ready'; feedbackType = 'info';"
+                                class="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition"
+                                title="Dismiss notice">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </template>
+                </div>
+
+                <!-- Shrinking Duration Progress Bar -->
+                <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                    <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-black/40 overflow-hidden">
+                        <div class="h-full transition-all duration-1000 ease-linear"
+                             :class="[
+                                 attentionAlert.type === 'foul_out' ? 'bg-red-500' : (
+                                     attentionAlert.type === 'double_bonus' ? 'bg-fuchsia-400' : 'bg-amber-400'
+                                 )
+                             ]"
+                             :style="{ width: alertTotalSeconds > 0 ? ((alertRemainingSeconds / alertTotalSeconds) * 100) + '%' : '0%' }">
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <!-- CASE B: ERRORS PRESENT -> Split Bar (Left: Feedback / Attention | Right: Error Queue & Hotkey Dismiss) -->
+        <template x-if="errorQueue && errorQueue.length > 0">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 relative">
+                <!-- LEFT HALF: LIVE FEEDBACK & ACTION STATUS / ATTENTION ALERT -->
+                <div class="rounded-xl transition-all duration-200 border px-3 sm:px-4 py-2 flex items-center justify-between gap-2.5 shadow-sm min-w-0 relative overflow-hidden"
+                     :class="[
+                         (attentionAlert && attentionAlert.type !== 'error')
+                             ? (attentionAlert.type === 'foul_out'
+                                 ? 'bg-gradient-to-r from-red-950/95 via-slate-900 to-red-950/95 border-red-500 shadow-sm ring-1 ring-red-500/80'
+                                 : (attentionAlert.type === 'double_bonus'
+                                     ? 'bg-gradient-to-r from-fuchsia-950/95 via-slate-900 to-purple-950/95 border-fuchsia-400 shadow-sm ring-1 ring-fuchsia-400/80'
+                                     : 'bg-gradient-to-r from-amber-950/95 via-slate-900 to-amber-950/95 border-amber-400 shadow-sm ring-1 ring-amber-400/80'))
+                             : (feedbackType === 'success'
+                                 ? 'bg-gradient-to-r from-slate-900/95 via-emerald-950/60 to-slate-900/95 border-emerald-500/50 text-emerald-100 shadow-sm'
+                                 : 'bg-gradient-to-r from-slate-900/95 via-slate-800/80 to-slate-900/95 border-slate-700/80 text-slate-100 shadow-sm')
+                     ]">
+                    <div class="flex items-center gap-2 shrink-0">
+                        <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                            <div class="flex items-center gap-1 px-2 py-0.5 rounded-lg text-white font-black text-[10px] uppercase tracking-wider shadow-sm animate-pulse shrink-0"
+                                 :class="[
+                                     attentionAlert.type === 'foul_out' ? 'bg-red-600' : (
+                                         attentionAlert.type === 'double_bonus' ? 'bg-fuchsia-600' : 'bg-amber-500 text-slate-950'
+                                     )
+                                 ]">
+                                <span x-text="attentionAlert.title || (attentionAlert.type === 'foul_out' ? 'FOUL OUT' : (attentionAlert.type === 'double_bonus' ? 'DBL BONUS' : 'BONUS'))"></span>
+                            </div>
+                        </template>
+                        <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackType === 'success'">
+                            <div class="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-600/90 text-white font-black text-[10px] uppercase tracking-wider shadow-sm">
+                                <svg class="w-3.5 h-3.5 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                                </svg>
+                                <span>ACTION</span>
+                            </div>
+                        </template>
+                        <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackType !== 'success'">
+                            <div class="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-800 border border-slate-700 text-blue-300 font-black text-[10px] uppercase tracking-wider shadow-sm">
+                                <svg class="w-3.5 h-3.5 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <span>STATUS</span>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="flex-1 min-w-0 text-left">
+                        <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                            <p x-text="attentionAlert.message" 
+                               class="text-xs sm:text-sm font-bold tracking-tight truncate leading-snug text-white"
+                               :title="attentionAlert.message">
+                            </p>
+                        </template>
+                        <template x-if="!attentionAlert || attentionAlert.type === 'error'">
+                            <p x-text="(feedbackType === 'error' || !feedbackMessage) ? 'Ready' : feedbackMessage" 
+                               class="text-xs sm:text-sm font-bold tracking-tight truncate leading-snug"
+                               :class="feedbackType === 'success' ? 'text-emerald-100' : 'text-slate-100'"
+                               :title="(feedbackType === 'error' || !feedbackMessage) ? 'Ready' : feedbackMessage">
+                            </p>
+                        </template>
+                    </div>
+
+                    <div class="flex items-center gap-1 shrink-0">
+                        <template x-if="attentionAlert && attentionAlert.type === 'foul_out' && attentionAlert.jersey">
+                            <button type="button"
+                                    @click="quickSubForPlayer(attentionAlert.side, attentionAlert.jersey)"
+                                    class="px-2 py-0.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-black text-[10px] uppercase tracking-wider shadow-sm transition active:scale-95 flex items-center gap-1 shrink-0"
+                                    title="Substitute this player immediately">
+                                <span>Sub [S]</span>
+                            </button>
+                        </template>
+                        <template x-if="attentionAlert && attentionAlert.type !== 'error'">
+                            <button type="button"
+                                    @click="dismissAttentionAlert()"
+                                    class="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition shrink-0"
+                                    title="Dismiss notice (Esc)">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </template>
+                        <template x-if="(!attentionAlert || attentionAlert.type === 'error') && feedbackMessage && feedbackMessage !== 'Ready' && feedbackType !== 'error'">
+                            <button type="button"
+                                    @click="feedbackMessage = 'Ready'; feedbackType = 'info';"
+                                    class="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition"
+                                    title="Dismiss notice">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- RIGHT HALF: ERROR (Front Error, Counter Badge, Hover to Expand, Hotkey Dismiss) -->
+                <div class="rounded-xl border border-rose-500/80 bg-gradient-to-r from-rose-950/95 via-red-950/90 to-rose-950/95 text-rose-100 shadow-[0_0_25px_rgba(244,63,94,0.35)] ring-1 ring-rose-500/70 px-3 sm:px-4 py-2 flex items-center justify-between gap-2.5 transition-all duration-200 min-w-0 relative">
+                    <!-- Left: Alert Badge & Front Error Text -->
+                    <div class="flex items-center gap-2 min-w-0 flex-1">
+                        <div class="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-600 text-white font-black text-[10px] uppercase tracking-wider shadow-md shadow-rose-950/50 animate-pulse shrink-0">
+                            <svg class="w-3.5 h-3.5 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                            <span>ALERT</span>
+                        </div>
+                        <div class="flex-1 min-w-0 text-left">
+                            <p x-text="frontError ? frontError.message : ''" 
+                               :title="frontError ? frontError.message : ''"
+                               class="text-xs sm:text-sm font-extrabold text-rose-100 truncate tracking-tight leading-snug">
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Right: Special Area (+N) and Hotkey Dismiss Controls -->
+                    <div class="flex items-center gap-2 shrink-0">
+                        <!-- SPECIAL HOVER/EXPAND AREA: Badge showing (+N) additional errors -->
+                        <div class="relative flex items-center"
+                             @mouseenter="openErrorHover()"
+                             @mouseleave="closeErrorHover()">
+                            <template x-if="errorQueue.length > 1">
+                                <button type="button"
+                                        @click="toggleErrorList()"
+                                        class="px-2 py-0.5 rounded-full bg-rose-600 hover:bg-rose-500 text-white font-black text-xs tracking-wider shadow-md border border-rose-400/60 hover:scale-105 active:scale-95 transition-all flex items-center gap-1 cursor-pointer"
+                                        :title="'View all ' + errorQueue.length + ' errors at a glance (Hover, click, or Alt+E)'">
+                                    <span x-text="`(+${errorQueue.length - 1})`"></span>
+                                    <svg class="w-3 h-3 text-rose-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                </button>
+                            </template>
+                            <template x-if="errorQueue.length === 1">
+                                <button type="button"
+                                        @click="toggleErrorList()"
+                                        class="p-1 rounded-lg text-rose-300 hover:text-white hover:bg-rose-800/60 transition cursor-pointer"
+                                        title="View error details (Hover, click, or Alt+E)">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                </button>
+                            </template>
+                        </div>
+
+                        <!-- DISMISS BUTTON: Dismiss front error (Hotkey: ` | Shift+` for all) -->
+                        <button type="button"
+                                @click.exact="dismissFrontError()"
+                                @click.shift="dismissAllErrors()"
+                                class="px-2 py-1 rounded-lg bg-rose-900/80 hover:bg-rose-600 border border-rose-700/70 hover:border-rose-400 text-rose-200 hover:text-white transition flex items-center gap-1.5 text-xs font-bold shadow-sm cursor-pointer"
+                                title="Dismiss error (` key, Shift+` for all)">
+                            <span class="font-mono text-[10px] bg-black/50 px-1 py-0.2 rounded text-rose-300 border border-rose-700/60">`</span>
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <!-- EXPANDED "AT A GLANCE" ERROR FLYOUT / POPOVER -->
+                    <div x-show="showErrorList"
+                         x-cloak
+                         x-transition:enter="transition ease-out duration-150"
+                         x-transition:enter-start="opacity-0 translate-y-1 scale-95"
+                         x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+                         x-transition:leave="transition ease-in duration-100"
+                         x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+                         x-transition:leave-end="opacity-0 translate-y-1 scale-95"
+                         @mouseenter="cancelCloseErrorHover()"
+                         @mouseleave="closeErrorHover()"
+                         @click.outside="showErrorList = false"
+                         class="absolute right-0 top-full mt-2 z-50 w-80 sm:w-96 md:w-[460px] max-w-[95vw] bg-slate-900 border-2 border-rose-500/80 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-rose-500/50 backdrop-blur-md">
+                        <!-- Popover Header -->
+                        <div class="px-3.5 py-2.5 bg-rose-950/80 border-b border-rose-900/60 flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <div class="p-1 rounded-md bg-rose-600 text-white shrink-0">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h4 class="text-xs font-black uppercase tracking-wider text-rose-100">Errors at a Glance</h4>
+                                        <span class="px-1.5 py-0.2 rounded-full bg-rose-500/40 text-rose-200 text-[10px] font-black border border-rose-400/30" x-text="errorQueue.length"></span>
+                                    </div>
+                                    <p class="text-[10px] text-rose-300 font-medium">Hotkey [<span class="font-mono text-white">`</span>] dismiss front • [<span class="font-mono text-white">Shift+`</span>] all • Auto-clears in 30s</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <button type="button"
+                                        @click="dismissAllErrors()"
+                                        class="px-2 py-1 rounded-lg bg-rose-800 hover:bg-rose-700 text-white text-[11px] font-black tracking-wide transition border border-rose-600/50 shadow-sm cursor-pointer"
+                                        title="Dismiss all errors (Shift+`)">
+                                    Dismiss All
+                                </button>
+                                <button type="button"
+                                        @click="showErrorList = false"
+                                        class="p-1 rounded-lg text-rose-300 hover:text-white hover:bg-rose-800/60 transition cursor-pointer"
+                                        title="Close (Esc)">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Popover Error List -->
+                        <div class="max-h-72 overflow-y-auto divide-y divide-slate-800 p-2 space-y-1.5">
+                            <template x-for="(err, index) in errorQueue" :key="err.id">
+                                <div class="p-2.5 rounded-xl transition flex items-start justify-between gap-3"
+                                     :class="index === 0 ? 'bg-rose-950/40 border border-rose-500/40' : 'bg-slate-800/60 border border-slate-700/50 hover:bg-slate-800'">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <template x-if="index === 0">
+                                                <span class="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-rose-600 text-white tracking-wider animate-pulse">Front / Latest</span>
+                                            </template>
+                                            <template x-if="index > 0">
+                                                <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-700 text-slate-300" x-text="`#${index + 1}`"></span>
+                                            </template>
+                                            <span class="text-[10px] text-slate-400 font-mono" x-text="err.timeStr"></span>
+                                        </div>
+                                        <p class="text-xs font-semibold text-rose-100 break-words leading-relaxed" x-text="err.message"></p>
+                                    </div>
+                                    <button type="button"
+                                            @click="dismissError(err.id)"
+                                            class="p-1 rounded-lg text-slate-400 hover:text-rose-200 hover:bg-rose-900/50 transition shrink-0 cursor-pointer"
+                                            title="Dismiss this error">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Popover Footer -->
+                        <div class="px-3 py-1.5 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                            <span><kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-200 font-mono border border-slate-700">Alt+E</kbd> toggle • <kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-200 font-mono border border-slate-700">`</kbd> dismiss front • 30s auto-clear</span>
+                            <span><kbd class="px-1 py-0.5 rounded bg-slate-800 text-slate-200 font-mono border border-slate-700">Esc</kbd> to close</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- 1.5. POST-SHOT 3-SECOND KEYBOARD ASSIST COUNTDOWN HUD -->
+    <div x-cloak
+         x-show="assistWindow && assistWindow.active"
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0 -translate-y-2 scale-98"
+         x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+         x-transition:leave-end="opacity-0 -translate-y-2 scale-98"
+         class="shrink-0 mb-1 select-none relative z-30"
+         data-testid="operator-assist-countdown-hud">
         
-        <!-- Left Icon & Type Badge -->
-        <div class="flex items-center gap-2 shrink-0">
-            <!-- ERROR BADGE -->
-            <template x-if="feedbackType === 'error'">
-                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-600 text-white font-black text-[11px] uppercase tracking-wider shadow-md shadow-rose-950/50 animate-pulse">
-                    <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                    </svg>
-                    <span>ALERT</span>
+        <div class="relative overflow-hidden rounded-xl border-2 transition-all duration-200 px-3.5 py-2 shadow-xl backdrop-blur-md"
+             :class="assistWindow?.waitingForJersey 
+                 ? 'bg-gradient-to-r from-slate-950 via-amber-950/80 to-slate-950 border-amber-400 ring-2 ring-amber-400/50 shadow-amber-950/60' 
+                 : 'bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-emerald-500/80 shadow-emerald-950/40'">
+
+            <!-- Top Row: Details & Actions -->
+            <div class="flex items-center justify-between gap-3 relative z-10">
+                <!-- Left: Shot Summary Badge -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <span class="px-2 py-0.5 rounded-lg text-white font-mono font-black text-xs uppercase tracking-wide shadow"
+                          :class="assistWindow?.actionCode === 'M' ? 'bg-teal-600 border border-teal-400/80' : 'bg-emerald-600 border border-emerald-400/80'"
+                          x-text="assistWindow?.actionCode === 'M' ? '+3 3PT MADE' : '+2 2PT MADE'">
+                    </span>
+
+                    <span class="text-xs sm:text-sm font-black text-white truncate flex items-center gap-1.5">
+                        <span :style="{ color: assistWindow?.teamSide === 'home' ? homeTeamColor : awayTeamColor }">
+                            <span x-text="assistWindow?.teamSide === 'home' ? homeTeamName : awayTeamName"></span>
+                            <span class="text-white font-mono" x-text="'#' + (assistWindow?.shooterJersey || '')"></span>
+                        </span>
+                        <span class="text-slate-300 font-medium hidden sm:inline" x-text="assistWindow?.shooterName ? '(' + assistWindow.shooterName + ')' : ''"></span>
+                    </span>
                 </div>
-            </template>
 
-            <!-- SUCCESS BADGE -->
-            <template x-if="feedbackType === 'success'">
-                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/90 text-white font-black text-[11px] uppercase tracking-wider shadow-sm">
-                    <svg class="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    <span>ACTION</span>
+                <!-- Center: Interactive Prompt / Listening State -->
+                <div class="flex-1 min-w-0 text-center">
+                    <template x-if="!assistWindow?.waitingForJersey">
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black text-[10px] sm:text-xs font-mono shadow animate-pulse">
+                                Press [A]
+                            </span>
+                            <span class="text-xs sm:text-sm font-bold text-amber-200">
+                                + Teammate # for Assist
+                            </span>
+                            <span class="text-[10px] text-slate-400 font-mono hidden md:inline">
+                                (or continue typing next play)
+                            </span>
+                        </div>
+                    </template>
+
+                    <template x-if="assistWindow?.waitingForJersey">
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="text-xs sm:text-sm font-black text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                                Assist by:
+                            </span>
+                            <span class="px-2 py-0.5 rounded-lg bg-amber-400/20 border border-amber-400/80 font-mono font-black text-base text-amber-300 min-w-[3rem] tracking-widest shadow-inner inline-block">
+                                <span x-text="'#' + (assistWindow?.assistBuffer || '')"></span>
+                                <span x-show="!assistWindow?.assistBuffer" class="animate-pulse opacity-60">_</span>
+                            </span>
+                            <template x-if="assistWindow?.matchedPlayer">
+                                <span class="text-xs sm:text-sm font-black text-emerald-400 flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                    <span x-text="assistWindow?.matchedPlayer.player_name || ('#' + assistWindow?.matchedPlayer.jersey_number)"></span>
+                                </span>
+                            </template>
+                            <span class="text-[10px] text-slate-400 font-mono hidden lg:inline">
+                                [Enter] or pause to confirm
+                            </span>
+                        </div>
+                    </template>
                 </div>
-            </template>
 
-            <!-- INFO / READY BADGE -->
-            <template x-if="feedbackType !== 'error' && feedbackType !== 'success'">
-                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-blue-300 font-black text-[11px] uppercase tracking-wider shadow-sm">
-                    <svg class="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <span>STATUS</span>
+                <!-- Right: Countdown or Cancel -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <template x-if="!assistWindow?.waitingForJersey">
+                        <span class="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-amber-300 font-mono font-bold text-xs tracking-tight"
+                              x-text="(assistWindow?.secondsRemaining || 0).toFixed(1) + 's'">
+                        </span>
+                    </template>
+                    <button type="button"
+                            @click="closeAssistWindow()"
+                            class="p-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition"
+                            title="Dismiss assist window (Esc)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
                 </div>
-            </template>
-        </div>
+            </div>
 
-        <!-- Center: Full Feedback Text (Never Truncated, High Contrast, Legible) -->
-        <div class="flex-1 min-w-0 text-left">
-            <p x-text="feedbackMessage || 'Ready'" 
-               class="text-xs sm:text-sm md:text-base font-extrabold tracking-tight leading-snug break-words"
-               :class="[
-                   feedbackType === 'error'
-                       ? 'text-rose-100'
-                       : (feedbackType === 'success' ? 'text-emerald-100' : 'text-slate-100')
-               ]">
-            </p>
-        </div>
-
-        <!-- Right Side: Quick Dismiss (Non-blocking, keyboard speed first) -->
-        <div class="flex items-center gap-2 shrink-0">
-            <template x-if="feedbackMessage && feedbackMessage !== 'Ready'">
-                <button type="button"
-                        @click="feedbackMessage = 'Ready'; feedbackType = 'info';"
-                        class="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition"
-                        title="Dismiss notice">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </template>
+            <!-- Bottom: Smooth Progress Countdown Bar -->
+            <div x-show="!assistWindow?.waitingForJersey" class="absolute bottom-0 left-0 right-0 h-1 bg-slate-800/60 overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-emerald-400 via-amber-400 to-amber-500 transition-all duration-75 ease-linear"
+                     :style="{ width: (assistWindow?.progressPercent || 0) + '%' }">
+                </div>
+            </div>
         </div>
     </div>
 
@@ -391,7 +927,7 @@
                                 selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[0]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : (getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[0]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}
-                                        ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-500 shadow-lg shadow-rose-950/80 animate-pulse'
+                                        ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500 shadow-xl shadow-red-950/90 animate-pulse hazard-stripes-red'
                                         : (getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[0]?.jersey_number).total_fouls >= ({{ $game->player_foul_limit }} - 1)
                                             ? 'bg-slate-950/90 hover:bg-slate-900 border-amber-500/80 ring-1 ring-amber-500/50'
                                             : 'bg-slate-950/90 hover:bg-slate-900'))
@@ -407,8 +943,9 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <span x-show="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[0]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                      class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                    5 FOULS
+                                      class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                    <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span x-text="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[0]?.jersey_number).total_fouls + 'F - OUT'"></span>
                                 </span>
                                 <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]" title="Points">
                                     <span x-text="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[0]?.jersey_number).points"></span>p
@@ -445,7 +982,7 @@
                                 selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[1]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : (getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[1]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}
-                                        ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-500 shadow-lg shadow-rose-950/80 animate-pulse'
+                                        ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500 shadow-xl shadow-red-950/90 animate-pulse hazard-stripes-red'
                                         : (getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[1]?.jersey_number).total_fouls >= ({{ $game->player_foul_limit }} - 1)
                                             ? 'bg-slate-950/90 hover:bg-slate-900 border-amber-500/80 ring-1 ring-amber-500/50'
                                             : 'bg-slate-950/90 hover:bg-slate-900'))
@@ -461,8 +998,9 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <span x-show="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[1]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                      class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                    5 FOULS
+                                      class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                    <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span x-text="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[1]?.jersey_number).total_fouls + 'F - OUT'"></span>
                                 </span>
                                 <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]" title="Points">
                                     <span x-text="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[1]?.jersey_number).points"></span>p
@@ -499,7 +1037,7 @@
                                 selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[2]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : (getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[2]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}
-                                        ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-500 shadow-lg shadow-rose-950/80 animate-pulse'
+                                        ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500 shadow-xl shadow-red-950/90 animate-pulse hazard-stripes-red'
                                         : (getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[2]?.jersey_number).total_fouls >= ({{ $game->player_foul_limit }} - 1)
                                             ? 'bg-slate-950/90 hover:bg-slate-900 border-amber-500/80 ring-1 ring-amber-500/50'
                                             : 'bg-slate-950/90 hover:bg-slate-900'))
@@ -515,8 +1053,9 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <span x-show="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[2]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                      class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                    5 FOULS
+                                      class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                    <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span x-text="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[2]?.jersey_number).total_fouls + 'F - OUT'"></span>
                                 </span>
                                 <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]" title="Points">
                                     <span x-text="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[2]?.jersey_number).points"></span>p
@@ -553,7 +1092,7 @@
                                 selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[3]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : (getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[3]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}
-                                        ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-500 shadow-lg shadow-rose-950/80 animate-pulse'
+                                        ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500 shadow-xl shadow-red-950/90 animate-pulse hazard-stripes-red'
                                         : (getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[3]?.jersey_number).total_fouls >= ({{ $game->player_foul_limit }} - 1)
                                             ? 'bg-slate-950/90 hover:bg-slate-900 border-amber-500/80 ring-1 ring-amber-500/50'
                                             : 'bg-slate-950/90 hover:bg-slate-900'))
@@ -569,8 +1108,9 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <span x-show="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[3]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                      class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                    5 FOULS
+                                      class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                    <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span x-text="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[3]?.jersey_number).total_fouls + 'F - OUT'"></span>
                                 </span>
                                 <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]" title="Points">
                                     <span x-text="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[3]?.jersey_number).points"></span>p
@@ -607,7 +1147,7 @@
                                 selectedPlayer && selectedPlayer.side === (isFlipped ? 'away' : 'home') && selectedPlayer.jersey == (isFlipped ? awayCourt : homeCourt)[4]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : (getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[4]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}
-                                        ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-500 shadow-lg shadow-rose-950/80 animate-pulse'
+                                        ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500 shadow-xl shadow-red-950/90 animate-pulse hazard-stripes-red'
                                         : (getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[4]?.jersey_number).total_fouls >= ({{ $game->player_foul_limit }} - 1)
                                             ? 'bg-slate-950/90 hover:bg-slate-900 border-amber-500/80 ring-1 ring-amber-500/50'
                                             : 'bg-slate-950/90 hover:bg-slate-900'))
@@ -623,8 +1163,9 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <span x-show="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[4]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                      class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                    5 FOULS
+                                      class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                    <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span x-text="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[4]?.jersey_number).total_fouls + 'F - OUT'"></span>
                                 </span>
                                 <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]" title="Points">
                                     <span x-text="getPlayerStat(isFlipped ? 'away' : 'home', (isFlipped ? awayCourt : homeCourt)[4]?.jersey_number).points"></span>p
@@ -700,7 +1241,7 @@
                                 selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[0]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : (getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[0]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}
-                                        ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-500 shadow-lg shadow-rose-950/80 animate-pulse'
+                                        ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500 shadow-xl shadow-red-950/90 animate-pulse hazard-stripes-red'
                                         : (getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[0]?.jersey_number).total_fouls >= ({{ $game->player_foul_limit }} - 1)
                                             ? 'bg-slate-950/90 hover:bg-slate-900 border-amber-500/80 ring-1 ring-amber-500/50'
                                             : 'bg-slate-950/90 hover:bg-slate-900'))
@@ -716,8 +1257,9 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <span x-show="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[0]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                      class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                    5 FOULS
+                                      class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                    <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span x-text="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[0]?.jersey_number).total_fouls + 'F - OUT'"></span>
                                 </span>
                                 <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]" title="Points">
                                     <span x-text="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[0]?.jersey_number).points"></span>p
@@ -754,7 +1296,7 @@
                                 selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[1]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : (getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[1]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}
-                                        ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-500 shadow-lg shadow-rose-950/80 animate-pulse'
+                                        ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500 shadow-xl shadow-red-950/90 animate-pulse hazard-stripes-red'
                                         : (getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[1]?.jersey_number).total_fouls >= ({{ $game->player_foul_limit }} - 1)
                                             ? 'bg-slate-950/90 hover:bg-slate-900 border-amber-500/80 ring-1 ring-amber-500/50'
                                             : 'bg-slate-950/90 hover:bg-slate-900'))
@@ -770,8 +1312,9 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <span x-show="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[1]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                      class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                    5 FOULS
+                                      class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                    <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span x-text="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[1]?.jersey_number).total_fouls + 'F - OUT'"></span>
                                 </span>
                                 <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]" title="Points">
                                     <span x-text="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[1]?.jersey_number).points"></span>p
@@ -808,7 +1351,7 @@
                                 selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[2]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : (getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[2]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}
-                                        ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-500 shadow-lg shadow-rose-950/80 animate-pulse'
+                                        ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500 shadow-xl shadow-red-950/90 animate-pulse hazard-stripes-red'
                                         : (getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[2]?.jersey_number).total_fouls >= ({{ $game->player_foul_limit }} - 1)
                                             ? 'bg-slate-950/90 hover:bg-slate-900 border-amber-500/80 ring-1 ring-amber-500/50'
                                             : 'bg-slate-950/90 hover:bg-slate-900'))
@@ -824,8 +1367,9 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <span x-show="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[2]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                      class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                    5 FOULS
+                                      class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                    <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span x-text="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[2]?.jersey_number).total_fouls + 'F - OUT'"></span>
                                 </span>
                                 <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]" title="Points">
                                     <span x-text="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[2]?.jersey_number).points"></span>p
@@ -862,7 +1406,7 @@
                                 selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[3]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : (getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[3]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}
-                                        ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-500 shadow-lg shadow-rose-950/80 animate-pulse'
+                                        ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500 shadow-xl shadow-red-950/90 animate-pulse hazard-stripes-red'
                                         : (getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[3]?.jersey_number).total_fouls >= ({{ $game->player_foul_limit }} - 1)
                                             ? 'bg-slate-950/90 hover:bg-slate-900 border-amber-500/80 ring-1 ring-amber-500/50'
                                             : 'bg-slate-950/90 hover:bg-slate-900'))
@@ -878,8 +1422,9 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <span x-show="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[3]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                      class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                    5 FOULS
+                                      class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                    <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span x-text="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[3]?.jersey_number).total_fouls + 'F - OUT'"></span>
                                 </span>
                                 <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]" title="Points">
                                     <span x-text="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[3]?.jersey_number).points"></span>p
@@ -938,7 +1483,7 @@
                                 selectedPlayer && selectedPlayer.side === (isFlipped ? 'home' : 'away') && selectedPlayer.jersey == (isFlipped ? homeCourt : awayCourt)[4]?.jersey_number
                                     ? 'text-white border-white ring-2 ring-white/50' 
                                     : (getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[4]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}
-                                        ? 'bg-rose-950/40 border-rose-500 ring-2 ring-rose-500 shadow-lg shadow-rose-950/80 animate-pulse'
+                                        ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500 shadow-xl shadow-red-950/90 animate-pulse hazard-stripes-red'
                                         : (getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[4]?.jersey_number).total_fouls >= ({{ $game->player_foul_limit }} - 1)
                                             ? 'bg-slate-950/90 hover:bg-slate-900 border-amber-500/80 ring-1 ring-amber-500/50'
                                             : 'bg-slate-950/90 hover:bg-slate-900'))
@@ -954,8 +1499,9 @@
                             </div>
                             <div class="flex items-center gap-1">
                                 <span x-show="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[4]?.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                      class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                    5 FOULS
+                                      class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                    <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                    <span x-text="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[4]?.jersey_number).total_fouls + 'F - OUT'"></span>
                                 </span>
                                 <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]" title="Points">
                                     <span x-text="getPlayerStat(isFlipped ? 'home' : 'away', (isFlipped ? homeCourt : awayCourt)[4]?.jersey_number).points"></span>p
@@ -1038,8 +1584,9 @@
                                     <span class="font-bold text-amber-300" x-text="'#' + player.jersey_number"></span>
                                     <div class="flex items-center gap-1">
                                         <span x-show="getPlayerStat(benchSelectSide, player.jersey_number).total_fouls >= {{ $game->player_foul_limit }}" 
-                                              class="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-sm">
-                                            5 FOULS
+                                              class="px-1.5 py-0.2 rounded bg-red-600 text-white font-black text-[8px] tracking-wider uppercase animate-pulse shadow-md flex items-center gap-1">
+                                            <span class="w-1 h-1 rounded-full bg-white animate-ping"></span>
+                                            <span x-text="getPlayerStat(benchSelectSide, player.jersey_number).total_fouls + 'F - OUT'"></span>
                                         </span>
                                         <span class="px-1.5 py-0.2 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 font-mono font-black text-[9px]">
                                             <span x-text="getPlayerStat(benchSelectSide, player.jersey_number).points"></span>p
@@ -1106,8 +1653,9 @@
                             <div class="flex items-center gap-2">
                                 <h3 class="text-base sm:text-xl font-black text-white leading-tight" x-text="selectedPlayer.name"></h3>
                                 <template x-if="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).total_fouls >= {{ $game->player_foul_limit }}">
-                                    <span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[9px] font-black uppercase tracking-wider animate-pulse shadow-md">
-                                        5 FOULS (FOULED OUT)
+                                    <span class="px-2 py-0.5 rounded-lg bg-red-600 text-white text-[10px] font-black uppercase tracking-wider animate-pulse shadow-md flex items-center gap-1">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+                                        <span x-text="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).total_fouls + ' FOULS (FOULED OUT)'"></span>
                                     </span>
                                 </template>
                             </div>
@@ -1123,7 +1671,7 @@
                                     <strong x-text="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).total_fouls"></strong>/{{ $game->player_foul_limit }} Fouls 
                                     (<span x-text="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).fouls_pers"></span> PF, 
                                      <span x-text="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).fouls_off"></span> OF, 
-                                     <span x-text="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).fouls_tech"></span> TF<template x-if="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).fouls_flagrant > 0">, <span x-text="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).fouls_flagrant"></span> FF</template>)
+                                     <span x-text="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).fouls_tech"></span> TF<template x-if="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).fouls_flagrant > 0">, <span x-text="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).fouls_flagrant"></span> FF</template><template x-if="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).fouls_forced > 0">, <span x-text="getPlayerStat(selectedPlayer.side, selectedPlayer.jersey).fouls_forced"></span> DF</template>)
                                 </span>
                             </div>
                         </div>
@@ -1347,7 +1895,7 @@
                                     Fouls
                                 </span>
                             </div>
-                            <div class="grid grid-cols-3 gap-1.5 sm:gap-2 flex-1 items-stretch">
+                            <div class="grid grid-cols-4 gap-1.5 sm:gap-2 flex-1 items-stretch">
                                 <button @click="executeAction('F')" class="py-2.5 sm:py-3 px-1.5 rounded-xl bg-red-700 hover:bg-red-600 active:scale-[0.98] transition-all text-white border border-red-500/80 shadow-md shadow-red-950 flex flex-col items-center justify-center">
                                     <div class="flex items-center gap-1">
                                         <span class="text-xs sm:text-sm font-black">PERS FOUL</span>
@@ -1368,6 +1916,13 @@
                                         <span class="px-1 py-0.2 rounded bg-amber-950 border border-amber-400/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">T</span>
                                     </div>
                                     <span class="text-[8px] sm:text-[9px] font-mono opacity-85 mt-0.5">Technical</span>
+                                </button>
+                                <button @click="executeAction('H')" class="py-2.5 sm:py-3 px-1.5 rounded-xl bg-rose-900 hover:bg-rose-800 active:scale-[0.98] transition-all text-white border border-rose-700/80 shadow-md shadow-rose-950 flex flex-col items-center justify-center">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-xs sm:text-sm font-black">DRAWN</span>
+                                        <span class="px-1 py-0.2 rounded bg-rose-950 border border-rose-400/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300">H</span>
+                                    </div>
+                                    <span class="text-[8px] sm:text-[9px] font-mono opacity-85 mt-0.5">Drawn Foul</span>
                                 </button>
                             </div>
                         </div>
@@ -1512,9 +2067,9 @@
                         </div>
                     </div>
 
-                    <button @click="showLineupModal = false" 
+                    <button @click="cancelSubOperation()" 
                             class="p-1 sm:p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-rose-900/80 border border-slate-700 hover:border-rose-500 transition shadow shrink-0" 
-                            title="Close (Esc)">
+                            title="Cancel (Esc)">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
@@ -1646,9 +2201,14 @@
                     <div x-show="pendingSubCount() === 0"></div>
 
                     <div class="flex items-center space-x-2">
-                        <button @click="showLineupModal = false" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
-                            <span>Done (Keep Lined Up)</span>
+                        <button @click="cancelSubOperation()" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                            <span>Cancel</span>
                             <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-slate-300">Esc</span>
+                        </button>
+                        <button x-show="pendingSubCount() > 0" 
+                                @click="keepSubsWaiting()" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                            <span>Keep Waiting</span>
+                            <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-indigo-400/60 text-[8px] font-mono text-amber-300 font-bold">Tab</span>
                         </button>
                         <button x-show="pendingSubCount() > 0" 
                                 @click="openExecuteSubModal()" 
@@ -1688,9 +2248,9 @@
                         </div>
                     </div>
 
-                    <button @click="showExecuteSubModal = false" 
+                    <button @click="cancelSubOperation()" 
                             class="p-1 sm:p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-rose-900/80 border border-slate-700 hover:border-rose-500 transition shadow shrink-0" 
-                            title="Close (Esc)">
+                            title="Cancel (Esc)">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
@@ -1881,9 +2441,13 @@
                     </button>
 
                     <div class="flex items-center space-x-2">
-                        <button @click="showExecuteSubModal = false" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
-                            <span>Cancel (Keep Waiting)</span>
+                        <button @click="cancelSubOperation()" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                            <span>Cancel</span>
                             <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-slate-600 text-[8px] font-mono text-slate-300">Esc</span>
+                        </button>
+                        <button @click="keepSubsWaiting()" class="h-9 sm:h-10 px-3 sm:px-4 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 touch-active">
+                            <span>Keep Waiting</span>
+                            <span class="px-1.5 py-0.2 rounded bg-slate-950 border border-indigo-400/60 text-[8px] font-mono text-amber-300 font-bold">Tab</span>
                         </button>
                         <button @click="executeAllPendingSubs()" 
                                 :disabled="!canExecutePendingSubs()"
@@ -1909,13 +2473,20 @@
             
             <!-- TOGGLE POSSESSION ARROW -->
             <button @click="togglePossession()" 
-                    class="h-full min-h-[48px] py-1.5 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 touch-active border border-slate-700 text-amber-300 flex flex-col items-center justify-center shadow transition min-w-0"
-                    title="Toggle Possession (Hotkey: P)">
+                    class="h-full min-h-[48px] py-1.5 px-2 rounded-xl touch-active border flex flex-col items-center justify-center shadow transition min-w-0"
+                    :class="possession 
+                        ? 'bg-gradient-to-b from-slate-800 to-amber-950/40 border-amber-500/70 text-amber-300 shadow-md shadow-amber-500/20' 
+                        : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'"
+                    title="Toggle Possession Arrow (Hotkey: P or Space)">
                 <div class="flex items-center gap-1 sm:gap-1.5 max-w-full truncate">
                     <span class="text-[10px] sm:text-xs font-black uppercase tracking-wider truncate">FLIP POSS</span>
-                    <span class="px-1.5 py-0.2 rounded bg-slate-950/80 border border-slate-600 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300 shrink-0">P</span>
+                    <span class="px-1.5 py-0.2 rounded bg-slate-950/90 border border-amber-400/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300 shrink-0">P</span>
                 </div>
-                <span class="text-[9px] sm:text-[10px] font-mono text-white mt-0.5 truncate max-w-full" x-text="possession.toUpperCase() + ' ARROW'"></span>
+                <div class="flex items-center gap-1 text-[9px] sm:text-[10px] font-mono font-black text-white mt-0.5 truncate max-w-full">
+                    <span x-show="(!isFlipped && possession === 'home') || (isFlipped && possession === 'away')" class="text-amber-400 font-black">◀</span>
+                    <span x-text="possession.toUpperCase() + ' ARROW'"></span>
+                    <span x-show="(!isFlipped && possession === 'away') || (isFlipped && possession === 'home')" class="text-amber-400 font-black">▶</span>
+                </div>
             </button>
 
             <!-- FLIP COURT SIDES -->
@@ -1939,7 +2510,7 @@
                     <span class="text-[10px] sm:text-xs font-black uppercase tracking-wider truncate">+ NEXT PERIOD</span>
                     <span class="px-1.5 py-0.2 rounded bg-emerald-950/80 border border-emerald-400/50 text-[8px] sm:text-[9px] font-mono font-bold text-amber-300 shrink-0" x-show="currentPeriod < 6">N</span>
                 </div>
-                <span class="text-[9px] sm:text-[10px] font-mono mt-0.5 truncate max-w-full" :class="currentPeriod >= 6 ? 'text-slate-400' : 'text-emerald-100'" x-text="currentPeriod >= 6 ? 'Max (Period 6)' : ((currentPeriod + 1) <= 4 ? 'Period ' + (currentPeriod + 1) : 'OT' + (currentPeriod + 1 - 4))"></span>
+                <span class="text-[9px] sm:text-[10px] font-mono mt-0.5 truncate max-w-full" :class="currentPeriod >= 6 ? 'text-slate-400' : 'text-emerald-100'" x-text="currentPeriod >= 6 ? 'Max (Period 6)' : formatPeriodName(currentPeriod + 1)"></span>
             </button>
 
             <!-- SUBSTITUTION DOCK BUTTON (LINE UP & SEND IN) - SPANS 2 COLUMNS FOR PROMINENCE -->
@@ -2006,10 +2577,22 @@
                 T/O
             </div>
             
-            <div class="space-y-1">
+            <div class="space-y-2">
                 <h3 class="text-xl font-black text-white uppercase tracking-wider">Charge Timeout?</h3>
                 <p class="text-base font-bold text-amber-300" x-text="pendingTimeout ? (pendingTimeout.teamName + ' • ' + (pendingTimeout.timeoutTypeLabel || pendingTimeout.typeLabel || 'Timeout')) : ''"></p>
-                <p class="text-xs text-slate-400 font-mono" x-text="pendingTimeout ? ('Timeouts remaining: ' + (pendingTimeout.formattedRemaining || (pendingTimeout.remFull + ' Full, ' + pendingTimeout.rem30s + ' 30s (' + (pendingTimeout.remFull + pendingTimeout.rem30s) + ' Total)'))) : ''"></p>
+                
+                <div class="grid grid-cols-2 gap-2 text-center pt-1" x-show="pendingTimeout">
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                        <span class="text-[9px] uppercase tracking-wider text-slate-400 font-extrabold block">Timeouts Taken</span>
+                        <div class="text-xl font-mono font-black text-slate-200" x-text="pendingTimeout ? pendingTimeout.totalTaken : 0"></div>
+                        <div class="text-[10px] font-mono text-slate-400" x-text="pendingTimeout ? (pendingTimeout.takenFull + ' Full • ' + pendingTimeout.taken30s + ' 30s') : ''"></div>
+                    </div>
+                    <div class="p-2.5 rounded-xl bg-amber-950/40 border border-amber-800/60">
+                        <span class="text-[9px] uppercase tracking-wider text-amber-400 font-extrabold block">Timeouts Remaining</span>
+                        <div class="text-xl font-mono font-black text-amber-300" x-text="pendingTimeout ? pendingTimeout.totalRemaining : 0"></div>
+                        <div class="text-[10px] font-mono text-amber-200/80" x-text="pendingTimeout ? (pendingTimeout.remFull + ' Full • ' + pendingTimeout.rem30s + ' 30s') : ''"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="grid grid-cols-2 gap-3 pt-2">
@@ -2100,11 +2683,11 @@
                                 :class="pbpFilterPeriod === 'all' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'">
                             All
                         </button>
-                        <template x-for="p in Math.min(6, Math.max(4, currentPeriod))" :key="p">
+                        <template x-for="p in getDisplayedPeriods()" :key="p">
                             <button @click="pbpFilterPeriod = p" 
                                     class="px-2 py-0.5 rounded-lg text-[10px] font-bold transition font-mono"
                                     :class="pbpFilterPeriod == p ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-emerald-300'"
-                                    x-text="p <= 4 ? 'Q' + p : 'OT' + (p - 4)">
+                                    x-text="formatPeriodBadge(p)">
                             </button>
                         </template>
                     </div>
@@ -2157,7 +2740,7 @@
                             <!-- Left: Period & Team Badge & Jersey -->
                             <div class="flex items-center space-x-2 shrink-0">
                                 <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[9px] font-black"
-                                      x-text="'Q' + (event.period || 1)">
+                                      x-text="formatPeriodBadge(event.period || 1)">
                                 </span>
                                 
                                 <template x-if="event.jersey_number">
@@ -2310,13 +2893,13 @@
                     <!-- Period Selector -->
                     <div>
                         <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Period / Quarter</label>
-                        <div class="grid grid-cols-6 gap-1.5">
-                            <template x-for="p in Math.min(6, Math.max(4, currentPeriod))" :key="p">
+                        <div class="flex items-stretch gap-1.5">
+                            <template x-for="p in getDisplayedPeriods()" :key="p">
                                 <button type="button" 
                                         @click="editingEvent.period = p"
-                                        class="py-1.5 rounded-lg font-mono font-bold text-xs border transition"
+                                        class="flex-1 min-w-0 py-1.5 rounded-lg font-mono font-bold text-xs border transition text-center"
                                         :class="editingEvent.period == p ? 'bg-emerald-600 text-white border-white' : 'bg-slate-950 text-slate-300 border-slate-800'">
-                                    <span x-text="p <= 4 ? 'Q' + p : 'OT' + (p - 4)"></span>
+                                    <span x-text="formatPeriodBadge(p)"></span>
                                 </button>
                             </template>
                         </div>
@@ -2352,7 +2935,7 @@
                                 <option value="F">Personal Foul</option>
                                 <option value="R">Offensive Foul</option>
                                 <option value="T">Technical Foul</option>
-                                <option value="H">Forced Foul</option>
+                                <option value="H">Drawn Foul</option>
                             </optgroup>
                             <optgroup label="Administrative & Audit">
                                 <option value="TIMEOUT">Timeout Charged</option>
@@ -2454,7 +3037,7 @@
                                 <option value="F">Personal Foul</option>
                                 <option value="R">Offensive Foul</option>
                                 <option value="T">Technical Foul</option>
-                                <option value="H">Forced Foul</option>
+                                <option value="H">Drawn Foul</option>
                             </optgroup>
                             <optgroup label="Administrative & Audit">
                                 <option value="TIMEOUT">Timeout Charged</option>
@@ -2487,13 +3070,13 @@
                     <!-- Period Selector -->
                     <div>
                         <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Period / Quarter</label>
-                        <div class="grid grid-cols-6 gap-1.5">
-                            <template x-for="p in Math.min(6, Math.max(4, currentPeriod))" :key="p">
+                        <div class="flex items-stretch gap-1.5">
+                            <template x-for="p in getDisplayedPeriods()" :key="p">
                                 <button type="button" 
                                         @click="newEvent.period = p"
-                                        class="py-1.5 rounded-lg font-mono font-bold text-xs border transition"
+                                        class="flex-1 min-w-0 py-1.5 rounded-lg font-mono font-bold text-xs border transition text-center"
                                         :class="newEvent.period == p ? 'bg-emerald-600 text-white border-white' : 'bg-slate-950 text-slate-300 border-slate-800'">
-                                    <span x-text="p <= 4 ? 'Q' + p : 'OT' + (p - 4)"></span>
+                                    <span x-text="formatPeriodBadge(p)"></span>
                                 </button>
                             </template>
                         </div>
@@ -2522,49 +3105,48 @@
     </template>
 
 
-    <!-- ON-THE-FLY SPREADSHEET ROSTER MANAGEMENT MODAL -->
-    @if ($showRosterModal)
-        <div wire:key="in-game-roster-modal-{{ $rosterModalTeam }}-{{ $rosterModalLineups->pluck('id')->join('-') }}"
-             class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none animate-fade-in"
-             @keydown.window.escape.prevent="$wire.closeRosterModal()"
-             wire:keydown.escape="closeRosterModal"
-             x-data="inGameRosterSpreadsheet({
-                 sport: 'basketball',
-                 teamSide: '{{ $rosterModalTeam }}',
-                 initialPlayers: {{ Js::from($rosterModalLineups->map(function($l) {
-                     return [
-                         'id' => $l->id,
-                         'jersey_number' => (string)$l->jersey_number,
-                         'name' => $l->player_name,
-                         'position' => (string)($l->position ?? ''),
-                         'is_starter' => (bool)$l->is_starter,
-                         'is_on_court' => (bool)$l->is_on_court,
-                     ];
-                 })->values()) }}
-             })"
-             @keydown.window="handleWindowKeydown($event)">
+    <!-- ON-THE-FLY SPREADSHEET ROSTER MANAGEMENT MODAL (0ms Instant Alpine Modal) -->
+    <div x-show="showRosterModal || $wire.showRosterModal"
+         x-cloak
+         class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 select-none animate-fade-in"
+         @keydown.window.escape.prevent="closeRosterModal(); $wire.closeRosterModal()"
+         x-data="inGameRosterSpreadsheet({
+             sport: 'basketball',
+             teamSide: '{{ $rosterModalTeam }}',
+             initialPlayers: {{ Js::from($rosterModalLineups->map(function($l) {
+                 return [
+                     'id' => $l->id,
+                     'jersey_number' => (string)$l->jersey_number,
+                     'name' => $l->player_name,
+                     'position' => (string)($l->position ?? ''),
+                     'is_starter' => (bool)$l->is_starter,
+                     'is_on_court' => (bool)$l->is_on_court,
+                 ];
+             })->values()) }}
+         })"
+         @keydown.window="handleWindowKeydown($event)">
+        
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full p-4 sm:p-5 shadow-2xl space-y-3 max-h-[92vh] flex flex-col">
             
-            <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full p-4 sm:p-5 shadow-2xl space-y-3 max-h-[92vh] flex flex-col">
-                
-                <!-- Modal Header: Team Switcher & Save -->
-                <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
-                    <!-- Home / Away Pill Buttons -->
-                    <div class="flex items-center space-x-2">
-                        <button wire:click="setRosterModalTeam('home')"
-                                type="button"
-                                class="py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition border flex items-center gap-1.5 cursor-pointer {{ $rosterModalTeam === 'home' ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-600/30' : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700' }}">
-                            <span class="w-2 h-2 rounded-full bg-blue-400"></span>
-                            <span class="truncate max-w-[140px]">{{ $game->home_display_name }}</span>
-                            <span class="px-1 py-0.2 rounded bg-slate-950/80 border border-slate-700 text-[8px] font-mono text-amber-300">1</span>
-                        </button>
-                        <button wire:click="setRosterModalTeam('away')"
-                                type="button"
-                                class="py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition border flex items-center gap-1.5 cursor-pointer {{ $rosterModalTeam === 'away' ? 'bg-rose-600 text-white border-rose-400 shadow-md shadow-rose-600/30' : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700' }}">
-                            <span class="w-2 h-2 rounded-full bg-rose-400"></span>
-                            <span class="truncate max-w-[140px]">{{ $game->away_display_name }}</span>
-                            <span class="px-1 py-0.2 rounded bg-slate-950/80 border border-slate-700 text-[8px] font-mono text-amber-300">2</span>
-                        </button>
-                    </div>
+            <!-- Modal Header: Team Switcher & Save -->
+            <div class="flex items-center justify-between pb-2 border-b border-slate-800 shrink-0">
+                <!-- Home / Away Pill Buttons -->
+                <div class="flex items-center space-x-2">
+                    <button @click="$wire.setRosterModalTeam('home')"
+                            type="button"
+                            class="py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition border flex items-center gap-1.5 cursor-pointer {{ $rosterModalTeam === 'home' ? 'bg-blue-600 text-white border-blue-400 shadow-md shadow-blue-600/30' : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700' }}">
+                        <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                        <span class="truncate max-w-[140px]">{{ $game->home_display_name }}</span>
+                        <span class="px-1 py-0.2 rounded bg-slate-950/80 border border-slate-700 text-[8px] font-mono text-amber-300">1</span>
+                    </button>
+                    <button @click="$wire.setRosterModalTeam('away')"
+                            type="button"
+                            class="py-1.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition border flex items-center gap-1.5 cursor-pointer {{ $rosterModalTeam === 'away' ? 'bg-rose-600 text-white border-rose-400 shadow-md shadow-rose-600/30' : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700' }}">
+                        <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                        <span class="truncate max-w-[140px]">{{ $game->away_display_name }}</span>
+                        <span class="px-1 py-0.2 rounded bg-slate-950/80 border border-slate-700 text-[8px] font-mono text-amber-300">2</span>
+                    </button>
+                </div>
 
                     <!-- Right Header CTA: Stats & Save/Close -->
                     <div class="flex items-center space-x-2 text-xs">
@@ -2711,7 +3293,7 @@
 
             </div>
         </div>
-    @endif
+    </div>
 
     <!-- Game Details & Officials Setup Modal -->
     @include('livewire.partials.game-details-modal')

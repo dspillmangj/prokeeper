@@ -1,12 +1,17 @@
 <?php
 
 use App\Livewire\BasketballOperator;
+use App\Livewire\PublicScoreboard;
+use App\Livewire\PureScoreboard;
+use App\Livewire\VolleyballOperator;
+use App\Livewire\WatchGame;
 use App\Models\Game;
 use App\Models\GameEvent;
 use App\Models\Organization;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\BasketballStatService;
+use App\Services\VolleyballStatService;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -21,6 +26,8 @@ beforeEach(function () {
         'password' => bcrypt('secret123'),
         'organization_id' => $this->org->id,
         'role' => 'admin',
+        'email_verified_at' => now(),
+        'plan' => 'pro',
     ]);
 
     $this->homeTeam = Team::create([
@@ -124,16 +131,24 @@ test('tracks full vs 30s timeouts distinctly in stat service and game events', f
     expect($homeBreakdown['allowed_30s'])->toBe(2);
     expect($homeBreakdown['used_full'])->toBe(1);
     expect($homeBreakdown['used_30s'])->toBe(1);
+    expect($homeBreakdown['used_total'])->toBe(2);
     expect($homeBreakdown['rem_full'])->toBe(2);
     expect($homeBreakdown['rem_30s'])->toBe(1);
     expect($homeBreakdown['rem_total'])->toBe(3);
+    expect($game->home_timeouts_used)->toBe(2);
+    expect($game->home_timeouts_taken)->toBe(2);
+    expect($game->home_timeouts_remaining)->toBe(3);
 
     $awayBreakdown = $game->calculateTimeoutsBreakdown('away');
     expect($awayBreakdown['used_full'])->toBe(0);
     expect($awayBreakdown['used_30s'])->toBe(1);
+    expect($awayBreakdown['used_total'])->toBe(1);
     expect($awayBreakdown['rem_full'])->toBe(3);
     expect($awayBreakdown['rem_30s'])->toBe(1);
     expect($awayBreakdown['rem_total'])->toBe(4);
+    expect($game->away_timeouts_used)->toBe(1);
+    expect($game->away_timeouts_taken)->toBe(1);
+    expect($game->away_timeouts_remaining)->toBe(4);
 });
 
 test('rebuilds game from events respecting configured timeout total', function () {
@@ -332,7 +347,7 @@ test('volleyball timeouts reset to set allowance and isolation per set works', f
         ],
     ]);
 
-    $vbService = new \App\Services\VolleyballStatService;
+    $vbService = new VolleyballStatService;
 
     // Use 2 timeouts in Set 1
     $vbService->callTimeout($vGame, 'home');
@@ -352,3 +367,153 @@ test('volleyball timeouts reset to set allowance and isolation per set works', f
     expect($vGame->home_timeouts_remaining)->toBe(2);
 });
 
+test('operator and public scoreboard respect halves format with 2 halves and overtime progression', function () {
+    $game = Game::create([
+        'access_code' => 'HALF01',
+        'slug' => 'halves-format-test',
+        'organization_id' => $this->org->id,
+        'created_by_user_id' => $this->user->id,
+        'sport' => 'basketball',
+        'current_period' => 1,
+        'home_team_name' => 'Halves Home',
+        'away_team_name' => 'Halves Away',
+        'settings' => [
+            'rules' => [
+                'period_format' => 'halves',
+                'period_minutes' => 20,
+                'timeouts_full' => 4,
+                'timeouts_30s' => 2,
+                'timeouts_ot' => 1,
+            ],
+        ],
+    ]);
+
+    expect($game->period_format)->toBe('halves');
+    expect($game->period_name)->toBe('1st Half');
+
+    // Operator view initializes with halves periodFormat and dynamic period buttons
+    Livewire::actingAs($this->user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->assertSeeHtml("periodFormat: 'halves'")
+        ->assertSeeHtml('canAddOvertime()')
+        ->assertSeeHtml('addOvertime()');
+
+    // Advance to 2nd Half (Period 2)
+    Livewire::actingAs($this->user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->call('nextPeriod');
+
+    $game->refresh();
+    expect($game->current_period)->toBe(2);
+    expect($game->period_name)->toBe('2nd Half');
+
+    // Advance from 2nd Half to Overtime (Period 3)
+    Livewire::actingAs($this->user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->call('nextPeriod');
+
+    $game->refresh();
+    expect($game->current_period)->toBe(3);
+    expect($game->period_name)->toBe('Overtime');
+
+    // Public scoreboard renders 1H and 2H and OT1 headers instead of Q1-Q4
+    Livewire::test(PublicScoreboard::class, ['code' => $game->access_code])
+        ->assertSeeHtml('>1H<')
+        ->assertSeeHtml('>2H<')
+        ->assertSeeHtml('>OT1<')
+        ->assertDontSeeHtml('>Q1<')
+        ->assertDontSeeHtml('>Q2<');
+});
+
+test('shows timeouts taken in addition to timeouts remaining with clear distinction in views', function () {
+    $game = Game::create([
+        'access_code' => 'TOV001',
+        'slug' => 'eagles-vs-warriors-tov001',
+        'organization_id' => $this->org->id,
+        'created_by_user_id' => $this->user->id,
+        'sport' => 'basketball',
+        'home_team_name' => 'LCA Eagles',
+        'away_team_name' => 'Warriors',
+        'home_timeouts_remaining' => 5,
+        'away_timeouts_remaining' => 5,
+        'clock_seconds_remaining' => 480,
+        'settings' => [
+            'rules' => [
+                'timeouts_full' => 3,
+                'timeouts_30s' => 2,
+            ],
+        ],
+    ]);
+
+    $service = new BasketballStatService;
+    // Charge 1 full and 1 30s timeout to Home (2 taken, 3 remain)
+    $service->callTimeout($game, 'home', 'full');
+    $service->callTimeout($game, 'home', '30s');
+    // Charge 1 full timeout to Away (1 taken, 4 remain)
+    $service->callTimeout($game, 'away', 'full');
+
+    $game->refresh();
+    expect($game->home_timeouts_taken)->toBe(2);
+    expect($game->home_timeouts_remaining)->toBe(3);
+    expect($game->away_timeouts_taken)->toBe(1);
+    expect($game->away_timeouts_remaining)->toBe(4);
+
+    // Basketball Operator renders TAKEN and REM distinctly
+    Livewire::actingAs($this->user)
+        ->test(BasketballOperator::class, ['gameId' => $game->id])
+        ->assertSeeHtml('homeTimeoutsTaken: 2')
+        ->assertSeeHtml('homeTimeouts: 3')
+        ->assertSeeHtml('awayTimeoutsTaken: 1')
+        ->assertSeeHtml('awayTimeouts: 4')
+        ->assertSeeHtml('TAKEN:')
+        ->assertSeeHtml('REM:');
+
+    // Pure Scoreboard renders Taken and Remain columns
+    Livewire::test(PureScoreboard::class, ['code' => $game->access_code])
+        ->assertSeeHtml('Taken')
+        ->assertSeeHtml('Remain')
+        ->assertSeeHtml('>2</div>')
+        ->assertSeeHtml('>3</div>')
+        ->assertSeeHtml('>1</div>')
+        ->assertSeeHtml('>4</div>');
+
+    // Watch Game renders both Taken and Rem
+    Livewire::test(WatchGame::class, ['code' => $game->access_code])
+        ->assertSeeHtml('Taken:')
+        ->assertSeeHtml('Rem:')
+        ->assertSeeHtml('>2</strong>')
+        ->assertSeeHtml('>3</strong>');
+
+    // Volleyball: Test volleyball operator and score tracking
+    $vGame = Game::create([
+        'access_code' => 'VBTO01',
+        'slug' => 'eagles-vs-warriors-vbto01',
+        'organization_id' => $this->org->id,
+        'created_by_user_id' => $this->user->id,
+        'sport' => 'volleyball',
+        'home_team_name' => 'LCA Volleyball',
+        'away_team_name' => 'Warriors VB',
+        'home_timeouts_remaining' => 2,
+        'away_timeouts_remaining' => 2,
+        'current_period' => 1,
+        'settings' => [
+            'rules' => [
+                'timeouts_per_set' => 2,
+            ],
+        ],
+    ]);
+
+    $vbService = new VolleyballStatService;
+    $vbService->callTimeout($vGame, 'home');
+    $vGame->refresh();
+
+    expect($vGame->home_timeouts_taken)->toBe(1);
+    expect($vGame->home_timeouts_remaining)->toBe(1);
+
+    Livewire::actingAs($this->user)
+        ->test(VolleyballOperator::class, ['gameId' => $vGame->id])
+        ->assertSeeHtml('homeTimeoutsTaken: 1')
+        ->assertSeeHtml('homeTimeouts: 1')
+        ->assertSeeHtml('TAKEN:')
+        ->assertSeeHtml('REM:');
+});

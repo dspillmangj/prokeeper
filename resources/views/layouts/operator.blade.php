@@ -80,7 +80,19 @@
         const now = ctx.currentTime;
 
         if (navigator.vibrate) {
-            navigator.vibrate(type === 'score' ? [25, 20, 25] : 15);
+            if (type === 'foul_out') {
+                navigator.vibrate([150, 80, 150, 80, 300]);
+            } else if (type === 'error') {
+                navigator.vibrate([100, 60, 100]);
+            } else if (type === 'double_bonus') {
+                navigator.vibrate([80, 40, 80, 40, 120]);
+            } else if (type === 'bonus') {
+                navigator.vibrate([60, 40, 80]);
+            } else if (type === 'score') {
+                navigator.vibrate([25, 20, 25]);
+            } else {
+                navigator.vibrate(15);
+            }
         }
 
         if (type === 'score') {
@@ -108,17 +120,71 @@
             osc.start(now);
             osc.stop(now + 0.05);
         } else if (type === 'error') {
-            const osc = ctx.createOscillator();
+            // Urgent double-pulse descending klaxon
+            [0, 0.16].forEach((offset) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(240, now + offset);
+                osc.frequency.exponentialRampToValueAtTime(100, now + offset + 0.13);
+                gain.gain.setValueAtTime(0.35, now + offset);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.13);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + offset);
+                osc.stop(now + offset + 0.13);
+            });
+        } else if (type === 'foul_out') {
+            // Authentic stadium table buzzer / referee horn (dual detuned oscillators)
+            const osc1 = ctx.createOscillator();
+            const osc2 = ctx.createOscillator();
             const gain = ctx.createGain();
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(140, now);
-            osc.frequency.linearRampToValueAtTime(100, now + 0.18);
-            gain.gain.setValueAtTime(0.2, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-            osc.connect(gain);
+            osc1.type = 'sawtooth';
+            osc2.type = 'square';
+            osc1.frequency.setValueAtTime(440, now);
+            osc2.frequency.setValueAtTime(466.16, now); // Dissonant minor 2nd for authentic horn bite
+            gain.gain.setValueAtTime(0.4, now);
+            gain.gain.setValueAtTime(0.4, now + 0.35);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+            osc1.connect(gain);
+            osc2.connect(gain);
             gain.connect(ctx.destination);
-            osc.start(now);
-            osc.stop(now + 0.18);
+            osc1.start(now);
+            osc2.start(now);
+            osc1.stop(now + 0.55);
+            osc2.stop(now + 0.55);
+        } else if (type === 'bonus') {
+            // Ascending 3-tone bright fanfare (C5 -> E5 -> G5)
+            const notes = [523.25, 659.25, 783.99];
+            notes.forEach((freq, idx) => {
+                const t = now + idx * 0.09;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, t);
+                gain.gain.setValueAtTime(0.3, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(t);
+                osc.stop(t + 0.22);
+            });
+        } else if (type === 'double_bonus') {
+            // Ascending 4-tone power chime (C5 -> E5 -> G5 -> C6)
+            const notes = [523.25, 659.25, 783.99, 1046.50];
+            notes.forEach((freq, idx) => {
+                const t = now + idx * 0.08;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, t);
+                gain.gain.setValueAtTime(0.35, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(t);
+                osc.stop(t + 0.3);
+            });
         }
     },
 
@@ -230,7 +296,7 @@
             </button>
 
             @if (($game->sport ?? 'basketball') === 'basketball')
-                <a href="{{ route('public.scorebook', $game->access_code ?? '') }}" target="_blank" class="inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-black transition gap-1.5 shadow-sm" title="Official Basketball Scorebook (Printable)">
+                <a href="{{ route('public.scorebook', ['code' => $game->access_code ?? '', 'token' => $game->scorebook_token ?? '']) }}" target="_blank" class="inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-black transition gap-1.5 shadow-sm" title="Official Basketball Scorebook (Printable)">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
                     <span>Official Scorebook</span>
                 </a>
@@ -305,135 +371,188 @@
                     </button>
                 </div>
 
-                <!-- Four QR Code Cards Grid -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                    <!-- 1. Pure Stadium Scoreboard -->
-                    <div class="rounded-xl bg-slate-950 border border-slate-800 p-3.5 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
+                <!-- Three Official Views Grid: Live View (Public), Coach Stats (QR), Official Scorebook (QR) -->
+                @php
+                    $isHostPro = $game->isHostPro();
+                    $liveUrl = route('public.live', $game->access_code ?? '');
+                    $statsUrl = route('public.stats', ['code' => $game->access_code ?? '', 'token' => $game->stats_token ?? '']);
+                    $scorebookUrl = route('public.scorebook', ['code' => $game->access_code ?? '', 'token' => $game->scorebook_token ?? '']);
+                @endphp
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- 1. Public Live View (The ONLY publicly accessible entrance) -->
+                    <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
                         <div>
                             <div class="flex items-center justify-between gap-1 mb-2">
                                 <div class="flex items-center gap-1.5">
-                                    <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                                    <h4 class="text-xs font-black uppercase tracking-wider text-cyan-300">Scoreboard</h4>
+                                    <span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+                                    <h4 class="text-xs font-black uppercase tracking-wider text-blue-300">Live View</h4>
                                 </div>
-                                <span class="px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-800/80 text-[8px] font-mono text-cyan-300 font-bold uppercase">Stadium</span>
+                                <span class="px-1.5 py-0.5 rounded bg-blue-950/80 border border-blue-800/80 text-[8px] font-mono text-blue-300 font-bold uppercase">Public</span>
                             </div>
-                            <p class="text-[11px] text-slate-400 leading-snug min-h-[32px]">
-                                Real-time LED scoreboard with period, clock, team fouls & possession.
+                            <p class="text-[11px] text-slate-400 leading-snug">
+                                Real-time scoreboard, play-by-play, and box score for spectators entering game code.
                             </p>
                         </div>
 
-                        <!-- QR Code Container -->
-                        <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-32 h-32 flex items-center justify-center border border-slate-200">
-                            <div class="w-full h-full" x-html="getQr('{{ route('public.scoreboard', $game->access_code ?? '') }}')"></div>
-                        </div>
-
-                        <!-- Card Action Buttons -->
-                        <div class="flex items-center gap-1.5 pt-1">
-                            <button type="button" @click="copy('{{ route('public.scoreboard', $game->access_code ?? '') }}', 'scoreboard')" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white transition flex items-center justify-center gap-1">
-                                <span x-text="copiedKey === 'scoreboard' ? 'Copied!' : 'Copy Link'"></span>
-                            </button>
-                            <a href="{{ route('public.scoreboard', $game->access_code ?? '') }}" target="_blank" class="py-1.5 px-2.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-[10px] font-black text-cyan-300 transition flex items-center gap-1" title="Open Scoreboard in new tab">
-                                <span>Open</span>
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                            </a>
-                        </div>
+                        @if ($isHostPro)
+                            <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-32 h-32 flex items-center justify-center border border-slate-200">
+                                <div class="w-full h-full" x-html="getQr('{{ $liveUrl }}')"></div>
+                            </div>
+                            <div class="flex items-center gap-1.5 pt-1">
+                                <button type="button" @click="copy('{{ $liveUrl }}', 'live')" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white transition flex items-center justify-center gap-1">
+                                    <span x-text="copiedKey === 'live' ? 'Copied!' : 'Copy Link'"></span>
+                                </button>
+                                <a href="{{ $liveUrl }}" target="_blank" class="py-1.5 px-2.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-[10px] font-black text-blue-300 transition flex items-center gap-1">
+                                    <span>Open</span>
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                </a>
+                            </div>
+                        @else
+                            <div class="bg-amber-950/40 border border-amber-800/60 rounded-xl p-3 text-center my-auto">
+                                <span class="text-[10px] font-black uppercase tracking-wider text-amber-400 block mb-1">Host on Free Plan</span>
+                                <p class="text-[11px] text-slate-300">Public spectator live view is locked. Upgrade to Pro ($3/mo) in Billing to enable public viewing.</p>
+                            </div>
+                        @endif
                     </div>
 
-                    <!-- 2. Coach Live Stats -->
-                    <div class="rounded-xl bg-slate-950 border border-slate-800 p-3.5 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
+                    <!-- 2. Coach Statistics View (Secured Token) -->
+                    <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
                         <div>
                             <div class="flex items-center justify-between gap-1 mb-2">
                                 <div class="flex items-center gap-1.5">
-                                    <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
-                                    <h4 class="text-xs font-black uppercase tracking-wider text-indigo-300">Coach Stats</h4>
+                                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-400"></span>
+                                    <h4 class="text-xs font-black uppercase tracking-wider text-indigo-300">Statistics</h4>
                                 </div>
-                                <span class="px-1.5 py-0.5 rounded bg-indigo-950/80 border border-indigo-800/80 text-[8px] font-mono text-indigo-300 font-bold uppercase">Bench</span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-950/80 border border-indigo-800/80 text-[8px] font-mono text-indigo-300 font-bold uppercase">QR Access</span>
                             </div>
-                            <p class="text-[11px] text-slate-400 leading-snug min-h-[32px]">
-                                Quarter-by-quarter player box stats & analytics for coaches during the game.
+                            <p class="text-[11px] text-slate-400 leading-snug">
+                                Quarter-by-quarter full box score and advanced stat ledger for coaching staff.
                             </p>
                         </div>
 
-                        <!-- QR Code Container -->
                         <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-32 h-32 flex items-center justify-center border border-slate-200">
-                            <div class="w-full h-full" x-html="getQr('{{ route('public.stats', $game->access_code ?? '') }}')"></div>
+                            <div class="w-full h-full" x-html="getQr('{{ $statsUrl }}')"></div>
                         </div>
 
-                        <!-- Card Action Buttons -->
                         <div class="flex items-center gap-1.5 pt-1">
-                            <button type="button" @click="copy('{{ route('public.stats', $game->access_code ?? '') }}', 'stats')" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white transition flex items-center justify-center gap-1">
+                            <button type="button" @click="copy('{{ $statsUrl }}', 'stats')" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white transition flex items-center justify-center gap-1">
                                 <span x-text="copiedKey === 'stats' ? 'Copied!' : 'Copy Link'"></span>
                             </button>
-                            <a href="{{ route('public.stats', $game->access_code ?? '') }}" target="_blank" class="py-1.5 px-2.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-[10px] font-black text-indigo-300 transition flex items-center gap-1" title="Open Coach Stats in new tab">
+                            <a href="{{ $statsUrl }}" target="_blank" class="py-1.5 px-2.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-[10px] font-black text-indigo-300 transition flex items-center gap-1">
                                 <span>Open</span>
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                             </a>
                         </div>
                     </div>
 
-                    <!-- 3. Official Scorebook -->
-                    <div class="rounded-xl bg-slate-950 border border-slate-800 p-3.5 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
+                    <!-- 3. Official NCAA Scorebook View (Secured Token) -->
+                    <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
                         <div>
                             <div class="flex items-center justify-between gap-1 mb-2">
                                 <div class="flex items-center gap-1.5">
-                                    <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
                                     <h4 class="text-xs font-black uppercase tracking-wider text-amber-300">Scorebook</h4>
                                 </div>
-                                <span class="px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-800/80 text-[8px] font-mono text-amber-300 font-bold uppercase">Official</span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-800/80 text-[8px] font-mono text-amber-300 font-bold uppercase">QR Access</span>
                             </div>
-                            <p class="text-[11px] text-slate-400 leading-snug min-h-[32px]">
-                                Digital official scorebook ledger, running score table, box stats & signatures.
+                            <p class="text-[11px] text-slate-400 leading-snug">
+                                Official digital scorebook with running score table, box stats & certification signatures.
                             </p>
                         </div>
 
-                        <!-- QR Code Container -->
                         <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-32 h-32 flex items-center justify-center border border-slate-200">
-                            <div class="w-full h-full" x-html="getQr('{{ route('public.scorebook', $game->access_code ?? '') }}')"></div>
+                            <div class="w-full h-full" x-html="getQr('{{ $scorebookUrl }}')"></div>
                         </div>
 
-                        <!-- Card Action Buttons -->
                         <div class="flex items-center gap-1.5 pt-1">
-                            <button type="button" @click="copy('{{ route('public.scorebook', $game->access_code ?? '') }}', 'scorebook')" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white transition flex items-center justify-center gap-1">
+                            <button type="button" @click="copy('{{ $scorebookUrl }}', 'scorebook')" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white transition flex items-center justify-center gap-1">
                                 <span x-text="copiedKey === 'scorebook' ? 'Copied!' : 'Copy Link'"></span>
                             </button>
-                            <a href="{{ route('public.scorebook', $game->access_code ?? '') }}" target="_blank" class="py-1.5 px-2.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-[10px] font-black text-amber-300 transition flex items-center gap-1" title="Open Scorebook in new tab">
+                            <a href="{{ $scorebookUrl }}" target="_blank" class="py-1.5 px-2.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-[10px] font-black text-amber-300 transition flex items-center gap-1">
                                 <span>Open</span>
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                             </a>
                         </div>
                     </div>
+                </div>
 
-                    <!-- 4. Watch Live / Fan Experience -->
-                    <div class="rounded-xl bg-slate-950 border border-slate-800 p-3.5 flex flex-col justify-between space-y-3 hover:border-slate-700 transition">
-                        <div>
-                            <div class="flex items-center justify-between gap-1 mb-2">
-                                <div class="flex items-center gap-1.5">
-                                    <span class="w-2 h-2 rounded-full bg-blue-400"></span>
-                                    <h4 class="text-xs font-black uppercase tracking-wider text-blue-300">Watch Live</h4>
-                                </div>
-                                <span class="px-1.5 py-0.5 rounded bg-blue-950/80 border border-blue-800/80 text-[8px] font-mono text-blue-300 font-bold uppercase">Fan View</span>
+                <!-- Email Sharing Section (Google Drive Style) -->
+                <div class="pt-4 border-t border-slate-800 space-y-3" x-data="{ showMessageInput: false, notify: true }">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                            <h4 class="text-xs font-black uppercase tracking-wider text-slate-200">Share with Collaborators</h4>
+                        </div>
+                        <span class="text-[11px] text-slate-500">Google Drive style invitation</span>
+                    </div>
+
+                    <form method="POST" action="{{ route('games.share', $game->uuid) }}" class="space-y-2.5">
+                        @csrf
+                        <div class="flex flex-col sm:flex-row items-center gap-2">
+                            <div class="w-full sm:flex-1">
+                                <input type="email" name="email" required placeholder="collaborator@school.edu"
+                                       class="w-full py-2 px-3 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
                             </div>
-                            <p class="text-[11px] text-slate-400 leading-snug min-h-[32px]">
-                                Interactive spectator view with instant play-by-play feed & player stats.
-                            </p>
-                        </div>
-
-                        <!-- QR Code Container -->
-                        <div class="bg-white p-2.5 rounded-xl shadow-inner mx-auto w-32 h-32 flex items-center justify-center border border-slate-200">
-                            <div class="w-full h-full" x-html="getQr('{{ route('public.live', $game->access_code ?? '') }}')"></div>
-                        </div>
-
-                        <!-- Card Action Buttons -->
-                        <div class="flex items-center gap-1.5 pt-1">
-                            <button type="button" @click="copy('{{ route('public.live', $game->access_code ?? '') }}', 'live')" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold text-slate-300 hover:text-white transition flex items-center justify-center gap-1">
-                                <span x-text="copiedKey === 'live' ? 'Copied!' : 'Copy Link'"></span>
+                            <div class="w-full sm:w-auto">
+                                <select name="permission" class="w-full py-2 px-3 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-blue-500">
+                                    <option value="edit">Can Edit / Operate</option>
+                                    <option value="view">View Only</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="w-full sm:w-auto py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow shrink-0 flex items-center justify-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                                <span>Share</span>
                             </button>
-                            <a href="{{ route('public.live', $game->access_code ?? '') }}" target="_blank" class="py-1.5 px-2.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-[10px] font-black text-blue-300 transition flex items-center gap-1" title="Open Watch Live in new tab">
-                                <span>Open</span>
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                            </a>
                         </div>
-                    </div>
+
+                        <!-- Notification & Message Options (Google Drive Style) -->
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 text-xs">
+                            <label class="flex items-center gap-2 text-slate-300 cursor-pointer select-none">
+                                <input type="checkbox" name="notify" value="1" x-model="notify" class="rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0">
+                                <span>Notify person via email</span>
+                            </label>
+
+                            <button type="button" @click="showMessageInput = !showMessageInput" class="text-blue-400 hover:text-blue-300 text-[11px] font-semibold text-left sm:text-right" x-show="notify">
+                                <span x-text="showMessageInput ? '- Remove custom note' : '+ Add personal message'"></span>
+                            </button>
+                        </div>
+
+                        <div x-show="notify && showMessageInput" x-transition class="pt-1">
+                            <textarea name="message" rows="2" placeholder="Add an optional message or instructions for the scorekeeper..."
+                                      class="w-full py-2 px-3 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"></textarea>
+                        </div>
+                    </form>
+
+                    <!-- Active Shares List -->
+                    @if ($game->gameShares && $game->gameShares->isNotEmpty())
+                        <div class="pt-2 border-t border-slate-800/60">
+                            <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1.5">People with Access:</div>
+                            <div class="space-y-1.5 max-h-24 overflow-y-auto pr-1">
+                                @foreach ($game->gameShares as $share)
+                                    <div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-950/60 border border-slate-800 text-xs">
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            <div class="w-5 h-5 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center text-[10px] font-bold">
+                                                {{ strtoupper(substr($share->shared_with_email, 0, 1)) }}
+                                            </div>
+                                            <span class="truncate text-slate-300 text-[11px]">{{ $share->shared_with_email }}</span>
+                                            <span class="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-bold {{ $share->permission === 'edit' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-800 text-slate-400' }}">
+                                                {{ $share->permission === 'edit' ? 'Operator' : 'Viewer' }}
+                                            </span>
+                                        </div>
+
+                                        <form method="POST" action="{{ route('games.share.remove', ['uuid' => $game->uuid, 'shareId' => $share->id]) }}" onsubmit="return confirm('Remove access for {{ $share->shared_with_email }}?');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="text-rose-400 hover:text-rose-300 text-[10px] font-bold px-1.5 py-0.5 rounded hover:bg-rose-950/40 transition">
+                                                Revoke
+                                            </button>
+                                        </form>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
                 </div>
             </div>
 
@@ -477,13 +596,15 @@
                     <p class="text-slate-300 font-mono text-[11px] leading-relaxed">
                         &bull; Type Jersey # + <strong class="text-amber-300">-</strong> (HOME) or <strong class="text-amber-300">=</strong> (AWAY)<br>
                         &bull; Badges on buttons show their direct hotkey<br>
+                        &bull; Action Pad Fouls: <strong class="text-amber-300">F</strong> (Pers), <strong class="text-amber-300">R</strong> (Off), <strong class="text-amber-300">T</strong> (Tech), <strong class="text-amber-300">H</strong> (Drawn)<br>
                         &bull; <strong class="text-amber-300">[</strong> / <strong class="text-amber-300">{</strong> : Home Score +1 / -1<br>
                         &bull; <strong class="text-amber-300">]</strong> / <strong class="text-amber-300">}</strong> : Away Score +1 / -1<br>
                         &bull; <strong class="text-amber-300">U</strong> or <strong class="text-amber-300">Ctrl+Z</strong> : Instant Undo<br>
                         &bull; <strong class="text-amber-300">F</strong> / <strong class="text-amber-300">H</strong> : Left Full / 30s Timeout<br>
                         &bull; <strong class="text-amber-300">G</strong> / <strong class="text-amber-300">J</strong> : Right Full / 30s Timeout<br>
                         &bull; <strong class="text-amber-300">R</strong> / <strong class="text-amber-300">T</strong> : Left / Right Roster Editor (1-9 jump, 0 empty)<br>
-                        &bull; <strong class="text-amber-300">Esc</strong> : Instant Reset / Close Any Modal
+                        &bull; <strong class="text-amber-300">Tab</strong> : Keep Sub Waiting at Table<br>
+                        &bull; <strong class="text-amber-300">Esc</strong> : Instant Reset / Cancel Operation
                     </p>
                 </div>
             </div>

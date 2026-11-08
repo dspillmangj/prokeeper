@@ -23,9 +23,24 @@ class Player extends Model
         'is_active',
     ];
 
+    protected $attributes = [
+        'first_name' => '',
+        'last_name' => '',
+    ];
+
     protected $casts = [
         'is_active' => 'boolean',
     ];
+
+    public function setFirstNameAttribute($value): void
+    {
+        $this->attributes['first_name'] = $value ?? '';
+    }
+
+    public function setLastNameAttribute($value): void
+    {
+        $this->attributes['last_name'] = $value ?? '';
+    }
 
     public function organization(): BelongsTo
     {
@@ -46,6 +61,6 @@ class Player extends Model
 
     public function getFullNameAttribute(): string
     {
-        return "{$this->first_name} {$this->last_name}";
+        return trim("{$this->first_name} {$this->last_name}");
     }
 }

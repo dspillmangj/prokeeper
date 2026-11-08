@@ -10,6 +10,7 @@ use App\Models\Player;
 use App\Models\RosterPlayer;
 use App\Models\Team;
 use App\Services\BasketballStatService;
+use App\Services\EventSourcedReplayService;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Facades\DB;
@@ -384,13 +385,18 @@ class BasketballOperator extends Component
         $fullName = trim((string) $lineup->player_name);
         $pos = ! empty($lineup->position) ? strtoupper(trim($lineup->position)) : null;
 
-        if (empty($jersey) || empty($fullName)) {
+        if (empty($jersey)) {
             return;
         }
 
-        $nameParts = preg_split('/\s+/', $fullName, 2);
-        $firstName = $nameParts[0] ?? 'Player';
-        $lastName = $nameParts[1] ?? '';
+        if ($fullName !== '') {
+            $nameParts = preg_split('/\s+/', $fullName, 2);
+            $firstName = $nameParts[0] ?? '';
+            $lastName = $nameParts[1] ?? '';
+        } else {
+            $firstName = '';
+            $lastName = '';
+        }
 
         $player = null;
         if ($lineup->player_id) {
@@ -466,8 +472,8 @@ class BasketballOperator extends Component
         $name = trim($this->newName);
         $pos = ! empty($this->newPosition) ? strtoupper(trim($this->newPosition)) : null;
 
-        if (empty($jersey) || empty($name)) {
-            $this->feedbackMessage = 'Jersey number and player name are required.';
+        if (empty($jersey)) {
+            $this->feedbackMessage = 'Jersey number is required.';
             $this->feedbackType = 'error';
 
             return;
@@ -512,7 +518,7 @@ class BasketballOperator extends Component
         $this->dispatchLineupUpdate();
 
         $this->resetNewPlayerFields();
-        $this->feedbackMessage = "Added #{$jersey} {$name} to ".strtoupper($this->rosterModalTeam).' roster!';
+        $this->feedbackMessage = "Added #{$jersey}".($name ? " {$name}" : '').' to '.strtoupper($this->rosterModalTeam).' roster!';
         $this->feedbackType = 'success';
         $this->rosterModalTab = 'list';
     }
@@ -544,8 +550,8 @@ class BasketballOperator extends Component
         $newName = trim($this->editName);
         $newPos = ! empty($this->editPosition) ? strtoupper(trim($this->editPosition)) : null;
 
-        if (empty($newJersey) || empty($newName)) {
-            $this->feedbackMessage = 'Jersey number and player name cannot be blank.';
+        if (empty($newJersey)) {
+            $this->feedbackMessage = 'Jersey number cannot be blank.';
             $this->feedbackType = 'error';
 
             return;
@@ -708,7 +714,7 @@ class BasketballOperator extends Component
                 }
             }
 
-            if (empty($jersey) || empty($name)) {
+            if (empty($jersey)) {
                 continue;
             }
 
@@ -768,7 +774,7 @@ class BasketballOperator extends Component
                     $jersey = trim((string) ($row['jersey_number'] ?? ''));
                     $name = trim($row['name'] ?? ($row['player_name'] ?? ''));
 
-                    if ($jersey === '' || $name === '') {
+                    if ($jersey === '') {
                         continue;
                     }
 
@@ -913,6 +919,19 @@ class BasketballOperator extends Component
         }
     }
 
+    public function attachAssistToEvent(string $teamSide, string $assistJersey, ?int $eventId = null)
+    {
+        try {
+            $result = $this->statService->attachAssist($this->game, $teamSide, $assistJersey, $eventId);
+            $this->feedbackMessage = $result['message'];
+            $this->feedbackType = 'success';
+            $this->dispatchGameStateUpdate();
+        } catch (Exception $e) {
+            $this->feedbackMessage = $e->getMessage();
+            $this->feedbackType = 'error';
+        }
+    }
+
     public function adjustScore(string $teamSide, int $delta)
     {
         try {
@@ -930,7 +949,7 @@ class BasketballOperator extends Component
     {
         $game = $this->game;
         if ($game->current_period >= 6) {
-            $this->feedbackMessage = 'Already at maximum period (2nd Overtime / Period 6).';
+            $this->feedbackMessage = "Already at maximum period ({$game->period_name} / Period 6).";
             $this->feedbackType = 'error';
             $this->dispatchGameStateUpdate();
 
@@ -989,11 +1008,30 @@ class BasketballOperator extends Component
         $this->dispatchGameStateUpdate();
     }
 
-    public function togglePossession()
+    public function togglePossession(?string $reason = null)
     {
-        $game = $this->game;
-        $game->possession_arrow = ($game->possession_arrow === 'home') ? 'away' : 'home';
-        $game->save();
+        $replay = app(EventSourcedReplayService::class);
+        $event = $replay->togglePossession($this->game, $reason);
+        $this->feedbackMessage = $event->description;
+        $this->feedbackType = 'info';
+        $this->dispatchGameStateUpdate();
+    }
+
+    public function syncClock(int $seconds)
+    {
+        $replay = app(EventSourcedReplayService::class);
+        $event = $replay->syncClock($this->game, $seconds);
+        $this->feedbackMessage = $event->description;
+        $this->feedbackType = 'info';
+        $this->dispatchGameStateUpdate();
+    }
+
+    public function toggleClock(bool $running, ?int $seconds = null)
+    {
+        $replay = app(EventSourcedReplayService::class);
+        $event = $replay->toggleClock($this->game, $running, $seconds);
+        $this->feedbackMessage = $event->description;
+        $this->feedbackType = 'info';
         $this->dispatchGameStateUpdate();
     }
 
@@ -1080,11 +1118,13 @@ class BasketballOperator extends Component
         $this->dispatch('game-state-updated', [
             'homeScore' => (int) $game->home_score,
             'awayScore' => (int) $game->away_score,
-            'homePeriodScores' => $game->home_period_scores ?? [0, 0, 0, 0, 0, 0],
-            'awayPeriodScores' => $game->away_period_scores ?? [0, 0, 0, 0, 0, 0],
+            'homePeriodScores' => $game->home_period_scores ?? ($game->period_format === 'halves' ? [0, 0] : [0, 0, 0, 0]),
+            'awayPeriodScores' => $game->away_period_scores ?? ($game->period_format === 'halves' ? [0, 0] : [0, 0, 0, 0]),
             'currentPeriod' => (int) $game->current_period,
             'periodName' => $game->period_name,
             'possession' => $game->possession_arrow ?? 'home',
+            'clockSeconds' => (int) $game->clock_seconds_remaining,
+            'clockRunning' => (bool) $game->clock_running,
             'homeFouls' => (int) $game->home_fouls_current_period,
             'awayFouls' => (int) $game->away_fouls_current_period,
             'homeTimeouts' => (int) $game->home_timeouts_remaining,
@@ -1093,6 +1133,12 @@ class BasketballOperator extends Component
             'home30sTimeouts' => (int) ($game->home_timeouts_breakdown['rem_30s'] ?? 2),
             'awayFullTimeouts' => (int) ($game->away_timeouts_breakdown['rem_full'] ?? 3),
             'away30sTimeouts' => (int) ($game->away_timeouts_breakdown['rem_30s'] ?? 2),
+            'homeTimeoutsTaken' => (int) ($game->home_timeouts_breakdown['used_total'] ?? 0),
+            'awayTimeoutsTaken' => (int) ($game->away_timeouts_breakdown['used_total'] ?? 0),
+            'homeFullTimeoutsTaken' => (int) ($game->home_timeouts_breakdown['used_full'] ?? 0),
+            'home30sTimeoutsTaken' => (int) ($game->home_timeouts_breakdown['used_30s'] ?? 0),
+            'awayFullTimeoutsTaken' => (int) ($game->away_timeouts_breakdown['used_full'] ?? 0),
+            'away30sTimeoutsTaken' => (int) ($game->away_timeouts_breakdown['used_30s'] ?? 0),
             'recentEvents' => $recentEvents,
             'homeCourt' => $homeCourt,
             'awayCourt' => $awayCourt,
@@ -1354,11 +1400,11 @@ class BasketballOperator extends Component
             $currPeriod = isset($snapshot['currentPeriod']) ? (int) $snapshot['currentPeriod'] : (int) $game->current_period;
             $dbHomeFouls = $dbEvents->where('team_side', 'home')
                 ->where('period', $currPeriod)
-                ->filter(fn($e) => in_array($e->action_code, ['F', 'R', 'G', 'FL', 'FLAG']))
+                ->filter(fn ($e) => in_array($e->action_code, ['F', 'R', 'G', 'FL', 'FLAG']))
                 ->count();
             $dbAwayFouls = $dbEvents->where('team_side', 'away')
                 ->where('period', $currPeriod)
-                ->filter(fn($e) => in_array($e->action_code, ['F', 'R', 'G', 'FL', 'FLAG']))
+                ->filter(fn ($e) => in_array($e->action_code, ['F', 'R', 'G', 'FL', 'FLAG']))
                 ->count();
         } else {
             $targetHomeScore = isset($snapshot['homeScore']) ? max(0, (int) $snapshot['homeScore']) : null;
@@ -1434,6 +1480,18 @@ class BasketballOperator extends Component
             ->where('is_on_court', false)
             ->get();
 
+        $homeAllLineups = GameLineup::where('game_id', $game->id)
+            ->where('team_side', 'home')
+            ->orderBy('is_on_court', 'desc')
+            ->orderBy('jersey_number', 'asc')
+            ->get();
+
+        $awayAllLineups = GameLineup::where('game_id', $game->id)
+            ->where('team_side', 'away')
+            ->orderBy('is_on_court', 'desc')
+            ->orderBy('jersey_number', 'asc')
+            ->get();
+
         $rosterModalLineups = GameLineup::where('game_id', $game->id)
             ->where('team_side', $this->rosterModalTeam)
             ->orderBy('is_on_court', 'desc')
@@ -1461,6 +1519,8 @@ class BasketballOperator extends Component
             'homeBench' => $homeBench,
             'awayLineupOnCourt' => $awayLineupOnCourt,
             'awayBench' => $awayBench,
+            'homeAllLineups' => $homeAllLineups,
+            'awayAllLineups' => $awayAllLineups,
             'rosterModalLineups' => $rosterModalLineups,
             'recentEvents' => $recentEvents,
             'homeStats' => $homeStats,

@@ -1,5 +1,34 @@
 <div>
-    @if (!$game)
+    @if ($isRestricted ?? false)
+        <!-- Access Restricted Notice for Scorebook -->
+        <div class="min-h-[85vh] flex items-center justify-center p-4">
+            <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 text-center">
+                <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400 mb-2 mx-auto">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                </div>
+                <h1 class="text-2xl font-black tracking-tight text-white">Scorebook Access Restricted</h1>
+                <p class="text-sm text-slate-300 leading-relaxed">
+                    Access to the Official Scorebook requires the secure tokenized link or QR code generated from the Game Operator HUD.
+                </p>
+                <div class="pt-4 flex flex-col gap-3">
+                    <a href="{{ route('public.live.prompt') }}" class="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold text-white text-sm transition">
+                        Go to Public Live View
+                    </a>
+                    @auth
+                        <a href="{{ route('dashboard') }}" class="text-xs text-slate-400 hover:text-slate-300 transition">
+                            Back to Dashboard &rarr;
+                        </a>
+                    @else
+                        <a href="{{ route('login') }}" class="text-xs text-slate-400 hover:text-slate-300 transition">
+                            Sign In to Account &rarr;
+                        </a>
+                    @endauth
+                </div>
+            </div>
+        </div>
+    @elseif (!$game)
         <!-- Game Access Code Prompt Screen for Official Scorebook -->
         <div class="min-h-[85vh] flex items-center justify-center p-4">
             <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
@@ -51,7 +80,11 @@
                         <div class="h-4 w-px bg-slate-700"></div>
                         <div class="flex items-center space-x-2">
                             <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono text-[11px] font-black border border-amber-500/40">
-                                PROKEEPER OFFICIAL SCOREBOOK &bull; {{ $game->period_format === 'halves' ? '2 HALVES' : '4 QUARTERS' }}
+                                @if ($isVolleyball)
+                                    PROKEEPER OFFICIAL VOLLEYBALL SCOREBOOK &bull; BEST OF 5 SETS
+                                @else
+                                    PROKEEPER OFFICIAL SCOREBOOK &bull; {{ $game->period_format === 'halves' ? '2 HALVES' : '4 QUARTERS' }}
+                                @endif
                             </span>
                             <span class="text-xs text-slate-400 font-mono hidden md:inline">GAME CODE: {{ $game->access_code }}</span>
                         </div>
@@ -93,14 +126,25 @@
         <!-- SHEET 1: HOME TEAM PROKEEPER SCOREBOOK PAGE -->
         <!-- ========================================== -->
         <section id="sheet-home" class="ncaa-page-sheet bg-white text-black p-6 rounded-xl shadow-2xl border border-slate-300 font-sans print:rounded-none print:shadow-none print:border-none print:p-0 print:m-0">
-            @include('livewire.partials.ncaa-team-sheet', [
-                'team' => $home,
-                'oppTeam' => $away,
-                'isHome' => true,
-                'game' => $game,
-                'pageNumber' => 1,
-                'sheetTitle' => 'HOME TEAM SCOREBOOK PAGE',
-            ])
+            @if ($isVolleyball)
+                @include('livewire.partials.volleyball-team-sheet', [
+                    'team' => $home,
+                    'oppTeam' => $away,
+                    'isHome' => true,
+                    'game' => $game,
+                    'pageNumber' => 1,
+                    'sheetTitle' => 'HOME TEAM SCOREBOOK PAGE',
+                ])
+            @else
+                @include('livewire.partials.ncaa-team-sheet', [
+                    'team' => $home,
+                    'oppTeam' => $away,
+                    'isHome' => true,
+                    'game' => $game,
+                    'pageNumber' => 1,
+                    'sheetTitle' => 'HOME TEAM SCOREBOOK PAGE',
+                ])
+            @endif
         </section>
 
         <!-- Page Break Indicator in Screen View -->
@@ -116,14 +160,25 @@
         <!-- SHEET 2: VISITING TEAM PROKEEPER SCOREBOOK PAGE -->
         <!-- ============================================== -->
         <section id="sheet-away" class="ncaa-page-sheet bg-white text-black p-6 rounded-xl shadow-2xl border border-slate-300 font-sans print:rounded-none print:shadow-none print:border-none print:p-0 print:m-0">
-            @include('livewire.partials.ncaa-team-sheet', [
-                'team' => $away,
-                'oppTeam' => $home,
-                'isHome' => false,
-                'game' => $game,
-                'pageNumber' => 2,
-                'sheetTitle' => 'VISITING TEAM SCOREBOOK PAGE',
-            ])
+            @if ($isVolleyball)
+                @include('livewire.partials.volleyball-team-sheet', [
+                    'team' => $away,
+                    'oppTeam' => $home,
+                    'isHome' => false,
+                    'game' => $game,
+                    'pageNumber' => 2,
+                    'sheetTitle' => 'VISITING TEAM SCOREBOOK PAGE',
+                ])
+            @else
+                @include('livewire.partials.ncaa-team-sheet', [
+                    'team' => $away,
+                    'oppTeam' => $home,
+                    'isHome' => false,
+                    'game' => $game,
+                    'pageNumber' => 2,
+                    'sheetTitle' => 'VISITING TEAM SCOREBOOK PAGE',
+                ])
+            @endif
         </section>
     </main>
 

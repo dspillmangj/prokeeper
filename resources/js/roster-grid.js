@@ -76,6 +76,9 @@ export function parseRosterClipboardText(text) {
             } else if (matchTrail) {
                 name = matchTrail[1].trim();
                 jersey = matchTrail[2];
+            } else if (/^\#?(\d{1,4}[A-Za-z]?)$/.test(raw.trim())) {
+                jersey = raw.trim().replace(/^#/, '');
+                name = '';
             } else {
                 name = raw;
             }
@@ -313,17 +316,17 @@ export function rosterSpreadsheet(config) {
 
         jumpToRow(targetNum) {
             if (targetNum === 0) {
-                // Find first available slot (no player assigned)
-                let emptyIdx = this.rows.findIndex(r => (!r.name || r.name.trim() === '') && (!r.jersey_number || String(r.jersey_number).trim() === ''));
+                // Find first available slot (no jersey assigned)
+                let emptyIdx = this.rows.findIndex(r => (!r.jersey_number || String(r.jersey_number).trim() === '') && (!r.name || r.name.trim() === ''));
                 if (emptyIdx === -1) {
-                    emptyIdx = this.rows.findIndex(r => !r.name || r.name.trim() === '');
+                    emptyIdx = this.rows.findIndex(r => !r.jersey_number || String(r.jersey_number).trim() === '');
                 }
                 if (emptyIdx === -1) {
                     this.addEmptyRow();
                     emptyIdx = this.rows.length - 1;
                 }
                 this.setJumpFeedback(`Slot #${emptyIdx + 1} (Available)`);
-                this.focusAndSelectCell(emptyIdx, 'name');
+                this.focusAndSelectCell(emptyIdx, 'jersey_number');
                 this.jumpBuffer = '';
                 return;
             }
@@ -378,12 +381,7 @@ export function rosterSpreadsheet(config) {
         },
 
         async saveRoster() {
-            const validRows = this.rows.filter(r => (r.jersey_number || '').trim() !== '' && (r.name || '').trim() !== '');
-
-            if (validRows.length === 0 && this.rows.some(r => r.jersey_number || r.name)) {
-                alert('Please ensure each player has both a Jersey # and a Name.');
-                return;
-            }
+            const validRows = this.rows.filter(r => (r.jersey_number || '').trim() !== '');
 
             this.isSaving = true;
             this.saveSuccessMessage = '';
@@ -434,7 +432,7 @@ export function rosterSpreadsheet(config) {
         },
 
         get validPlayerCount() {
-            return this.rows.filter(r => (r.jersey_number || '').trim() !== '' && (r.name || '').trim() !== '').length;
+            return this.rows.filter(r => (r.jersey_number || '').trim() !== '').length;
         }
     };
 }
@@ -542,17 +540,17 @@ export function inGameRosterSpreadsheet(config) {
 
         jumpToRow(targetNum) {
             if (targetNum === 0) {
-                // Find first available slot (no player assigned)
-                let emptyIdx = this.rows.findIndex(r => (!r.name || r.name.trim() === '') && (!r.jersey_number || String(r.jersey_number).trim() === ''));
+                // Find first available slot (no jersey assigned)
+                let emptyIdx = this.rows.findIndex(r => (!r.jersey_number || String(r.jersey_number).trim() === '') && (!r.name || r.name.trim() === ''));
                 if (emptyIdx === -1) {
-                    emptyIdx = this.rows.findIndex(r => !r.name || r.name.trim() === '');
+                    emptyIdx = this.rows.findIndex(r => !r.jersey_number || String(r.jersey_number).trim() === '');
                 }
                 if (emptyIdx === -1) {
                     this.addEmptyRow();
                     emptyIdx = this.rows.length - 1;
                 }
                 this.setJumpFeedback(`Slot #${emptyIdx + 1} (Available)`);
-                this.focusAndSelectCell(emptyIdx, 'name');
+                this.focusAndSelectCell(emptyIdx, 'jersey_number');
                 this.jumpBuffer = '';
                 return;
             }
@@ -607,7 +605,7 @@ export function inGameRosterSpreadsheet(config) {
         },
 
         async saveAndApply(wire) {
-            const validRows = this.rows.filter(r => (r.jersey_number || '').trim() !== '' && (r.name || '').trim() !== '');
+            const validRows = this.rows.filter(r => (r.jersey_number || '').trim() !== '');
             this.isSaving = true;
             try {
                 if (wire && wire.saveRosterSpreadsheet) {
@@ -626,7 +624,7 @@ export function inGameRosterSpreadsheet(config) {
         },
 
         get validCount() {
-            return this.rows.filter(r => (r.jersey_number || '').trim() !== '' && (r.name || '').trim() !== '').length;
+            return this.rows.filter(r => (r.jersey_number || '').trim() !== '').length;
         },
 
         get onCourtCount() {

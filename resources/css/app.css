@@ -14,4 +14,40 @@
     .scoreboard-glow {
         text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
     }
+
+    /* Bombastic Attention Strobe & Hazard Alerts */
+    @keyframes bombastic-strobe {
+        0%, 100% {
+            opacity: 0.95;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 0.35;
+            transform: scale(1.006);
+        }
+    }
+
+    .animate-bombastic-strobe {
+        animation: bombastic-strobe 0.45s ease-in-out infinite;
+    }
+
+    .hazard-stripes-red {
+        background-image: repeating-linear-gradient(
+            -45deg,
+            rgba(220, 38, 38, 0.25),
+            rgba(220, 38, 38, 0.25) 12px,
+            rgba(0, 0, 0, 0.35) 12px,
+            rgba(0, 0, 0, 0.35) 24px
+        );
+    }
+
+    .hazard-stripes-amber {
+        background-image: repeating-linear-gradient(
+            -45deg,
+            rgba(245, 158, 11, 0.25),
+            rgba(245, 158, 11, 0.25) 12px,
+            rgba(0, 0, 0, 0.35) 12px,
+            rgba(0, 0, 0, 0.35) 24px
+        );
+    }
 }

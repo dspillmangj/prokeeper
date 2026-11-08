@@ -1,7 +1,6 @@
 <?php
 
 use App\Livewire\NcaaScorebook;
-use App\Livewire\PureScoreboard;
 use App\Livewire\WatchGame;
 use App\Models\Game;
 use App\Models\GameEvent;
@@ -14,28 +13,29 @@ test('operator route redirects to login', function () {
     $response->assertRedirect(route('login'));
 });
 
-test('scoreboard prompt renders successfully without code', function () {
+test('scoreboard route redirects to public live view', function () {
     $response = $this->get('/scoreboard');
-    $response->assertStatus(200);
-    $response->assertSee('Live Stadium Scoreboard');
-    $response->assertSee('Game Access Code');
+    $response->assertRedirect(route('public.live.prompt'));
 });
 
-test('watch prompt renders successfully without code', function () {
+test('watch route redirects to public live view', function () {
     $response = $this->get('/watch');
+    $response->assertRedirect(route('public.live.prompt'));
+});
+
+test('scorebook prompt route redirects to public live view', function () {
+    $response = $this->get('/scorebook');
+    $response->assertRedirect(route('public.live.prompt'));
+});
+
+test('live prompt renders successfully without code', function () {
+    $response = $this->get('/live');
     $response->assertStatus(200);
     $response->assertSee('Watch Game Live');
     $response->assertSee('Game Access Code');
 });
 
-test('scorebook prompt renders successfully without code', function () {
-    $response = $this->get('/scorebook');
-    $response->assertStatus(200);
-    $response->assertSee('ProKeeper Scorebook');
-    $response->assertSee('Game Access Code');
-});
-
-test('scoreboard page renders pure scoreboard for a valid game code', function () {
+test('scoreboard game code route redirects to live game view', function () {
     $org = Organization::create(['name' => 'Athletics Org', 'slug' => 'ath-org']);
     $user = User::create([
         'organization_id' => $org->id,
@@ -43,6 +43,7 @@ test('scoreboard page renders pure scoreboard for a valid game code', function (
         'email' => 'op@example.com',
         'password' => bcrypt('password'),
         'role' => 'admin',
+        'plan' => 'pro',
     ]);
 
     $game = Game::create([
@@ -65,15 +66,10 @@ test('scoreboard page renders pure scoreboard for a valid game code', function (
     ]);
 
     $response = $this->get('/scoreboard/SB1234');
-    $response->assertStatus(200);
-    $response->assertSee('Warriors');
-    $response->assertSee('Lakers');
-    $response->assertSee('78');
-    $response->assertSee('72');
-    $response->assertSee('BONUS');
+    $response->assertRedirect(route('public.live', 'SB1234'));
 });
 
-test('watch page allows tabbing between scoreboard, plays, box score, and summary', function () {
+test('live view allows tabbing between scoreboard, plays, box score, and summary for pro games', function () {
     $org = Organization::create(['name' => 'Athletics Org 2', 'slug' => 'ath-org-2']);
     $user = User::create([
         'organization_id' => $org->id,
@@ -81,6 +77,7 @@ test('watch page allows tabbing between scoreboard, plays, box score, and summar
         'email' => 'op2@example.com',
         'password' => bcrypt('password'),
         'role' => 'admin',
+        'plan' => 'pro',
     ]);
 
     $game = Game::create([
@@ -129,7 +126,7 @@ test('watch page allows tabbing between scoreboard, plays, box score, and summar
         ->assertSee('Team Statistical Matchup');
 });
 
-test('submitting code from prompt navigates directly to game view', function () {
+test('submitting code from prompt navigates directly to live game view', function () {
     $org = Organization::create(['name' => 'Athletics Org 3', 'slug' => 'ath-org-3']);
     $user = User::create([
         'organization_id' => $org->id,
@@ -137,6 +134,7 @@ test('submitting code from prompt navigates directly to game view', function () 
         'email' => 'op3@example.com',
         'password' => bcrypt('password'),
         'role' => 'admin',
+        'plan' => 'pro',
     ]);
 
     $game = Game::create([
@@ -151,18 +149,8 @@ test('submitting code from prompt navigates directly to game view', function () 
         'current_period' => 1,
     ]);
 
-    Livewire::test(PureScoreboard::class)
-        ->set('inputCode', 'PRO100')
-        ->call('submitCode')
-        ->assertRedirect(route('public.scoreboard', 'PRO100'));
-
     Livewire::test(WatchGame::class)
         ->set('inputCode', 'PRO100')
         ->call('submitCode')
-        ->assertRedirect(route('public.watch', 'PRO100'));
-
-    Livewire::test(NcaaScorebook::class)
-        ->set('inputCode', 'PRO100')
-        ->call('submitCode')
-        ->assertRedirect(route('public.scorebook', 'PRO100'));
+        ->assertRedirect(route('public.live', 'PRO100'));
 });
