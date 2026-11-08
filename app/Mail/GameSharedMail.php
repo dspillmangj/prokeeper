@@ -39,3 +39,4 @@ class GameSharedMail extends Mailable
         );
     }
 }
+

@@ -38,3 +38,4 @@ class RosterSharedMail extends Mailable
         );
     }
 }
+
